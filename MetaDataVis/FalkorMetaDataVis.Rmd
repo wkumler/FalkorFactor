@@ -13,7 +13,8 @@ library(ggmap)
 library(grid)
 library(gridExtra)
 library(plotly)
-register_google(key = "AIzaSyBVNJV0Myoy3M50IBBDIjXZhUyU8Mnagvs")
+apikey <- readLines("apikey.txt")
+register_google(key = apikey)
 scope_uname <- "scope"
 scope_pw <- "SCOPE2014"
 

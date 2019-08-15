@@ -3,3 +3,8 @@
 .RData
 .Ruserdata
 apikey.txt
+*.raw
+*.mzML
+*.abf
+*.pai2
+*.dcl

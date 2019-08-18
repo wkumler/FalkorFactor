@@ -1,0 +1,2 @@
+msconvert --mzML --filter "peakPicking cwt snr=2 peakSpace=0.1 msLevel=1-" --filter "polarity positive" -z ../190626_Std_4uMStdsMix1InH2O_1.raw
+C:\Users\willi\Documents\UW\MSDIAL_tutorial\"MSDIAL ver 3.82"\MsdialConsoleApp.exe lcmsdda -i .\190626_Std_4uMStdsMix1InH2O_1.mzML -o .\ -m ..\Msdial-lcms-dda-Param-bestguess.txt

@@ -1,0 +1,50 @@
+#Data type
+MS1 data type: Centroid
+MS2 data type: Centroid
+Ion mode: Positive
+DIA file: 
+
+#Data collection parameters
+Retention time begin: 0
+Retention time end: 100
+Mass range begin: 0
+Mass range end: 1000
+
+#Centroid parameters
+MS1 tolerance for centroid: 0.005
+MS2 tolerance for centroid: 0.05
+
+#Peak detection parameters
+Smoothing method: LinearWeightedMovingAverage
+Smoothing level: 3
+Minimum peak width: 10
+Minimum peak height: 10000
+Mass slice width: 0.01
+
+#Deconvolution parameters
+Sigma window value: 0.5
+Amplitude cut off: 0
+
+#Adduct list
+Adduct list: [M+H]+
+
+#MSP file and MS/MS identification setting
+#MSP file: D:\Msdial-ConsoleApp-Demo files\Msdial-ConsoleApp-Demo files for DDA\MSDIAL-LipidDB-VS23.msp
+Retention time tolerance for identification: 4
+Accurate ms1 tolerance for identification: 0.025
+Accurate ms2 tolerance for identification: 0.25
+Identification score cut off: 70
+
+#Text file and post identification (retention time and accurate mass based) setting
+#Text file: D:\Msdial-ConsoleApp-Demo files\Msdial-ConsoleApp-Demo files for DDA\Lipid_Nega_IS_PostIdentification_vs1.txt
+Retention time tolerance for post identification: 0.5
+Accurate ms1 tolerance for post identification: 0.01
+Post identification score cut off: 85
+
+#Alignment parameters setting
+Retention time tolerance for alignment: 0.05
+MS1 tolerance for alignment: 0.025
+Retention time factor for alignment: 0.5
+MS1 factor for alignment: 0.5
+Peak count filter: 0
+QC at least filter: True

@@ -39,7 +39,7 @@ ui <- fluidPage(
          sliderInput("peak_height",
                      "Log10 scale peak height (above average background)",
                      min = 2,
-                     max = 7,
+                     max = 6,
                      value = 3,
                      step = 0.1),
          sliderInput("peak_width",
@@ -54,41 +54,42 @@ ui <- fluidPage(
                      "Scan length?",
                      min = 100,
                      max = 1000,
-                     value = 500),
-         sliderInput("noise_window_width",
-                     "Noise window? (multiple of peak width)",
-                     min = 1,
-                     max = 5,
-                     value = 2,
-                     step = 1),
-        radioButtons("plot_lines",
-                     "Line plot or dot plot?",
-                     choices = list("Dot", "Line"))
+                     value = 500)
       ),
       
       # Show a plot of the generated distribution
       mainPanel(
-        htmlOutput("sideinfo"),
-        plotOutput("distPlot")
+        fluidRow(
+          column(width = 12,
+                 htmlOutput("sideinfo")
+          ),
+          column(width = 6,
+                 plotOutput("distPlot")),
+          column(width = 6,
+                 plotOutput("xcmsPlot"))
+          )
+        )
       )
-   )
 )
 
 # Define server logic ----
 server <- function(input, output) {
   output$sideinfo <- renderText({
-    HTML(paste("Peak height:", floor(10^input$peak_height)),
+    HTML(paste("Background intensity:", floor(10^input$noise_mean)),
+         paste("Peak height:", floor(10^input$peak_height)),
          paste("Peak width:", input$peak_width),
          paste("Scan length:", input$scan_length),
-         paste("Noise SD:", floor(10^input$noise_sd)),
-         paste("Noise intensity:", floor(10^input$noise_mean)),
-         paste("Window width:", input$noise_window_width))
+         paste("Noise SD:", floor(10^input$noise_sd)))
   })
-  
-  peak_intensities <- reactiveVal()
-   
-  output$distPlot <- renderPlot({
-    
+
+  peak_values <- eventReactive({
+    input$peak_width
+    input$peak_height
+    input$peak_shape
+    input$scan_length
+    input$noise_sd
+    input$noise_mean
+  }, {
     if(input$peak_shape=="Gaussian"){
       peak_values <- rnorm(floor(10^input$peak_height)/4*input$peak_width)
     } else if(input$peak_shape=="Tailed"){
@@ -101,43 +102,39 @@ server <- function(input, output) {
                      table(cut(peak_values, breaks = input$peak_width)), 
                      rep(0, (input$scan_length-input$peak_width)/2)) %>%
       `+`(rnorm(n = input$scan_length, sd = floor(10^input$noise_sd), mean = floor(10^input$noise_mean)))
-    
+    return(peak_values)
+    print(peak_values)
+  })
+  
+  output$distPlot <- renderPlot({
     peak_start_index <- input$scan_length/2-input$peak_width/2
     peak_end_index <- input$scan_length/2+input$peak_width/2
-    noise_window_indices <- list(c(peak_start_index-input$noise_window_width*input$peak_width, 
+    noise_window_indices <- list(c(peak_start_index-input$peak_width,
                                    peak_start_index),
-                                 c(peak_end_index, 
-                                   peak_end_index+input$noise_window_width*input$peak_width))
-    
+                                 c(peak_end_index,
+                                   peak_end_index+input$peak_width))
+
     left_noise_window_indices <- noise_window_indices[[1]][1]:noise_window_indices[[1]][2]
     left_noise_window_indices <- left_noise_window_indices[left_noise_window_indices>0]
     right_noise_window_indices <- noise_window_indices[[2]][1]:noise_window_indices[[2]][2]
     right_noise_window_indices <- right_noise_window_indices[right_noise_window_indices<input$scan_length]
-    
-    
-    sd_noise_estimate <- sd(c(peak_values[left_noise_window_indices],
-                              peak_values[right_noise_window_indices]),
+
+
+    sd_noise_estimate <- sd(c(peak_values()[left_noise_window_indices],
+                              peak_values()[right_noise_window_indices]),
                             na.rm = T)
-    median_noise_estimate <- median(c(peak_values[left_noise_window_indices],
-                                      peak_values[right_noise_window_indices]),
+    median_noise_estimate <- median(c(peak_values()[left_noise_window_indices],
+                                      peak_values()[right_noise_window_indices]),
                                     na.rm = T)
-    
+
     if(input$ylim=="Unfixed"){
-      if(input$plot_lines=="Dot"){
-        plot(peak_values, pch=19)
-      } else {
-        plot(peak_values, pch=19, type="l")
-      }
+      plot(peak_values(), pch=19)
     } else {
-      if(input$plot_lines=="Dot"){
-        plot(peak_values, pch=19, ylim=c(0, as.numeric(input$ylim)))
-      } else {
-        plot(peak_values, pch=19, type="l", ylim=c(0, as.numeric(input$ylim)))
-      }
+      plot(peak_values(), pch=19, ylim=c(0, as.numeric(input$ylim)))
     }
-    
-    abline(h=max(peak_values), col = "blue")
-    mtext(text = "Max\npeakheight", side = 4, at = max(peak_values), 
+
+    abline(h=max(peak_values()), col = "blue")
+    mtext(text = "Max\npeakheight", side = 4, at = max(peak_values()),
           col = "blue", line = 1)
     arrows(x0 = noise_window_indices[[1]][1], x1 = noise_window_indices[[1]][2],
            y0 = median_noise_estimate, y1 = median_noise_estimate,
@@ -145,14 +142,19 @@ server <- function(input, output) {
     arrows(x0 = noise_window_indices[[2]][1], x1 = noise_window_indices[[2]][2],
            y0 = median_noise_estimate, y1 = median_noise_estimate,
            col = "blue", angle = 90, code = 3, lwd = 2)
-    text("Noise window", x = noise_window_indices[[2]][2], 
+    text("Noise window", x = noise_window_indices[[2]][2],
          y = median_noise_estimate+floor(10^input$peak_height)/10, col = "blue")
-    
+
     legend("topleft", legend = c("Signal-to-noise ratio",
-                                 paste("Max/Median:", round(max(peak_values)/median_noise_estimate)), 
-                                 paste("Max/SD:", round(max(peak_values)/sd_noise_estimate)),
-                                 paste("Max/(Median+SD)", round(max(peak_values)/(median_noise_estimate+sd_noise_estimate)))),
+                                 paste("Max/Median:", round(max(peak_values())/median_noise_estimate)),
+                                 paste("Max/SD:", round(max(peak_values())/sd_noise_estimate))),
            text.col = c("black", "green", "red"))
+  })
+  
+  output$xcmsPlot <- renderPlot({
+    chr <- Chromatogram(rtime = 1:length(peak_values()), intensity = peak_values())
+    plot(findChromPeaks(chr, param = CentWaveParam()), main="")
+    abline(v=xcms:::.getRtROI(intensity(chr), rtime(chr))[,3], col="red")
   })
 }
 

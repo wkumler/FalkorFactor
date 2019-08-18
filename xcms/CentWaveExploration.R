@@ -1,5 +1,5 @@
 # Code for collecting source files of various CentWave algorithms
-load("chr_raw")
+load("xcms/chr_raw")
 
 # Applied to chr_raw, a Chromatograms object
 showMethods("findChromPeaks")

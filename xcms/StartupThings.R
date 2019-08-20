@@ -33,7 +33,7 @@ will_plotXIC <- function (x, main = "", col = NA, colramp = topo.colors,
 
 
 # Data import ----
-mzml_path <- "../mzMLs"
+mzml_path <- "mzMLs"
 mzml_pos_files <- list.files(mzml_path, full.names = T)
 useful_files <- mzml_pos_files[c(1,5:7,17:40)]
 
@@ -55,8 +55,8 @@ pdata <- data.frame(sample_name = sub(basename(useful_files), pattern = ".mzML",
 # raw_data <- readMSData(files = useful_files, 
 #                        pdata = new("NAnnotatedDataFrame", pdata),
 #                        mode = "onDisk")
-# save(raw_data, file = "raw_data")
-load("raw_data")
+# save(raw_data, file = "xcms/raw_data")
+load("xcms/raw_data")
 
 sample_group_colors <- c(rgb(0,0,0), rgb(1,0,0,0.5), rgb(0,0,1,0.1)) %>%
   `names<-`(c("Seawater_filter_blank", "Full_pooled", "Sample"))
@@ -105,7 +105,7 @@ pheatmap(cormat)
 
 
 # Peakfinding using CentWave ----
-stds <- read.csv("Ingalls_Lab_Standards_Will.csv", stringsAsFactors = F)
+stds <- read.csv("xcms/Ingalls_Lab_Standards_Will.csv", stringsAsFactors = F)
 
 plotSTD <- function(std_row){
   par(mar=c(2.1, 2.1, 1.1, 0.1))
@@ -130,29 +130,71 @@ raw_data %>%
 par(mfrow=c(1,1))
 mz_span <- c(0.0005) # Maximum spread of m/z values across a peak
 
+stds <- read.csv("xcms/Ingalls_Lab_Standards_Will.csv", stringsAsFactors = F)
+good_peak <- 18
+chr_raw <- chromatogram(raw_data,
+                        mz = c(stds$m.z[good_peak]-0.001, stds$m.z[good_peak]+0.001),
+                        rt = c(stds$rt.sec[good_peak]-100, stds$rt.sec[good_peak]+100))
+# save(chr_raw, file = "xcms/chr_raw")
+# load("xcms/raw_data")
+load("xcms/chr_raw")
 
-# chr_raw <- chromatogram(raw_data,
-#                         mz = c(stds$m.z[good_peak]-0.001, stds$m.z[good_peak]+0.001),
-#                         rt = c(stds$rt.sec[good_peak]-100, stds$rt.sec[good_peak]+100))
-save(chr_raw, file = "chr_raw")
-load("chr_raw")
-xchr <- findChromPeaks(chr_raw, param = CentWaveParam(snthresh = 2))
+# Find peaks in all files w defaults
+register(SerialParam())
+xchr <- findChromPeaks(chr_raw, param = CentWaveParam())
+
+# Find peaks in all files with sensible defaults
+xchr <- findChromPeaks(chr_raw, param = CentWaveParam(snthresh = 1))
+
+# Find peaks in just one file w defaults
+xchr <- findChromPeaks(chr_raw[[28]], param = CentWaveParam())
+
+# Find peaks in just one file with sensible values
+xchr <- findChromPeaks(chr_raw[[28]], param = CentWaveParam(snthresh = 1))
+
+# Provide peak data output
 chromPeaks(xchr)
 chromPeakData(xchr)
-sample_colors <- group_colors[xchr$sample_group]
-plot(xchr, col = sample_colors, peakType = "rectangle",
-     peakBg = sample_colors[chromPeaks(xchr)[, "column"]], ylim=c(0,1000000))
+plot(xchr)
 
 
 
-xchr <- findChromPeaks(chr_raw, param=CentWaveParam())
-chromPeaks(xchr)
-chromPeakData(xchr)
-xchr <- findChromPeaks(chr_raw, param=CentWaveParam(snthresh = 10000))
-chromPeaks(xchr)
-chromPeakData(xchr)
 
-plot(xchr[[10]])
-plot(xchr[[11]])
-plot(xchr[[28]], ylim=c(0, 1000000))
 
+# With improved SNR estimations
+will_findChromPeaks_single <- function(object){
+  param <- CentWaveParam()
+  res <- do.call("will_peaksWithCentWave", args = c(list(int = intensity(object), 
+                                                         rt = rtime(object))))
+  object <- as(object, "XChromatogram")
+  chromPeaks(object) <- res
+  object
+}
+
+will_findChromPeaks_XChromatograms <- function (object, BPPARAM, ...) {
+  startDate <- date()
+  if (missing(BPPARAM)) 
+    BPPARAM <- bpparam()
+  object <- as(object, "XChromatograms")
+  object@.Data <- matrix(bplapply(c(object@.Data), FUN = will_findChromPeaks_single, 
+                                  BPPARAM = BPPARAM), ncol = ncol(object), 
+                         dimnames = dimnames(object@.Data))
+  ph_len <- length(object@.processHistory)
+  if (ph_len && processType(object@.processHistory[[ph_len]]) == 
+      xcms:::.PROCSTEP.PEAK.DETECTION) 
+    object@.processHistory <- object@.processHistory[seq_len(ph_len - 1)]
+  if (validObject(object)) 
+    object
+}
+
+will_findChromPeaks <- function (object) {
+  .local <- function (object) {
+    will_findChromPeaks_XChromatograms(object)
+  }
+  .local(object)
+}
+source("xcms/commented_will_peaksWithCentWave.R")
+will_xchr <- will_findChromPeaks(chr_raw)
+chromPeaks(will_xchr)
+chromPeakData(will_xchr)
+plot(will_xchr)

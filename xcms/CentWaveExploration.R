@@ -6,7 +6,7 @@ showMethods("findChromPeaks")
 findMethods("findChromPeaks")[[3]]
 #Basically just a wrapper for .findChromPeaks_XChromatograms()
 #Activates bpparam()
-
+#findChromPeaks(chr_raw, param=CentWaveParam())
 
 # Sourcing .findChromPeaks_XChromatograms()
 xcms:::.findChromPeaks_XChromatograms
@@ -20,6 +20,7 @@ findMethods("findChromPeaks")[[1]]
 #Applies peaksWithCentWave to various sections of chr_raw
 # I.e. accepts int, rt, and param
 #Fills in the chromPeaks() slot of the Chromatogram object
+
 
 
 # Applying peaksWithCentWave to a single Chromatogram
@@ -50,4 +51,3 @@ peak1data <- will_peaksWithCentWave(int, rt)
 abline(v=peak1data[colnames(peak1data)=="rtmin"])
 abline(v=peak1data[colnames(peak1data)=="rtmax"])
 abline(v=peak1data[colnames(peak1data)=="intb"])
-

@@ -1,10 +1,13 @@
 # Detailed review of all the things that happen in findPeaksCentWave
 
+
+
+will_peaksWithCentWave <- function(int, rt, param){
+
 #Setup things ----
 
 load("xcms/chr_raw")
-int <- intensity(chr_raw@.Data[[1]])
-rt <- rtime(chr_raw@.Data[[1]])
+
 
 peakwidth = c(20, 50)
 snthresh = 10
@@ -15,14 +18,24 @@ noise = 0
 verboseColumns = FALSE
 firstBaselineCheck = TRUE
 
+maxGaussOverlap <- 0.5
 
-
+peaklist <- list()
+peakinfo_names <- c("scale", "scaleNr", "scpos", "scmin", "scmax")
+basenames <- c("mz", "mzmin", "mzmax", "rt", "rtmin", "rtmax", 
+               "into", "intb", "maxo", "sn")
+verbosenames <- c("egauss", "mu", "sigma", "h", "f", "dppm", 
+                  "scale", "scpos", "scmin", "scmax", "lmin", "lmax")
+peaks_names <- c(basenames, verbosenames)
+peaks_ncols <- length(peaks_names)
 
 
 
 # Startup checks ----
 if (length(peakwidth) != 2) 
   stop("'peakwidth' has to be a numeric of length 2")
+if(any(peakwidth<=0))
+  stop("'peakwidth' must be a positive integer")
 int[is.na(int)] <- 0
 
 
@@ -39,95 +52,90 @@ for(row in 1:dim(rois)[1]){
 }
 
 
-# Define scales? ----
+
+# Define scales ----
 scalerange <- round((peakwidth/mean(diff(rt)))/2) #? Normalize peakwidth to distance between scans, then divide by 2?
-if (length(z <- which(scalerange == 0))) # If scalerange includes a zero, drop zero
-  scalerange <- scalerange[-z]
-if (length(scalerange) < 1) { # If scalerange is empty, abort process and return empty matrix
-  if (verboseColumns) 
-    basenames <- c(basenames, verbosenames)
-  return(invisible(matrix(nrow = 0, ncol = length(basenames), 
-                          dimnames = list(character(), basenames))[, -(1:3), 
-                                                                   drop = FALSE]))
-}
-if (length(scalerange) > 1) { # Iterate between min scale and max scale by 2
-  scales <- seq(from = scalerange[1], to = scalerange[2], by = 2)
-} else { # Unless there's only one number, then scales are just that one
-  scales <- scalerange
-}
+scales <- seq(scalerange[1], scalerange[2])
+
 minPeakWidth <- scales[1] # Min peak width is now not actually the minimum peak width, but instead about half?
-noiserange <- c(ceiling(minPeakWidth) * 3, max(scales) * 3) #Will be used to walk a few peak widths outside to get a sense of the local noise
-maxGaussOverlap <- 0.5 #Important later?
-minCentroids <- minPtsAboveBaseLine <- max(4, minPeakWidth - 2) #No idea
-scRangeTol <- maxDescOutlier <- floor(minPeakWidth/2) #HELP
-scanrange <- c(1, length(rt))
-Nscantime <- length(rt)
-mzdiff <- 0
-peaklist <- NULL
+
+noiserange <- c(min(scales) * 3, max(scales) * 3) #Will be used to walk a few peak widths outside to get a sense of the local noise
+scRangeTol <- maxDescOutlier <- floor(minPeakWidth/2)
+minCentroids <- minPtsAboveBaseLine <- max(4, minPeakWidth - 2)
 
 
 
 # Run peak detection on each region of interest ----
-peakinfo_names <- c("scale", "scaleNr", "scpos", "scmin", "scmax")
-basenames <- c("mz", "mzmin", "mzmax", "rt", "rtmin", "rtmax", 
-               "into", "intb", "maxo", "sn")
-verbosenames <- c("egauss", "mu", "sigma", "h", "f", "dppm", 
-                  "scale", "scpos", "scmin", "scmax", "lmin", "lmax")
-peaks_names <- c(basenames, verbosenames)
-peaks_ncols <- length(peaks_names)
 for (i in seq_len(nrow(rois))) {
+# i <- 3
   scmin <- rois[i, "scmin"]
   scmax <- rois[i, "scmax"]
-  N <- scmax - scmin + 1
   peaks <- matrix(ncol = peaks_ncols, nrow = 0, dimnames = list(character(), 
                                                                 peaks_names))
   peakinfo <- matrix(ncol = 5, nrow = 0, dimnames = list(character(), 
                                                          peakinfo_names))
-  sccenter <- scmin + floor(N/2) - 1
-  scrange <- c(scmin, scmax)
-  sr <- c(max(scanrange[1], scrange[1] - max(noiserange)), 
-          min(scanrange[2], scrange[2] + max(noiserange)))
-  td <- sr[1]:sr[2]
+  
+  td <- max(1, scmin - max(noiserange)):min(length(rt), scmax + max(noiserange))
   d <- int[td]
-  scan.range <- c(sr[1], sr[2])
+  scan.range <- c(min(td), max(td))
   otd <- scmin:scmax
   od <- int[otd]
-  # d is the intensities of the ROI + nearby intensities
-  # od is the intensities of the ROI itself
-  plot(d~rt[scan.range[1]:scan.range[2]])
-  points(od~rt[scmin:scmax], col="red")
-  
-  
-  if (all(od == 0)) { # Why would this be true?? Surely the ROI finder wouldn't choose a bunch of zeros?
-    warning("centWave: no peaks found in ROI.")
-    next
-  }
-  ftd <- max(td[1], scrange[1] - scRangeTol):min(td[length(td)], 
-                                                 scrange[2] + scRangeTol)
+  ftd <- max(td[1], scmin - scRangeTol):min(td[length(td)], scmax + scRangeTol)
   fd <- int[ftd]
-  if (N >= 10 * minPeakWidth) {
+  
+  plot(d~td, main=paste("ROI number", i))
+  points(fd~ftd, col = "blue")
+  points(od~otd, col="red")
+  
+  
+  
+  # Estimate local noise
+  if ((scmax - scmin + 1) >= 10 * minPeakWidth) {
     noised <- int
-  }
-  else {
+  } else {
     noised <- d
   }
   noise <- xcms:::estimateChromNoise(noised, trim = 0.05, 
                                      minPts = 3 * minPeakWidth)
-  if (firstBaselineCheck & !xcms:::continuousPtsAboveThreshold(fd, 
-                                                               threshold = noise, num = minPtsAboveBaseLine)) 
-    next
+  if (firstBaselineCheck & !xcms:::continuousPtsAboveThreshold(fd, threshold = noise, num = minPtsAboveBaseLine)){
+    #print(paste("ROI number", i, "failed baseline check"))
+    next #If we're doing a baseline check and this ROI fails it, skip to next ROI
+  }
+  
+  source("xcms/NoiseAlternateFunctions.R")
   lnoise <- xcms:::getLocalNoiseEstimate(d, td, ftd, noiserange, 
-                                         Nscantime, threshold = noise, num = minPtsAboveBaseLine)
+                                         length(rt), threshold = noise, 
+                                         num = minPtsAboveBaseLine)
+  #lnoise <- getLocalNoise_maxpeaks(d, peakwidth = max(peakwidth))
+  #lnoise <- getLocalNoise_sd(d)
+  lnoise <- getLocalNoise_IQR(d)
   baseline <- max(1, min(lnoise[1], noise))
   sdnoise <- max(1, lnoise[2])
   sdthr <- sdnoise * snthresh
-  if (!(any(fd - baseline >= sdthr))) 
+  if (!(any(fd - baseline >= sdthr))) {
+    #print(paste("ROI number", i, "failed SNR check"))
     next
+  }
+  
+  # Generate wavelets for remaining ROIs
   wCoefs <- xcms:::MSW.cwt(d, scales = scales, wavelet = "mexh")
-  if (!(!is.null(dim(wCoefs)) && any((wCoefs - baseline) >= 
-                                     sdthr))) 
+  
+  par(mfrow=c(2,1))
+  par(mar=c(0.1, 0.1, 0.1, 0.1))
+  plot(d, type="l", lwd=2, ylim=c(0, max(d)), axes=F)
+  plot(wCoefs[,1], ylim=c(min(wCoefs), max(wCoefs)), axes=F)
+  for(i in 1:dim(wCoefs)[2]){
+    points(wCoefs[,i], col=rainbow(dim(wCoefs)[2])[i])
+  }
+  legend("topleft", legend = scales[1:dim(wCoefs)[2]], col = rainbow(dim(wCoefs)[2]), 
+         lwd = 2, title = "Wavelet scale")
+  par(mfrow=c(1,1))
+  par(mar=c(4.1, 4.1, 0.1, 0.1))
+  
+  
+  if (!(!is.null(dim(wCoefs)) && any((wCoefs - baseline) >= sdthr))) 
     next
-  if (td[length(td)] == Nscantime) 
+  if (td[length(td)] == length(rt))
     wCoefs[nrow(wCoefs), ] <- wCoefs[nrow(wCoefs) - 1, 
                                      ] * 0.99
   localMax <- xcms:::MSW.getLocalMaximumCWT(wCoefs)
@@ -176,7 +184,7 @@ for (i in seq_len(nrow(rois))) {
             if (is.na(p1)) 
               p1 <- 1
             if (is.na(p2)) 
-              p2 <- N
+              p2 <- scmax - scmin + 1
             maxint <- max(od[p1:p2])
             peaks <- rbind(peaks, c(1, 1, 1, NA, NA, 
                                     NA, NA, NA, maxint, round((maxint - baseline)/sdnoise), 
@@ -192,16 +200,18 @@ for (i in seq_len(nrow(rois))) {
   }
   for (p in seq_len(nrow(peaks))) {
     if (integrate == 1) {
-      lm <- xcms:::descendMin(wCoefs[, peakinfo[p, 
-                                                "scaleNr"]], istart = peakinfo[p, "scpos"])
+      lm <- xcms:::descendMin(wCoefs[, peakinfo[p, "scaleNr"]], 
+                              istart = peakinfo[p, "scpos"])
       gap <- all(d[lm[1]:lm[2]] == 0)
       if ((lm[1] == lm[2]) || gap) 
-        lm <- xcms:::descendMinTol(d, startpos = c(peakinfo[p, 
-                                                            "scmin"], peakinfo[p, "scmax"]), maxDescOutlier)
+        lm <- xcms:::descendMinTol(d, startpos = c(peakinfo[p, "scmin"], 
+                                                   peakinfo[p, "scmax"]), 
+                                   maxDescOutlier)
     }
     else {
-      lm <- xcms:::descendMinTol(d, startpos = c(peakinfo[p, 
-                                                          "scmin"], peakinfo[p, "scmax"]), maxDescOutlier)
+      lm <- xcms:::descendMinTol(d, startpos = c(peakinfo[p, "scmin"], 
+                                                 peakinfo[p, "scmax"]), 
+                                 maxDescOutlier)
     }
     lm <- xcms:::.narrow_rt_boundaries(lm, d)
     lm_range <- lm[1]:lm[2]
@@ -251,7 +261,7 @@ for (i in seq_len(nrow(rois))) {
                                        od, rt, scan.range, peaks, maxGaussOverlap, mzCenterFun = mzCenter.wMean)
   if (!is.null(peaks)) 
     peaklist[[length(peaklist) + 1]] <- peaks
-}
+} # Goes with for loop at top
 if (length(peaklist) == 0) {
   warning("No peaks found!")
   if (verboseColumns) 
@@ -266,5 +276,6 @@ if (!verboseColumns)
   p <- p[, basenames, drop = FALSE]
 uorder <- order(p[, "into"], decreasing = TRUE)
 pm <- p[, c("mzmin", "mzmax", "rtmin", "rtmax"), drop = FALSE]
-uindex <- xcms:::rectUnique(pm, uorder, mzdiff, ydiff = -1e-05)
+uindex <- xcms:::rectUnique(pm, uorder, xdiff = 0, ydiff = -1e-05)
 unique(p[uindex, -(1:3), drop = FALSE])
+}

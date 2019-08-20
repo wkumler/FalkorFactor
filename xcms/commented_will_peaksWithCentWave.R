@@ -1,22 +1,23 @@
 # Detailed review of all the things that happen in findPeaksCentWave
 
-
-
-will_peaksWithCentWave <- function(int, rt, param){
-
 #Setup things ----
+
+library(xcms)
+library(tidyverse)
 
 load("xcms/chr_raw")
 
+int <- intensity(chr_raw[[28]])
+rt <- rtime(chr_raw[[28]])
 
 peakwidth = c(20, 50)
-snthresh = 10
+snthresh = 1
 prefilter = c(3, 100)
 integrate = 1
 fitgauss = FALSE
 noise = 0
 verboseColumns = FALSE
-firstBaselineCheck = TRUE
+firstBaselineCheck = FALSE
 
 maxGaussOverlap <- 0.5
 
@@ -55,7 +56,7 @@ for(row in 1:dim(rois)[1]){
 
 # Define scales ----
 scalerange <- round((peakwidth/mean(diff(rt)))/2) #? Normalize peakwidth to distance between scans, then divide by 2?
-scales <- seq(scalerange[1], scalerange[2])
+scales <- seq(scalerange[1], scalerange[2], by = 2)
 
 minPeakWidth <- scales[1] # Min peak width is now not actually the minimum peak width, but instead about half?
 
@@ -66,8 +67,8 @@ minCentroids <- minPtsAboveBaseLine <- max(4, minPeakWidth - 2)
 
 
 # Run peak detection on each region of interest ----
-for (i in seq_len(nrow(rois))) {
-# i <- 3
+#for (i in seq_len(nrow(rois))) {
+i <- 3
   scmin <- rois[i, "scmin"]
   scmax <- rois[i, "scmax"]
   peaks <- matrix(ncol = peaks_ncols, nrow = 0, dimnames = list(character(), 
@@ -83,9 +84,9 @@ for (i in seq_len(nrow(rois))) {
   ftd <- max(td[1], scmin - scRangeTol):min(td[length(td)], scmax + scRangeTol)
   fd <- int[ftd]
   
-  plot(d~td, main=paste("ROI number", i))
-  points(fd~ftd, col = "blue")
-  points(od~otd, col="red")
+  # plot(d~td, main=paste("ROI number", i))
+  # points(fd~ftd, col = "blue")
+  # points(od~otd, col="red")
   
   
   
@@ -98,24 +99,22 @@ for (i in seq_len(nrow(rois))) {
   noise <- xcms:::estimateChromNoise(noised, trim = 0.05, 
                                      minPts = 3 * minPeakWidth)
   if (firstBaselineCheck & !xcms:::continuousPtsAboveThreshold(fd, threshold = noise, num = minPtsAboveBaseLine)){
-    #print(paste("ROI number", i, "failed baseline check"))
+    print(paste("ROI number", i, "failed baseline check"))
     next #If we're doing a baseline check and this ROI fails it, skip to next ROI
   }
   
-  source("xcms/NoiseAlternateFunctions.R")
+  
   lnoise <- xcms:::getLocalNoiseEstimate(d, td, ftd, noiserange, 
                                          length(rt), threshold = noise, 
                                          num = minPtsAboveBaseLine)
-  #lnoise <- getLocalNoise_maxpeaks(d, peakwidth = max(peakwidth))
-  #lnoise <- getLocalNoise_sd(d)
-  lnoise <- getLocalNoise_IQR(d)
   baseline <- max(1, min(lnoise[1], noise))
   sdnoise <- max(1, lnoise[2])
   sdthr <- sdnoise * snthresh
   if (!(any(fd - baseline >= sdthr))) {
-    #print(paste("ROI number", i, "failed SNR check"))
+    print(paste("ROI number", i, "failed SNR check"))
     next
   }
+  
   
   # Generate wavelets for remaining ROIs
   wCoefs <- xcms:::MSW.cwt(d, scales = scales, wavelet = "mexh")
@@ -127,33 +126,42 @@ for (i in seq_len(nrow(rois))) {
   for(i in 1:dim(wCoefs)[2]){
     points(wCoefs[,i], col=rainbow(dim(wCoefs)[2])[i])
   }
-  legend("topleft", legend = scales[1:dim(wCoefs)[2]], col = rainbow(dim(wCoefs)[2]), 
+  legend("topleft", legend = scales[1:dim(wCoefs)[2]], col = rainbow(dim(wCoefs)[2]),
          lwd = 2, title = "Wavelet scale")
+  abline(h=0)
   par(mfrow=c(1,1))
   par(mar=c(4.1, 4.1, 0.1, 0.1))
   
   
-  if (!(!is.null(dim(wCoefs)) && any((wCoefs - baseline) >= sdthr))) 
-    next
-  if (td[length(td)] == length(rt))
-    wCoefs[nrow(wCoefs), ] <- wCoefs[nrow(wCoefs) - 1, 
-                                     ] * 0.99
+  if (!(!is.null(dim(wCoefs)) && any((wCoefs - baseline) >= sdthr))) {
+    print("ROI number", i, "failed wavelet check")
+    next # i.e. if no wavelets were found OR none of them exceed sdthr, skip ROI (First wavelet check)
+  }
+  if (td[length(td)] == length(rt)) #if the ROI runs the length of the EIC
+    wCoefs[nrow(wCoefs), ] <- wCoefs[nrow(wCoefs) - 1, ] * 0.99 
+      # Replace the last scan with one slightly smaller than the previous one
+      # Helps avoid finding peaks at the very end? Wavelet weirdness?
+  
+  
+  # Find local maxima in the wavelets and assume they're all peaks (no ridgeline filter)
   localMax <- xcms:::MSW.getLocalMaximumCWT(wCoefs)
   rL <- xcms:::MSW.getRidge(localMax)
   wpeaks <- sapply(rL, function(x) {
     w <- min(1:length(x), ncol(wCoefs))
     any((wCoefs[x, w] - baseline) >= sdthr)
   })
-  if (any(wpeaks)) {
+  
+  
+  if (any(wpeaks)) {#If any peaks were found in the ROI
     wpeaksidx <- which(wpeaks)
-    for (p in 1:length(wpeaksidx)) {
-      opp <- rL[[wpeaksidx[p]]]
+    for (p in 1:length(wpeaksidx)) {#For each peak found in the wavelets
+      opp <- rL[[wpeaksidx[p]]] # grab the ridgeLine associated with it
       pp <- unique(opp)
-      if (length(pp) >= 1) {
+      if (length(pp) >= 1) { # ??? "if peak is longer than length 0"?
         dv <- td[pp] %in% ftd
-        if (any(dv)) {
-          if (any(d[pp[dv]] - baseline >= sdthr)) {
-            inti <- numeric(length(opp))
+        if (any(dv)) { #if any of the peaks are in the ROI+scrangeTol?
+          if (any(d[pp[dv]] - baseline >= sdthr)) { # SECOND WAVELET CHECK
+            inti <- numeric(length(opp)) # Create empty vector to be filled
             irange <- rep(ceiling(scales[1]/2), length(opp))
             for (k in 1:length(opp)) {
               kpos <- opp[k]
@@ -161,7 +169,7 @@ for (i in seq_len(nrow(rois))) {
                              irange[k], 1)
               r2 <- ifelse(kpos + irange[k] < length(d), 
                            kpos + irange[k], length(d))
-              inti[k] <- sum(d[r1:r2])
+              inti[k] <- sum(d[r1:r2]) # riemann sum between r1 and r2
             }
             maxpi <- which.max(inti)
             if (length(maxpi) > 1) {
@@ -213,15 +221,14 @@ for (i in seq_len(nrow(rois))) {
                                                  peakinfo[p, "scmax"]), 
                                  maxDescOutlier)
     }
-    lm <- xcms:::.narrow_rt_boundaries(lm, d)
+    lm <- xcms:::.narrow_rt_boundaries(lm, d) # Narrows the peak to exclude zero-intensity values
     lm_range <- lm[1]:lm[2]
     pd <- d[lm_range]
     peakrange <- td[lm]
     peaks[p, "rtmin"] <- rt[peakrange[1]]
     peaks[p, "rtmax"] <- rt[peakrange[2]]
     peaks[p, "maxo"] <- max(pd)
-    pwid <- (rt[peakrange[2]] - rt[peakrange[1]])/(peakrange[2] - 
-                                                     peakrange[1])
+    pwid <- (rt[peakrange[2]] - rt[peakrange[1]])/(peakrange[2] - peakrange[1])
     if (is.na(pwid)) 
       pwid <- 1
     peaks[p, "into"] <- pwid * sum(pd)
@@ -261,7 +268,10 @@ for (i in seq_len(nrow(rois))) {
                                        od, rt, scan.range, peaks, maxGaussOverlap, mzCenterFun = mzCenter.wMean)
   if (!is.null(peaks)) 
     peaklist[[length(peaklist) + 1]] <- peaks
-} # Goes with for loop at top
+#} # Goes with for loop at top
+
+
+
 if (length(peaklist) == 0) {
   warning("No peaks found!")
   if (verboseColumns) 
@@ -278,4 +288,3 @@ uorder <- order(p[, "into"], decreasing = TRUE)
 pm <- p[, c("mzmin", "mzmax", "rtmin", "rtmax"), drop = FALSE]
 uindex <- xcms:::rectUnique(pm, uorder, xdiff = 0, ydiff = -1e-05)
 unique(p[uindex, -(1:3), drop = FALSE])
-}

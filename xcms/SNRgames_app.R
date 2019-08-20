@@ -147,8 +147,10 @@ server <- function(input, output) {
 
     legend("topleft", legend = c("Signal-to-noise ratio",
                                  paste("Max/Median:", round(max(peak_values())/median_noise_estimate)),
-                                 paste("Max/SD:", round(max(peak_values())/sd_noise_estimate))),
-           text.col = c("black", "green", "red"))
+                                 paste("Max/SD:", round(max(peak_values())/sd_noise_estimate)),
+                                 paste("Max-Mean/SD:", 
+                                       round((max(peak_values())-mean(peak_values()))/sd_noise_estimate))),
+           text.col = c("black", "green", "red", "blue"))
   })
   
   output$xcmsPlot <- renderPlot({

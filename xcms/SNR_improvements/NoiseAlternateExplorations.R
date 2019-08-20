@@ -1,5 +1,5 @@
 # xcms:::getLocalNoiseEstimate
-load("xcms/NoiseAlternateWorkspace")
+load("xcms/SNR_improvements/NoiseAlternateWorkspace")
 
 Nscantime = length(rt)
 threshold=noise

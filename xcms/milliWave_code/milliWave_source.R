@@ -1,5 +1,3 @@
-
-
 will_findChromPeaks_milliWave <- function (object, param, ...){
   .local <- function (object, param, BPPARAM = bpparam(), return.type = "XCMSnExp", 
                       msLevel = 1L) 
@@ -31,12 +29,11 @@ will_findChromPeaks_milliWave <- function (object, param, ...){
     resList <- bplapply(object_mslevel, FUN = will_findChromPeaks_OnDiskMSnExp, 
                         method = "milliWave", param = param, BPPARAM = BPPARAM)
     rm(object_mslevel)
-    res <- .processResultList(resList, getProcHist = return.type == 
+    res <- xcms:::.processResultList(resList, getProcHist = return.type == 
                                 "xcmsSet", fnames = fileNames(object))
     if (return.type == "list") 
       return(res$peaks)
-    object <- .peaks_to_result(res, object, startDate, param, 
-                               msLevel)
+    object <- xcms:::.peaks_to_result(res, object, startDate, param, msLevel)
     if (return.type == "xcmsSet") 
       as(object, "xcmsSet")
     else object
@@ -128,9 +125,10 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
     mz <- as.double(mz)
   if (!is.double(int)) 
     int <- as.double(int)
-  mzCenterFun <- paste("mzCenter", gsub(mzCenterFun, 
-                                        pattern = "mzCenter.", replacement = "", 
-                                        fixed = TRUE), sep = ".")
+  # mzCenterFun <- paste("mzCenter", gsub(mzCenterFun, 
+  #                                       pattern = "mzCenter.", replacement = "", 
+  #                                       fixed = TRUE), sep = ".")
+  mzCenterFun <- "weighted.mean"
   if (!exists(mzCenterFun, mode = "function")) 
     stop("Function '", mzCenterFun, "' not defined !")
   if (!is.logical(firstBaselineCheck)) 
@@ -493,6 +491,3 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
   message(" OK: ", nrow(pr), " found.")
   return(pr)
 }
-
-load("xcms/raw_data")
-will_findChromPeaks_milliWave(raw_data, param = CentWaveParam())

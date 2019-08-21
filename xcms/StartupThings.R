@@ -133,6 +133,7 @@ good_chr_raw <- chromatogram(raw_data,
 
 
 # Provide peak data output
+register(SerialParam())
 xchr <- findChromPeaks(good_chr_raw, param = CentWaveParam(snthresh = 2))
 
 chromPeaks(xchr)

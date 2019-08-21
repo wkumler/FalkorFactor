@@ -51,3 +51,13 @@ peak1data <- will_peaksWithCentWave(int, rt)
 abline(v=peak1data[colnames(peak1data)=="rtmin"])
 abline(v=peak1data[colnames(peak1data)=="rtmax"])
 abline(v=peak1data[colnames(peak1data)=="intb"])
+
+
+
+# Code for collecting centWave functions when applied to an OnDiskMSnExp object
+
+load("xcms/raw_data")
+
+#findChromPeaks(raw_data, param = CentWaveParam())
+# calls findChromPeaks on an OnDiskMSnExp object with param CentWaveParam
+findMethods("findChromPeaks", classes = "OnDiskMSnExp#CentWaveParam")[[1]]

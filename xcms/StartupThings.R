@@ -52,10 +52,10 @@ pdata <- data.frame(sample_name = sub(basename(useful_files), pattern = ".mzML",
                                   c(rep("CCW", length(17:40)/2), rep("Clockwise", length(17:40)/2))),
                                   levels = c("Seawater_filter_blank", "Full_pooled", "CCW", "Clockwise")))
 
-# raw_data <- readMSData(files = useful_files,
-#                        pdata = new("NAnnotatedDataFrame", pdata),
-#                        mode = "onDisk")
-# save(raw_data, file = "xcms/raw_data")
+raw_data <- readMSData(files = useful_files,
+                       pdata = new("NAnnotatedDataFrame", pdata),
+                       mode = "onDisk")
+save(raw_data, file = "xcms/raw_data")
 load("xcms/raw_data")
 
 sample_group_colors <- c(rgb(0,0,0), rgb(1,0,0,0.5), rgb(0,0,1,0.1)) %>%
@@ -68,8 +68,8 @@ loc_group_colors <- c(rgb(0,0,0), rgb(1,0,0,0.5), rgb(0,1,0,0.2), rgb(0,0,1,0.2)
 
 # Initial data inspection ----
 
-# bpis <- chromatogram(raw_data, aggregationFun = "max")
-# save(bpis, file = "xcms/bpis")
+bpis <- chromatogram(raw_data, aggregationFun = "max")
+save(bpis, file = "xcms/bpis")
 load("xcms/bpis")
 plot(bpis, col = sample_group_colors[raw_data$sample_group])
 plot(bpis, col = env_group_colors[raw_data$env_group])
@@ -92,9 +92,9 @@ layout(1)
 
 
 
-bpis_bin <- bin(bpis, binSize = 2)
 
 ## Calculate correlation on the log2 transformed base peak intensities
+bpis_bin <- bin(bpis, binSize = 2)
 cormat <- cor(log2(do.call(cbind, lapply(bpis_bin, intensity))))
 colnames(cormat) <- rownames(cormat) <- raw_data$sample_group
 pheatmap(cormat)
@@ -146,7 +146,7 @@ good_chr_raw <- chromatogram(raw_data,
 xchr <- findChromPeaks(good_chr_raw, param = cwp)
 chromPeaks(xchr)
 chromPeakData(xchr)
-plot(xchr, type="rectangle")
+plot(xchr, peakType="rectangle", peakCol=sample_group_colors[xchr$sample_group])
 
 
 
@@ -176,6 +176,6 @@ chr_ex <- chromatogram(xdata,
                        mz = c(stds$m.z[good_peak]-0.001, stds$m.z[good_peak]+0.001),
                        rt = c(stds$rt.sec[good_peak]-100, stds$rt.sec[good_peak]+100))
 chromPeaks(chr_ex)
-plot(chr_ex, col = sample_colors, peakType = "rectangle",
-     peakCol = sample_colors[chromPeaks(chr_ex)[, "sample"]],
+plot(chr_ex, col = sample_group_colors[chr_ex$sample_group], 
+     peakType = "rectangle", peakCol = sample_group_colors[chromPeaks(chr_ex)[, "sample"]],
      peakBg = NA)

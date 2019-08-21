@@ -52,7 +52,7 @@ pdata <- data.frame(sample_name = sub(basename(useful_files), pattern = ".mzML",
                                   c(rep("CCW", length(17:40)/2), rep("Clockwise", length(17:40)/2))),
                                   levels = c("Seawater_filter_blank", "Full_pooled", "CCW", "Clockwise")))
 
-# raw_data <- readMSData(files = useful_files, 
+# raw_data <- readMSData(files = useful_files,
 #                        pdata = new("NAnnotatedDataFrame", pdata),
 #                        mode = "onDisk")
 # save(raw_data, file = "xcms/raw_data")
@@ -68,7 +68,9 @@ loc_group_colors <- c(rgb(0,0,0), rgb(1,0,0,0.5), rgb(0,1,0,0.2), rgb(0,0,1,0.2)
 
 # Initial data inspection ----
 
-bpis <- chromatogram(raw_data, aggregationFun = "max")
+# bpis <- chromatogram(raw_data, aggregationFun = "max")
+# save(bpis, file = "xcms/bpis")
+load("xcms/bpis")
 plot(bpis, col = sample_group_colors[raw_data$sample_group])
 plot(bpis, col = env_group_colors[raw_data$env_group])
 legend("top", legend = c("Seawater_filter_blank", "Full_pooled", "25m", "DCM"),
@@ -124,18 +126,56 @@ raw_data %>%
   will_plotXIC(spectrumnum = 1:28)
 par(mfrow=c(1,1))
 mz_span <- c(0.0005) # Maximum spread of m/z values across a well-defined peak, plus some buffer
+ppm <- ceiling((mz_span*1000000)/132)
 
+
+
+# Define our CentWave parameters based on the above
+cwp <- CentWaveParam(peakwidth = peakwidth, ppm = ppm, 
+                     snthresh = 1, prefilter = c(3,10000))
+
+
+# Plot a chromatogram for the given peak
 good_chr_raw <- chromatogram(raw_data,
-                        mz = c(stds$m.z[good_peak]-0.001, 
-                               stds$m.z[good_peak]+0.001),
-                        rt = c(stds$rt.sec[good_peak]-100, 
-                               stds$rt.sec[good_peak]+100))
+                        mz = c(stds$m.z[good_peak]-mz_span, 
+                               stds$m.z[good_peak]+mz_span),
+                        rt = c(stds$rt.sec[good_peak]-max(peakwidth), 
+                               stds$rt.sec[good_peak]+max(peakwidth)))
 
-
-# Provide peak data output
-register(SerialParam())
-xchr <- findChromPeaks(good_chr_raw, param = CentWaveParam(snthresh = 2))
-
+# Check peakfinding with the new parameters
+xchr <- findChromPeaks(good_chr_raw, param = cwp)
 chromPeaks(xchr)
 chromPeakData(xchr)
-plot(xchr)
+plot(xchr, type="rectangle")
+
+
+
+# Find peaks in the full data set
+xdata <- findChromPeaks(raw_data, param = cwp) #Takes about 25 mins in serial on laptop
+save(xdata, file = "xcms/xdata")
+load("xcms/xdata")
+
+all_peaks <- chromPeaks(xdata)
+head(chromPeaks(xdata))
+tail(chromPeaks(xdata))
+
+plotChromPeaks(xdata, file = 28)
+par(mar=c(4.1, 10.1, 0.1, 0.1))
+plotChromPeakImage(xdata)
+par(mar=c(4.1, 4.1, 2.1, 0.1))
+split(log2(chromPeaks(xdata)[, "into"]),
+              f = chromPeaks(xdata)[, "sample"]) %>%
+  boxplot(varwidth = TRUE, col=sample_group_colors[chr_ex$sample_group],
+          ylab = expression(log[2]~intensity), 
+          main = "Peak intensities")
+grid(nx = NA, ny = NULL)
+
+
+
+chr_ex <- chromatogram(xdata, 
+                       mz = c(stds$m.z[good_peak]-0.001, stds$m.z[good_peak]+0.001),
+                       rt = c(stds$rt.sec[good_peak]-100, stds$rt.sec[good_peak]+100))
+chromPeaks(chr_ex)
+plot(chr_ex, col = sample_colors, peakType = "rectangle",
+     peakCol = sample_colors[chromPeaks(chr_ex)[, "sample"]],
+     peakBg = NA)

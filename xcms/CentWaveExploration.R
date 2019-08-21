@@ -61,3 +61,7 @@ load("xcms/raw_data")
 #findChromPeaks(raw_data, param = CentWaveParam())
 # calls findChromPeaks on an OnDiskMSnExp object with param CentWaveParam
 findMethods("findChromPeaks", classes = "OnDiskMSnExp#CentWaveParam")[[1]]
+xcms:::findChromPeaks_OnDiskMSnExp
+xcms:::findChromPeaks_Spectrum_list
+do_findChromPeaks_centWave
+xcms:::.centWave_new

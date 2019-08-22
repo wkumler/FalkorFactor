@@ -43,7 +43,7 @@ function (object, param, ...)
     }
     .local(object, param, ...)
 }
-<bytecode: 0x00000000287fb338>
+<bytecode: 0x0000000029e69198>
 <environment: namespace:xcms>
 
 Signatures:
@@ -58,7 +58,7 @@ function (object, method = "centWave", param)
     findChromPeaks_Spectrum_list(x = spectra(object, BPPARAM = SerialParam()), 
         method = method, param = param, rt = rtime(object))
 }
-<bytecode: 0x000000002aed0030>
+<bytecode: 0x00000000292fb378>
 <environment: namespace:xcms>
 function (x, method = "centWave", param, rt) 
 {
@@ -95,7 +95,7 @@ function (x, method = "centWave", param, rt)
     gc()
     list(peaks = res, date = procDat)
 }
-<bytecode: 0x000000002c999aa8>
+<bytecode: 0x00000000292fced0>
 <environment: namespace:xcms>
 function (mz, int, scantime, valsPerSpect, ppm = 25, peakwidth = c(20, 
     50), snthresh = 10, prefilter = c(3, 100), mzCenterFun = "wMean", 
@@ -122,7 +122,7 @@ function (mz, int, scantime, valsPerSpect, ppm = 25, peakwidth = c(20,
             sleep = sleep)
     }
 }
-<bytecode: 0x000000002ed8d3e0>
+<bytecode: 0x00000000292efa38>
 <environment: namespace:xcms>
 function (mz, int, scantime, valsPerSpect, ppm = 25, peakwidth = c(20, 
     50), snthresh = 10, prefilter = c(3, 100), mzCenterFun = "wMean", 
@@ -496,5 +496,5 @@ function (mz, int, scantime, valsPerSpect, ppm = 25, peakwidth = c(20,
     message(" OK: ", nrow(pr), " found.")
     return(pr)
 }
-<bytecode: 0x000000002a3cca18>
+<bytecode: 0x00000000292e9e58>
 <environment: namespace:xcms>

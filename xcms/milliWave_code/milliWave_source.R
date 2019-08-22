@@ -26,7 +26,6 @@ will_findChromPeaks_milliWave <- function (object, param, ...){
       fData(object_mslevel)$retentionTime <- adjustedRtime(object_mslevel)
     object_mslevel <- lapply(1:length(fileNames(object_mslevel)), 
                              FUN = filterFile, object = object_mslevel)
-    print(object_mslevel)
     resList <- lapply(object_mslevel, FUN = will_findChromPeaks_OnDiskMSnExp, 
                         method = "milliWave", param = param)
     rm(object_mslevel)

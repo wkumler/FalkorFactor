@@ -65,3 +65,10 @@ xcms:::findChromPeaks_OnDiskMSnExp
 xcms:::findChromPeaks_Spectrum_list
 do_findChromPeaks_centWave
 xcms:::.centWave_new
+
+source("xcms/milliWave_code/milliWave_source.R")
+will_findChromPeaks_milliWave
+will_findChromPeaks_OnDiskMSnExp
+will_findChromPeaks_Spectrum_list
+do_findChromPeaks_milliWave
+.milliWave

@@ -68,8 +68,8 @@ loc_group_colors <- c(rgb(0,0,0), rgb(1,0,0,0.5), rgb(0,1,0,0.2), rgb(0,0,1,0.2)
 
 # Initial data inspection ----
 
-bpis <- chromatogram(raw_data, aggregationFun = "max")
-save(bpis, file = "xcms/bpis")
+# bpis <- chromatogram(raw_data, aggregationFun = "max")
+# save(bpis, file = "xcms/bpis")
 load("xcms/bpis")
 plot(bpis, col = sample_group_colors[raw_data$sample_group])
 plot(bpis, col = env_group_colors[raw_data$env_group])
@@ -123,7 +123,7 @@ par(mfrow=c(2,1))
 raw_data %>%
   filterRt(rt = c(stds$rt.sec[good_peak]-100, stds$rt.sec[good_peak]+100)) %>%
   filterMz(mz = c(stds$m.z[good_peak]-0.001, stds$m.z[good_peak]+0.001)) %>%
-  will_plotXIC(spectrumnum = 1:28)
+  will_plotXIC(spectrumnum = 2:28)
 par(mfrow=c(1,1))
 mz_span <- c(0.0005) # Maximum spread of m/z values across a well-defined peak, plus some buffer
 ppm <- ceiling((mz_span*1000000)/132)

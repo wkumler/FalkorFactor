@@ -1,4 +1,11 @@
 # Comparing centWave to milliWave
+# Run as an Rscript call in terminal
+# Inputs: raw_data, an OnDiskMSnEXP object made from 28 Falkor files
+# Inputs: milliWave source code, from ./xcms/milliWave_code/milliWave_source.R
+# Outputs: mdata, xdata, diagnostic text files
+# Diagnostics and data are handled by milliCentComp_analysis.Rmd
+
+# THIS FILE SHOULD NOT NEED TO BE EDITED
 
 
 # Setup things ----
@@ -39,19 +46,20 @@ v <- Sys.time()
 xdata <- findChromPeaks(raw_data, param = cwp) #Takes about 25 mins in serial on laptop
 timing[[1]] <- Sys.time()-v
 save(xdata, file = "xcms/xdata")
-#load("xcms/xdata")
 
 v <- Sys.time()
 mdata <- findChromPeaks_milliWave(raw_data, param = cwp)
 timing[[2]] <- Sys.time()-v
 save(mdata, file = "xcms/milliWave_code/mdata")
-#load("xcms/milliWave_code/mdata")
-sink("xcms/timing.txt")
+
+
+# Run diagnostics ----
+# Save runtimes
+sink("xcms/milliWave_code/timing.txt")
 timing
 sink()
 
-
-# Compare structures
+# Save structures
 sink("xcms/milliWave_code/xdata_str.txt")
 str(xdata)
 sink()
@@ -59,9 +67,6 @@ sink("xcms/milliWave_code/mdata_str.txt")
 str(mdata)
 sink()
 
-# Compare peaklists
+# Save peaklists
 write.csv(chromPeaks(xdata), file = "xcms/milliWave_code/xdata_peaks.csv")
 write.csv(chromPeaks(mdata), file = "xcms/milliWave_code/mdata_peaks.csv")
-
-print(dim(chromPeaks(xdata)))
-print(dim(chromPeaks(mdata)))

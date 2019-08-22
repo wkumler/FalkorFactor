@@ -1,0 +1,48 @@
+---
+title: "milliCentComp_analysis"
+author: "wkumler"
+date: "August 22, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(xcms)
+library(tidyverse)
+```
+
+## Code used to generate the two XCMSnExp objects
+
+> xdata <- findChromPeaks(raw_data, param = cwp) #Takes about 25 mins in serial on laptop
+> save(xdata, file = "xcms/xdata")
+
+> mdata <- findChromPeaks_milliWave(raw_data, param = cwp)
+> save(mdata, file = "xcms/milliWave_code/mdata")
+
+Timing information has been removed
+
+## Output overview
+
+### Timing (centWave first, then milliWave)
+`r readLines("xcms/milliWave_code/timing.txt")`
+
+### Structure
+`r readLines("xcms/milliWave_code/xdata_str.txt")`
+`r readLines("xcms/milliWave_code/mdata_str.txt")`
+
+### Peaklists
+
+```{r}
+load("xcms/xdata")
+load("xcms/milliWave_code/mdata")
+
+xdata_peaks <- as.data.frame(chromPeaks(xdata))
+mdata_peaks <- as.data.frame(chromPeaks(mdata))
+mod_mdata_peaks <- mdata_peaks[seq(1, dim(mdata_peaks)[1], 2), ] %>%
+  mutate("Annot" = paste0(LETTERS, rep(letters, each=26), rep(1:1000, each=676))[1:dim(.)[1]])
+
+print(dim(xdata_peaks))
+print(dim(mdata_peaks))
+
+
+```

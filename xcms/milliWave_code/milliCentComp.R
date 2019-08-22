@@ -4,7 +4,7 @@
 # Setup things ----
 setwd("C:/Users/willi/Documents/UW/FalkorFactor")
 library(xcms)
-source("xcms/milliWave_code/milliWave_source2.R")
+source("xcms/milliWave_code/milliWave_source.R")
 load("xcms/raw_data")
 
 peakwidth <- c(20, 80) # Minimum and maximum width of a few random peaks, in seconds

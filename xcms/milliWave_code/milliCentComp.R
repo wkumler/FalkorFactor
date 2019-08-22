@@ -4,7 +4,7 @@
 # Setup things ----
 setwd("C:/Users/willi/Documents/UW/FalkorFactor")
 library(xcms)
-source("xcms/milliWave_code/milliWave_source.R")
+source("xcms/milliWave_code/milliWave_source2.R")
 load("xcms/raw_data")
 
 peakwidth <- c(20, 80) # Minimum and maximum width of a few random peaks, in seconds
@@ -24,9 +24,9 @@ xcms:::.centWave_new
 sink()
 
 sink("xcms/milliWave_code/milliWaveCode.txt")
-will_findChromPeaks_milliWave
-will_findChromPeaks_OnDiskMSnExp
-will_findChromPeaks_Spectrum_list
+findChromPeaks_milliWave
+findChromPeaks_milliWave_OnDiskMSnExp
+findChromPeaks_milliWave_Spectrum_list
 do_findChromPeaks_milliWave
 .milliWave
 sink()
@@ -42,11 +42,11 @@ save(xdata, file = "xcms/xdata")
 #load("xcms/xdata")
 
 v <- Sys.time()
-mdata <- will_findChromPeaks_milliWave(raw_data, param = cwp)
+mdata <- findChromPeaks_milliWave(raw_data, param = cwp)
 timing[[2]] <- Sys.time()-v
 save(mdata, file = "xcms/milliWave_code/mdata")
 #load("xcms/milliWave_code/mdata")
-sink("timing.txt")
+sink("xcms/timing.txt")
 timing
 sink()
 

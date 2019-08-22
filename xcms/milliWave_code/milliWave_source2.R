@@ -1,5 +1,20 @@
-findChromPeaks_milliWave <- function (object, param, ...){
-  .local <- function (object, param, return.type = "XCMSnExp", 
+# milliWave is a mirror of the CentWave code
+# Here copied from the source with minor modifications
+# findMethods("findChromPeaks", classes = "OnDiskMSnExp#CentWaveParam")[[1]]
+# xcms:::findChromPeaks_OnDiskMSnExp
+# xcms:::findChromPeaks_Spectrum_list
+# xcms:::do_findChromPeaks_centWave
+# xcms:::.centWave
+
+
+
+
+# findChromPeaks_milliWave ----
+# Parallel to findMethods("findChromPeaks", classes = "OnDiskMSnExp#CentWaveParam")[[1]]
+
+findChromPeaks_milliWave <- function (object, param, ...) 
+{
+  .local <- function (object, param, BPPARAM = bpparam(), return.type = "XCMSnExp", 
                       msLevel = 1L) 
   {
     return.type <- match.arg(return.type, c("XCMSnExp", 
@@ -8,10 +23,9 @@ findChromPeaks_milliWave <- function (object, param, ...){
     if (length(msLevel) > 1) 
       stop("Currently only peak detection in a single MS level is ", 
            "supported", call. = FALSE)
-    object_mslevel <- filterMsLevel(
-      selectFeatureData(object, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided")), 
-      msLevel. = msLevel
-      )
+    object_mslevel <- filterMsLevel(selectFeatureData(object, 
+                                                      fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided")), 
+                                    msLevel. = msLevel)
     if (length(object_mslevel) == 0) 
       stop("No MS level ", msLevel, " spectra present to perform ", 
            "peak detection", call. = FALSE)
@@ -26,14 +40,15 @@ findChromPeaks_milliWave <- function (object, param, ...){
       fData(object_mslevel)$retentionTime <- adjustedRtime(object_mslevel)
     object_mslevel <- lapply(1:length(fileNames(object_mslevel)), 
                              FUN = filterFile, object = object_mslevel)
-    resList <- lapply(object_mslevel, FUN = findChromPeaks_milliWave_OnDiskMSnExp, 
-                        method = "milliWave", param = param)
+    resList <- bplapply(object_mslevel, FUN = findChromPeaks_milliWave_OnDiskMSnExp, 
+                        method = "centWave", param = param, BPPARAM = BPPARAM)
     rm(object_mslevel)
-    res <- xcms:::.processResultList(resList, getProcHist = return.type == 
+    res <- .processResultList(resList, getProcHist = return.type == 
                                 "xcmsSet", fnames = fileNames(object))
     if (return.type == "list") 
       return(res$peaks)
-    object <- xcms:::.peaks_to_result(res, object, startDate, param, msLevel)
+    object <- .peaks_to_result(res, object, startDate, param, 
+                               msLevel)
     if (return.type == "xcmsSet") 
       as(object, "xcmsSet")
     else object
@@ -41,17 +56,27 @@ findChromPeaks_milliWave <- function (object, param, ...){
   .local(object, param, ...)
 }
 
-findChromPeaks_milliWave_OnDiskMSnExp <- function (object, method = "milliWave", param) {
+
+
+# findChromPeaks_milliWave_OnDiskMSnExp ----
+# Parallel to xcms:::findChromPeaks_OnDiskMSnExp
+findChromPeaks_milliWave_OnDiskMSnExp <- function (object, method = "milliWave", param) 
+{
   require("xcms", quietly = TRUE, character.only = TRUE)
   if (missing(param)) 
     stop("'param' has to be specified!")
-  findChromPeaks_milliWave_Spectrum_list(x = spectra(object), 
+  findChromPeaks_milliWave_Spectrum_list(x = spectra(object, BPPARAM = SerialParam()), 
                                method = method, param = param, rt = rtime(object))
 }
 
-findChromPeaks_milliWave_Spectrum_list <- function (x, method = "milliWave", param, rt) {
-  method <- match.arg(method, c("centWave", "massifquant", "matchedFilter", 
-                                "MSW", "centWaveWithPredIsoROIs", "milliWave"))
+
+
+# findChromPeaks_milliWave_Spectrum_list ----
+# Parallel to xcms:::findChromPeaks_Spectrum_list
+findChromPeaks_milliWave_Spectrum_list <- function (x, method = "centWave", param, rt) 
+{
+  method <- match.arg(method, c("centWave", "massifquant", "milliWave",
+                                "matchedFilter", "MSW", "centWaveWithPredIsoROIs"))
   method <- paste0("do_findChromPeaks_", method)
   if (method == "do_findChromPeaks_MSW") 
     method <- "do_findPeaks_MSW"
@@ -74,11 +99,9 @@ findChromPeaks_milliWave_Spectrum_list <- function (x, method = "milliWave", par
   vals_per_spect <- lengths(mzs, FALSE)
   procDat <- date()
   res <- do.call(method, args = c(list(mz = unlist(mzs, use.names = FALSE), 
-                                       int = unlist(lapply(x, intensity), 
-                                                    use.names = FALSE), 
-                                       valsPerSpect = vals_per_spect, 
-                                       scantime = rt), 
-                                  as(param, "list")))
+                                       int = unlist(lapply(x, intensity), use.names = FALSE), 
+                                       valsPerSpect = vals_per_spect, scantime = rt), as(param, 
+                                                                                         "list")))
   rm(mzs)
   rm(x)
   rm(rt)
@@ -86,6 +109,10 @@ findChromPeaks_milliWave_Spectrum_list <- function (x, method = "milliWave", par
   list(peaks = res, date = procDat)
 }
 
+
+
+# do_findChromPeaks_milliWave ----
+# Parallel to xcms:::do_findChromPeaks_centWave
 do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect, 
                                          ppm = 25, peakwidth = c(20, 50), 
                                          snthresh = 10, prefilter = c(3, 100), 
@@ -93,25 +120,40 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
                                          mzdiff = -0.001, fitgauss = FALSE, 
                                          noise = 0, verboseColumns = FALSE, 
                                          roiList = list(), firstBaselineCheck = TRUE, 
-                                         roiScales = NULL, sleep = 0){
-  .milliWave(mz = mz, int = int, scantime = scantime, 
-             valsPerSpect = valsPerSpect, ppm = ppm, peakwidth = peakwidth, 
-             snthresh = snthresh, prefilter = prefilter, mzCenterFun = mzCenterFun, 
-             integrate = integrate, mzdiff = mzdiff, fitgauss = fitgauss, 
-             noise = noise, verboseColumns = verboseColumns, roiList = roiList, 
-             firstBaselineCheck = firstBaselineCheck, roiScales = roiScales, 
-             sleep = sleep)
+                                         roiScales = NULL, sleep = 0)
+{
+  if (getOption("originalCentWave", default = TRUE)) {
+    .milliWave(mz = mz, int = int, scantime = scantime, 
+                   valsPerSpect = valsPerSpect, ppm = ppm, peakwidth = peakwidth, 
+                   snthresh = snthresh, prefilter = prefilter, mzCenterFun = mzCenterFun, 
+                   integrate = integrate, mzdiff = mzdiff, fitgauss = fitgauss, 
+                   noise = noise, verboseColumns = verboseColumns, roiList = roiList, 
+                   firstBaselineCheck = firstBaselineCheck, roiScales = roiScales, 
+                   sleep = sleep)
+  }
+  else {
+    .milliWave(mz = mz, int = int, scantime = scantime, 
+                  valsPerSpect = valsPerSpect, ppm = ppm, peakwidth = peakwidth, 
+                  snthresh = snthresh, prefilter = prefilter, mzCenterFun = mzCenterFun, 
+                  integrate = integrate, mzdiff = mzdiff, fitgauss = fitgauss, 
+                  noise = noise, verboseColumns = verboseColumns, roiList = roiList, 
+                  firstBaselineCheck = firstBaselineCheck, roiScales = roiScales, 
+                  sleep = sleep)
+  }
 }
 
+
+
+# .milliWave ----
+# Parallel to xcms:::.centWave_orig
 .milliWave <- function (mz, int, scantime, valsPerSpect, ppm = 25, 
                         peakwidth = c(20, 50), snthresh = 10, 
                         prefilter = c(3, 100), mzCenterFun = "wMean", 
                         integrate = 1, mzdiff = -0.001, fitgauss = FALSE, 
                         noise = 0, sleep = 0, verboseColumns = FALSE, 
                         roiList = list(), firstBaselineCheck = TRUE, 
-                        roiScales = NULL) {
-  if (sleep)
-    warning("Parameter 'sleep' is defunct")
+                        roiScales = NULL) 
+{
   if (missing(mz) | missing(int) | missing(scantime) | missing(valsPerSpect)) 
     stop("Arguments 'mz', 'int', 'scantime' and 'valsPerSpect'", 
          " are required!")
@@ -120,15 +162,14 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
     stop("Lengths of 'mz', 'int' and of 'scantime','valsPerSpect'", 
          " have to match. Also, 'length(mz)' should be equal to", 
          " 'sum(valsPerSpect)'.")
-  scanindex <- xcms:::valueCount2ScanIndex(valsPerSpect)
+  scanindex <- valueCount2ScanIndex(valsPerSpect)
   if (!is.double(mz)) 
     mz <- as.double(mz)
   if (!is.double(int)) 
     int <- as.double(int)
-  # mzCenterFun <- paste("mzCenter", gsub(mzCenterFun, 
-  #                                       pattern = "mzCenter.", replacement = "", 
-  #                                       fixed = TRUE), sep = ".")
-  mzCenterFun <- "weighted.mean"
+  mzCenterFun <- paste("mzCenter", gsub(mzCenterFun, 
+                                        pattern = "mzCenter.", replacement = "", 
+                                        fixed = TRUE), sep = ".")
   if (!exists(mzCenterFun, mode = "function")) 
     stop("Function '", mzCenterFun, "' not defined !")
   if (!is.logical(firstBaselineCheck)) 
@@ -178,8 +219,8 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
     withRestarts(tryCatch({
       tmp <- capture.output(roiList <- .Call("findmzROI", 
                                              mz, int, scanindex, as.double(c(0, 0)), as.integer(scanrange), 
-                                             as.integer(length(scantime)), as.double(ppm * 1e-06), 
-                                             as.integer(minCentroids), as.integer(prefilter), 
+                                             as.integer(length(scantime)), as.double(ppm * 
+                                                                                       1e-06), as.integer(minCentroids), as.integer(prefilter), 
                                              as.integer(noise), PACKAGE = "xcms"))
     }, error = function(e) {
       if (grepl("m/z sort assumption violated !", 
@@ -204,12 +245,9 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
       rm(mzl)
       rm(splitF)
       tmp <- capture.output(roiList <<- .Call("findmzROI", 
-                                              mz, int, scanindex, as.double(c(0, 0)), 
-                                              as.integer(scanrange), 
-                                              as.integer(length(scantime)), 
-                                              as.double(ppm * 1e-06), 
-                                              as.integer(minCentroids), 
-                                              as.integer(prefilter), 
+                                              mz, int, scanindex, as.double(c(0, 0)), as.integer(scanrange), 
+                                              as.integer(length(scantime)), as.double(ppm * 
+                                                                                        1e-06), as.integer(minCentroids), as.integer(prefilter), 
                                               as.integer(noise), PACKAGE = "xcms"))
     })
     message("OK")
@@ -237,7 +275,6 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
     N <- feat$scmax - feat$scmin + 1
     peaks <- peakinfo <- NULL
     mzrange <- c(feat$mzmin, feat$mzmax)
-    mzrange_ROI <- mzrange
     sccenter <- feat$scmin[1] + floor(N/2) - 1
     scrange <- c(feat$scmin, feat$scmax)
     sr <- c(max(scanrange[1], scrange[1] - max(noiserange)), 
@@ -267,33 +304,33 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
     fd <- d[match(ftd, td)]
     if (N >= 10 * minPeakWidth) {
       noised <- .Call("getEIC", mz, int, scanindex, 
-                      as.double(mzrange), as.integer(scanrange), 
-                      as.integer(length(scanindex)), 
+                      as.double(mzrange), as.integer(scanrange), as.integer(length(scanindex)), 
                       PACKAGE = "xcms")$intensity
     }
     else {
       noised <- d
     }
-    noise <- xcms:::estimateChromNoise(noised, trim = 0.05, 
-                                       minPts = 3 * minPeakWidth)
-    if (firstBaselineCheck & !xcms:::continuousPtsAboveThreshold(fd, threshold = noise, 
-                                                          num = minPtsAboveBaseLine)) 
+    noise <- estimateChromNoise(noised, trim = 0.05, minPts = 3 * 
+                                  minPeakWidth)
+    if (firstBaselineCheck & !continuousPtsAboveThreshold(fd, 
+                                                          threshold = noise, num = minPtsAboveBaseLine)) 
       next
-    lnoise <- xcms:::getLocalNoiseEstimate(d, td, ftd, noiserange, 
-                                    Nscantime, threshold = noise, 
-                                    num = minPtsAboveBaseLine)
+    lnoise <- getLocalNoiseEstimate(d, td, ftd, noiserange, 
+                                    Nscantime, threshold = noise, num = minPtsAboveBaseLine)
     baseline <- max(1, min(lnoise[1], noise))
     sdnoise <- max(1, lnoise[2])
     sdthr <- sdnoise * snthresh
     if (!(any(fd - baseline >= sdthr))) 
       next
-    wCoefs <- xcms:::MSW.cwt(d, scales = scales, wavelet = "mexh")
-    if (!(!is.null(dim(wCoefs)) && any(wCoefs - baseline >= sdthr))) 
+    wCoefs <- MSW.cwt(d, scales = scales, wavelet = "mexh")
+    if (!(!is.null(dim(wCoefs)) && any(wCoefs - baseline >= 
+                                       sdthr))) 
       next
     if (td[length(td)] == Nscantime) 
-      wCoefs[nrow(wCoefs), ] <- wCoefs[nrow(wCoefs) - 1,] * 0.99
-    localMax <- xcms:::MSW.getLocalMaximumCWT(wCoefs)
-    rL <- xcms:::MSW.getRidge(localMax)
+      wCoefs[nrow(wCoefs), ] <- wCoefs[nrow(wCoefs) - 1, 
+                                       ] * 0.99
+    localMax <- MSW.getLocalMaximumCWT(wCoefs)
+    rL <- MSW.getRidge(localMax)
     wpeaks <- sapply(rL, function(x) {
       w <- min(1:length(x), ncol(wCoefs))
       any(wCoefs[x, w] - baseline >= sdthr)
@@ -347,26 +384,24 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
               mz.value <- omz[p1:p2]
               mz.int <- od[p1:p2]
               maxint <- max(mz.int)
-              mzorig <- mz.value
-              mz.value <- mz.value[mz.int > 0]
-              mz.int <- mz.int[mz.int > 0]
-              if (length(mz.value) == 0) 
-                next
               mzrange <- range(mz.value)
-              mzmean <- weighted.mean(mz.value, mz.int)
+              mzmean <- do.call(mzCenterFun, list(mz = mz.value, 
+                                                  intensity = mz.int))
               dppm <- NA
               if (verboseColumns) {
-                if (length(mz.value) >= (minCentroids + 1)) {
-                  dppm <- round(min(running(abs(diff(mz.value))/(mzrange[2] * 1e-06), 
-                                            fun = max, width = minCentroids)))
-                } else {
-                  dppm <- round((mzrange[2] - mzrange[1])/(mzrange[2] * 1e-06))
+                if (length(mz.value) >= (minCentroids + 
+                                         1)) {
+                  dppm <- round(min(running(abs(diff(mz.value))/(mzrange[2] * 
+                                                                   1e-06), fun = max, width = minCentroids)))
+                }
+                else {
+                  dppm <- round((mzrange[2] - mzrange[1])/(mzrange[2] * 
+                                                             1e-06))
                 }
               }
               peaks <- rbind(peaks, c(mzmean, mzrange, 
-                                      NA, NA, NA, NA, NA, maxint, 
-                                      round((maxint - baseline)/sdnoise), 
-                                      NA, NA, NA, NA, 
+                                      NA, NA, NA, NA, NA, maxint, round((maxint - 
+                                                                           baseline)/sdnoise), NA, NA, NA, NA, 
                                       f, dppm, best.scale, td[best.scale.pos], 
                                       td[lwpos], td[rwpos], NA, NA))
               peakinfo <- rbind(peakinfo, c(best.scale, 
@@ -382,39 +417,29 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
       colnames(peakinfo) <- c("scale", "scaleNr", 
                               "scpos", "scmin", "scmax")
       for (p in 1:dim(peaks)[1]) {
-        mzr <- peaks[p, c("mzmin", "mzmax")]
-        if (any(mzr != mzrange_ROI)) {
-          eic <- .Call("getEIC", mz, int, scanindex, 
-                       as.double(mzr), as.integer(sr), as.integer(length(scanindex)), 
-                       PACKAGE = "xcms")
-          current_ints <- eic$intensity
-          mzrange_ROI <- c(0, 0)
-        } else {
-          current_ints <- d
-        }
         if (integrate == 1) {
-          lm <- xcms:::descendMin(wCoefs[, peakinfo[p, "scaleNr"]], 
+          lm <- descendMin(wCoefs[, peakinfo[p, "scaleNr"]], 
                            istart = peakinfo[p, "scpos"])
-          gap <- all(current_ints[lm[1]:lm[2]] == 0)
+          gap <- all(d[lm[1]:lm[2]] == 0)
           if ((lm[1] == lm[2]) || gap) 
-            lm <- xcms:::descendMinTol(current_ints, startpos = c(peakinfo[p, "scmin"], 
-                                                           peakinfo[p, "scmax"]), 
+            lm <- descendMinTol(d, startpos = c(peakinfo[p, 
+                                                         "scmin"], peakinfo[p, "scmax"]), 
                                 maxDescOutlier)
         }
         else {
-          lm <- xcms:::descendMinTol(current_ints, startpos = c(peakinfo[p, "scmin"], 
-                                                         peakinfo[p, "scmax"]), 
+          lm <- descendMinTol(d, startpos = c(peakinfo[p, 
+                                                       "scmin"], peakinfo[p, "scmax"]), 
                               maxDescOutlier)
         }
-        lm <- xcms:::.narrow_rt_boundaries(lm, d)
+        lm <- .narrow_rt_boundaries(lm, d)
         lm_seq <- lm[1]:lm[2]
-        pd <- current_ints[lm_seq]
+        pd <- d[lm_seq]
         peakrange <- td[lm]
         peaks[p, "rtmin"] <- scantime[peakrange[1]]
         peaks[p, "rtmax"] <- scantime[peakrange[2]]
         peaks[p, "maxo"] <- max(pd)
-        pwid <- (scantime[peakrange[2]] - 
-                   scantime[peakrange[1]])/(peakrange[2] - peakrange[1])
+        pwid <- (scantime[peakrange[2]] - scantime[peakrange[1]])/(peakrange[2] - 
+                                                                     peakrange[1])
         if (is.na(pwid)) 
           pwid <- 1
         peaks[p, "into"] <- pwid * sum(pd)
@@ -427,11 +452,9 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
           td_lm <- td[lm_seq]
           md <- max(pd)
           d1 <- pd/md
-          pgauss <- xcms:::fitGauss(td_lm, pd, 
-                                    pgauss = list(mu = peaks[p, "scpos"], 
-                                                  sigma = peaks[p, "scmax"] - 
-                                                    peaks[p, "scmin"], 
-                                                  h = peaks[p, "maxo"]))
+          pgauss <- fitGauss(td_lm, pd, pgauss = list(mu = peaks[p, 
+                                                                 "scpos"], sigma = peaks[p, "scmax"] - 
+                                                        peaks[p, "scmin"], h = peaks[p, "maxo"]))
           rtime <- peaks[p, "scpos"]
           if (!any(is.na(pgauss)) && all(pgauss > 0)) {
             gtime <- td[match(round(pgauss$mu), td)]
@@ -453,9 +476,76 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
         else peaks[p, "rt"] <- scantime[peaks[p, 
                                               "scpos"]]
       }
-      peaks <- xcms:::joinOverlappingPeaks(td, d, otd, omz, od, 
+      peaks <- joinOverlappingPeaks(td, d, otd, omz, od, 
                                     scantime, scan.range, peaks, maxGaussOverlap, 
                                     mzCenterFun = mzCenterFun)
+    }
+    if ((sleep > 0) && (!is.null(peaks))) {
+      tdp <- scantime[td]
+      trange <- range(tdp)
+      egauss <- paste(round(peaks[, "egauss"], 3), 
+                      collapse = ", ")
+      cdppm <- paste(peaks[, "dppm"], collapse = ", ")
+      csn <- paste(peaks[, "sn"], collapse = ", ")
+      par(bg = "white")
+      l <- layout(matrix(c(1, 2, 3), nrow = 3, ncol = 1, 
+                         byrow = T), heights = c(0.5, 0.75, 2))
+      par(mar = c(2, 4, 4, 2) + 0.1)
+      raw_mat <- .rawMat(mz = mz, int = int, scantime = scantime, 
+                         valsPerSpect = valsPerSpect, mzrange = mzrange, 
+                         rtrange = rtrange, log = TRUE)
+      if (nrow(raw_mat) > 0) {
+        y <- raw_mat[, "intensity"]
+        ylim <- range(y)
+        y <- y/ylim[2]
+        colorlut <- terrain.colors(16)
+        col <- colorlut[y * 15 + 1]
+        plot(raw_mat[, "time"], raw_mat[, "mz"], 
+             pch = 20, cex = 0.5, main = "", xlab = "Seconds", 
+             ylab = "m/z", col = col, xlim = trange)
+      }
+      else {
+        plot(c(NA, NA), main = "", xlab = "Seconds", 
+             ylab = "m/z", xlim = trange, ylim = mzrange)
+      }
+      title(main = paste(f, ": ", round(mzrange[1], 
+                                        4), " - ", round(mzrange[2], 4), " m/z , dppm=", 
+                         cdppm, ", EGauss=", egauss, ",  S/N =", 
+                         csn, sep = ""))
+      par(mar = c(1, 4, 1, 2) + 0.1)
+      image(y = scales[1:(dim(wCoefs)[2])], z = wCoefs, 
+            col = terrain.colors(256), xaxt = "n", 
+            ylab = "CWT coeff.")
+      par(mar = c(4, 4, 1, 2) + 0.1)
+      plot(tdp, d, ylab = "Intensity", xlab = "Scan Time")
+      lines(tdp, d, lty = 2)
+      lines(scantime[otd], od, lty = 2, col = "blue")
+      abline(h = baseline, col = "green")
+      bwh <- length(sr[1]:sr[2]) - length(baseline)
+      if (odd(bwh)) {
+        bwh1 <- floor(bwh/2)
+        bwh2 <- bwh1 + 1
+      }
+      else {
+        bwh1 <- bwh2 <- bwh/2
+      }
+      if (any(!is.na(peaks[, "scpos"]))) {
+        abline(v = scantime[na.omit(peaks[(peaks[, "scpos"] > 
+                                             0), "scpos"])], col = "red")
+      }
+      abline(v = na.omit(c(peaks[, "rtmin"], peaks[, 
+                                                   "rtmax"])), col = "green", lwd = 1)
+      if (fitgauss) {
+        tdx <- seq(min(td), max(td), length.out = 200)
+        tdxp <- seq(trange[1], trange[2], length.out = 200)
+        fitted.peaks <- which(!is.na(peaks[, "mu"]))
+        for (p in fitted.peaks) {
+          yg <- gauss(tdx, peaks[p, "h"], peaks[p, 
+                                                "mu"], peaks[p, "sigma"])
+          lines(tdxp, yg, col = "blue")
+        }
+      }
+      Sys.sleep(sleep)
     }
     if (!is.null(peaks)) {
       peaklist[[length(peaklist) + 1]] <- peaks
@@ -478,7 +568,6 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
   p <- do.call(rbind, peaklist)
   if (!verboseColumns) 
     p <- p[, basenames, drop = FALSE]
-  return(p)
   uorder <- order(p[, "into"], decreasing = TRUE)
   pm <- as.matrix(p[, c("mzmin", "mzmax", "rtmin", 
                         "rtmax"), drop = FALSE])

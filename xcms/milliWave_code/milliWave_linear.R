@@ -52,8 +52,8 @@ object <- object_mslevel[[1]]
 method = "milliWave"
 
 require("xcms", quietly = TRUE, character.only = TRUE)
-# if (missing(param)) 
-#   stop("'param' has to be specified!")
+if (missing(param))
+  stop("'param' has to be specified!")
 # SKIP THE BELOW AND RUN ONE AT A TIME INSTEAD
 # will_findChromPeaks_Spectrum_list(x = spectra(object), 
 #                                   method = method, param = param, rt = rtime(object))

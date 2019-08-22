@@ -52,10 +52,10 @@ pdata <- data.frame(sample_name = sub(basename(useful_files), pattern = ".mzML",
                                   c(rep("CCW", length(17:40)/2), rep("Clockwise", length(17:40)/2))),
                                   levels = c("Seawater_filter_blank", "Full_pooled", "CCW", "Clockwise")))
 
-raw_data <- readMSData(files = useful_files,
-                       pdata = new("NAnnotatedDataFrame", pdata),
-                       mode = "onDisk")
-save(raw_data, file = "xcms/raw_data")
+# raw_data <- readMSData(files = useful_files,
+#                        pdata = new("NAnnotatedDataFrame", pdata),
+#                        mode = "onDisk")
+# save(raw_data, file = "xcms/raw_data")
 load("xcms/raw_data")
 
 sample_group_colors <- c(rgb(0,0,0), rgb(1,0,0,0.5), rgb(0,0,1,0.1)) %>%
@@ -151,8 +151,8 @@ plot(xchr, peakType="rectangle", peakCol=sample_group_colors[xchr$sample_group])
 
 
 # Find peaks in the full data set
-xdata <- findChromPeaks(raw_data, param = cwp) #Takes about 25 mins in serial on laptop
-save(xdata, file = "xcms/xdata")
+# xdata <- findChromPeaks(raw_data, param = cwp) #Takes about 25 mins in serial on laptop
+# save(xdata, file = "xcms/xdata")
 load("xcms/xdata")
 
 all_peaks <- chromPeaks(xdata)
@@ -176,6 +176,12 @@ chr_ex <- chromatogram(xdata,
                        mz = c(stds$m.z[good_peak]-0.001, stds$m.z[good_peak]+0.001),
                        rt = c(stds$rt.sec[good_peak]-100, stds$rt.sec[good_peak]+100))
 chromPeaks(chr_ex)
-plot(chr_ex, col = sample_group_colors[chr_ex$sample_group], 
-     peakType = "rectangle", peakCol = sample_group_colors[chromPeaks(chr_ex)[, "sample"]],
+plot(chr_ex, col = "black", 
+     peakType = "rectangle", peakCol = sample_group_colors[chr_ex$sample_group],
      peakBg = NA)
+
+chromPeaks(xdata, mz = c(stds$m.z[good_peak]-0.0005, stds$m.z[good_peak]+0.0005),
+           rt = c(stds$rt.sec[good_peak]-100, stds$rt.sec[good_peak]+100))
+
+chr_ex <- chromatogram(xdata, mz = c(stds$m.z[good_peak]-0.001, stds$m.z[good_peak]+0.001))
+plot(chr_ex, peakType = "rectangle")

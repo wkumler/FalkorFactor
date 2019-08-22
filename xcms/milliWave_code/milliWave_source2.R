@@ -119,30 +119,19 @@ findChromPeaks_milliWave_Spectrum_list <- function (x, method = "centWave", para
 do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect, 
                                          ppm = 25, peakwidth = c(20, 50), 
                                          snthresh = 10, prefilter = c(3, 100), 
-                                         mzCenterFun = "wMean", integrate = 1, 
+                                         mzCenterFun = "weighted.mean", integrate = 1, 
                                          mzdiff = -0.001, fitgauss = FALSE, 
                                          noise = 0, verboseColumns = FALSE, 
                                          roiList = list(), firstBaselineCheck = TRUE, 
                                          roiScales = NULL, sleep = 0)
 {
-  if (getOption("originalCentWave", default = TRUE)) {
-    .milliWave(mz = mz, int = int, scantime = scantime, 
-                   valsPerSpect = valsPerSpect, ppm = ppm, peakwidth = peakwidth, 
-                   snthresh = snthresh, prefilter = prefilter, mzCenterFun = mzCenterFun, 
-                   integrate = integrate, mzdiff = mzdiff, fitgauss = fitgauss, 
-                   noise = noise, verboseColumns = verboseColumns, roiList = roiList, 
-                   firstBaselineCheck = firstBaselineCheck, roiScales = roiScales, 
-                   sleep = sleep)
-  }
-  else {
-    .milliWave(mz = mz, int = int, scantime = scantime, 
-                  valsPerSpect = valsPerSpect, ppm = ppm, peakwidth = peakwidth, 
-                  snthresh = snthresh, prefilter = prefilter, mzCenterFun = mzCenterFun, 
-                  integrate = integrate, mzdiff = mzdiff, fitgauss = fitgauss, 
-                  noise = noise, verboseColumns = verboseColumns, roiList = roiList, 
-                  firstBaselineCheck = firstBaselineCheck, roiScales = roiScales, 
-                  sleep = sleep)
-  }
+  .milliWave(mz = mz, int = int, scantime = scantime, 
+                valsPerSpect = valsPerSpect, ppm = ppm, peakwidth = peakwidth, 
+                snthresh = snthresh, prefilter = prefilter, mzCenterFun = mzCenterFun, 
+                integrate = integrate, mzdiff = mzdiff, fitgauss = fitgauss, 
+                noise = noise, verboseColumns = verboseColumns, roiList = roiList, 
+                firstBaselineCheck = firstBaselineCheck, roiScales = roiScales, 
+                sleep = sleep)
 }
 
 
@@ -151,7 +140,7 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
 # Parallel to xcms:::.centWave_orig
 .milliWave <- function (mz, int, scantime, valsPerSpect, ppm = 25, 
                         peakwidth = c(20, 50), snthresh = 10, 
-                        prefilter = c(3, 100), mzCenterFun = "wMean", 
+                        prefilter = c(3, 100), mzCenterFun = "weighted.mean", 
                         integrate = 1, mzdiff = -0.001, fitgauss = FALSE, 
                         noise = 0, sleep = 0, verboseColumns = FALSE, 
                         roiList = list(), firstBaselineCheck = TRUE, 
@@ -170,9 +159,6 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
     mz <- as.double(mz)
   if (!is.double(int)) 
     int <- as.double(int)
-  mzCenterFun <- paste("mzCenter", gsub(mzCenterFun, 
-                                        pattern = "mzCenter.", replacement = "", 
-                                        fixed = TRUE), sep = ".")
   if (!exists(mzCenterFun, mode = "function")) 
     stop("Function '", mzCenterFun, "' not defined !")
   if (!is.logical(firstBaselineCheck)) 

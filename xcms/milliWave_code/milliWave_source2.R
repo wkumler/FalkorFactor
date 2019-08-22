@@ -14,7 +14,7 @@
 
 findChromPeaks_milliWave <- function (object, param, ...) 
 {
-  .local <- function (object, param, BPPARAM = bpparam(), return.type = "XCMSnExp", 
+  .local <- function (object, param, return.type = "XCMSnExp", 
                       msLevel = 1L) 
   {
     return.type <- match.arg(return.type, c("XCMSnExp", 
@@ -40,8 +40,8 @@ findChromPeaks_milliWave <- function (object, param, ...)
       fData(object_mslevel)$retentionTime <- adjustedRtime(object_mslevel)
     object_mslevel <- lapply(1:length(fileNames(object_mslevel)), 
                              FUN = filterFile, object = object_mslevel)
-    resList <- bplapply(object_mslevel, FUN = findChromPeaks_milliWave_OnDiskMSnExp, 
-                        method = "centWave", param = param, BPPARAM = BPPARAM)
+    resList <- lapply(object_mslevel, FUN = findChromPeaks_milliWave_OnDiskMSnExp, 
+                        method = "centWave", param = param)
     rm(object_mslevel)
     res <- .processResultList(resList, getProcHist = return.type == 
                                 "xcmsSet", fnames = fileNames(object))
@@ -65,7 +65,7 @@ findChromPeaks_milliWave_OnDiskMSnExp <- function (object, method = "milliWave",
   require("xcms", quietly = TRUE, character.only = TRUE)
   if (missing(param)) 
     stop("'param' has to be specified!")
-  findChromPeaks_milliWave_Spectrum_list(x = spectra(object, BPPARAM = SerialParam()), 
+  findChromPeaks_milliWave_Spectrum_list(x = spectra(object), 
                                method = method, param = param, rt = rtime(object))
 }
 

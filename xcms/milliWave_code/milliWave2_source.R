@@ -87,6 +87,7 @@ sleep = 0
                    as.integer(minCentroids), 
                    as.integer(prefilter), 
                    as.integer(noise), PACKAGE = "xcms")
+  
   message("OK")
   
   
@@ -97,11 +98,10 @@ sleep = 0
   peaklist <- list()
   message("Detecting chromatographic peaks in ", length(roiList), 
           " regions of interest ...", appendLF = FALSE)
-  pb <- txtProgressBar(min = 0, max = length(roiList), style = 3)
-  
+  #pb <- txtProgressBar(min = 0, max = length(roiList), style = 3)
   #for (f in 1:length(roiList)) { # For each region of interest
     # setTxtProgressBar(pb, f)
-  f <- 500
+  f <- 1000
     # Generate EICs
     feat <- roiList[[f]]
     peaks <- peakinfo <- NULL
@@ -131,17 +131,17 @@ sleep = 0
     ftd <- max(td[1], scrange[1] - scRangeTol):min(td[length(td)], scrange[2] + scRangeTol)
     fd <- d[match(ftd, td)]
     
-    # plot_max <- max(d)
-    # plot(td, d, ylim=c(0, plot_max*1.5))
-    # arrows(x0 = min(td), x1 = max(td), y0=plot_max*1.03, y1=plot_max*1.03,
-    #        code = 3, col = "black", angle = 90)
-    # arrows(x0 = min(ftd), x1 = max(ftd), y0=plot_max*1.05, y1=plot_max*1.05,
-    #        code = 3, col = "blue", angle = 90)
-    # arrows(x0 = min(otd), x1 = max(otd), y0=plot_max*1.07, y1=plot_max*1.07,
-    #        code = 3, col = "red", angle = 90)
-    # legend("top", legend = c("ROI", "ROI +/- min(peakwidth)/2", "ROI +/- noise"),
-    #        col = c("red", "blue", "black"), lwd = 2)
-    
+    plot_max <- max(d)
+    plot(td, d, ylim=c(0, plot_max*1.5))
+    arrows(x0 = min(td), x1 = max(td), y0=plot_max*1.03, y1=plot_max*1.03,
+           code = 3, col = "black", angle = 90)
+    arrows(x0 = min(ftd), x1 = max(ftd), y0=plot_max*1.05, y1=plot_max*1.05,
+           code = 3, col = "blue", angle = 90)
+    arrows(x0 = min(otd), x1 = max(otd), y0=plot_max*1.07, y1=plot_max*1.07,
+           code = 3, col = "red", angle = 90)
+    legend("top", legend = c("ROI", "ROI +/- min(peakwidth)/2", "ROI +/- noise"),
+           col = c("red", "blue", "black"), lwd = 2)
+
     
     
     if ((feat$scmax - feat$scmin + 1) >= 10 * minPeakWidth) {
@@ -188,8 +188,9 @@ sleep = 0
     # if (!(!is.null(dim(wCoefs)) && any(wCoefs - baseline >= sdthr))) {
     #   next
     # }
-    if (length(td) == length(scantime))
-      wCoefs[nrow(wCoefs), ] <- wCoefs[nrow(wCoefs) - 1, ] * 0.99
+    # Remove the below because it doesn't seem to do much??
+    # if (length(td) == length(scantime))
+    #   wCoefs[nrow(wCoefs), ] <- wCoefs[nrow(wCoefs) - 1, ] * 0.99
     localMax <- xcms:::MSW.getLocalMaximumCWT(wCoefs)
     rL <- xcms:::MSW.getRidge(localMax)
     
@@ -198,18 +199,21 @@ sleep = 0
       w <- min(1:length(x), ncol(wCoefs))
       any(wCoefs[x, w] - baseline >= sdthr)
     })
+    # Run the below to make sure all wavelet peaks get passed to the rest of the algorithm
+    wpeaks <- sapply(rL, function(x){return(T)})
     
     
     
     if (any(wpeaks)) {
       wpeaksidx <- which(wpeaks)
       for (p in 1:length(wpeaksidx)) { # For each ridgeline detected in an ROI
-        opp <- rL[[wpeaksidx[p]]]
+        opp <- rL[[wpeaksidx[p]]] # Grab the local maximum of each wavelet in the ridge
         pp <- unique(opp)
         if (length(pp) >= 1) {
           dv <- td[pp] %in% ftd
           if (any(dv)) {
-            if (any(d[pp[dv]] - baseline >= sdthr)) { # Filter #5 ?
+            #if (any(d[pp[dv]] - baseline >= sdthr)) { # Filter #5
+            if(TRUE){
               if (length(roiScales) > 0) { # Set at the very beginning
                 best.scale.nr <- which(scales == roiScales[[f]])
                 if (best.scale.nr > length(opp)) 
@@ -217,7 +221,8 @@ sleep = 0
               } else {
                 inti <- numeric(length(opp))
                 irange <- ceiling(scales[1]/2)
-                for (k in 1:length(opp)) {
+                for (k in 1:length(opp)) { # For each wavelet that produced a ridge calculate its intensity
+                  # Used to find the "best-fitting" wavelet - i.e. one with local maxima = peak maxima
                   kpos <- opp[k]
                   r1 <- ifelse(kpos - irange > 1, kpos - irange, 1)
                   r2 <- ifelse(kpos + irange < length(d), kpos + irange, length(d))
@@ -248,9 +253,8 @@ sleep = 0
                                       NA, NA, NA, NA, 
                                       f, NA, best.scale, td[best.scale.pos], 
                                       td[lwpos], td[rwpos], NA, NA))
-              peakinfo <- rbind(peakinfo, c(best.scale, 
-                                            best.scale.nr, best.scale.pos, lwpos, 
-                                            rwpos))
+              peakinfo <- rbind(peakinfo, c(best.scale, best.scale.nr, 
+                                            best.scale.pos, lwpos, rwpos))
             }
           }
         }

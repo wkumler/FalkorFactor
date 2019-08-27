@@ -29,11 +29,12 @@ mz_span <- c(0.0005) # Maximum spread of m/z values across a well-defined peak, 
 ppm <- ceiling((mz_span*1000000)/132)
 peakwidth <- c(20, 80)
 min_peak_width <- min(peakwidth)/2
-min_centroids <- max(4, min_peak_width - 2)
+#min_centroids <- max(4, min_peak_width - 2)
+min_centroids <- 9 #To parallel milliWave
 prefilter = c(3, 100000)
 noise = 0
 
-roiList <- .Call("findmzROI", 
+roi_list <- .Call("findmzROI", 
                  mz, int, scanindex, 
                  as.double(c(0, 0)), 
                  as.integer(scanrange), 
@@ -47,7 +48,7 @@ roiList <- .Call("findmzROI",
 # For each ROI ----
 # Get EIC
 f <- 1000
-roi <- roiList[[f]]
+roi <- roi_list[[f]]
 mzrange <- c(roi$mzmin, roi$mzmax)
 eic_span <- c(max(scanrange[1], roi$scmin - max(peakwidth)*3/2), 
               min(scanrange[2], roi$scmax + max(peakwidth)*3/2))
@@ -58,8 +59,9 @@ plot(eic$scan, eic$intensity, type="l", lwd=2, ylim=c(-max(eic$intensity), 2*max
 
 
 # Get wavelets
-scales <- seq.int(peakwidth[1]/2, peakwidth[2]/2)
-wCoefs <- xcms:::MSW.cwt(eic$intensity, scales = scales, wavelet = "mexh")
+#scales <- seq.int(peakwidth[1]/2, peakwidth[2]/2)
+scales <- 11:44 #To parallel milliWave
+w_coefs <- xcms:::MSW.cwt(eic$intensity, scales = scales, wavelet = "mexh")
 for(i in 1:dim(wCoefs)[2]){
   points(eic$scan, wCoefs[,i], col=rainbow(dim(wCoefs)[2])[i], cex=0.5, pch=19)
 }

@@ -46,7 +46,7 @@ roiList <- .Call("findmzROI",
 
 # For each ROI ----
 # Get EIC
-f <- 500
+f <- 1000
 roi <- roiList[[f]]
 mzrange <- c(roi$mzmin, roi$mzmax)
 eic_span <- c(max(scanrange[1], roi$scmin - max(peakwidth)*3/2), 
@@ -69,11 +69,6 @@ for(i in 1:dim(wCoefs)[2]){
 local_maxima <- xcms:::MSW.getLocalMaximumCWT(wCoefs)
 ridgelines <- xcms:::MSW.getRidge(local_maxima)
 ridgeline_by_scan <- lapply(ridgelines, function(x){x+eic_scan_start})
-### Throw out all ridges that aren't even close to the peak - ASSESS THIS LATER
-good_ridgeline <- sapply(ridgeline_by_scan, function(x){
-  median(x)>roi$scmin&median(x)<roi$scmax
-  })
-ridgeline_by_scan <- ridgeline_by_scan[good_ridgeline][[1]]
 wavelet_ints <- sapply(unique(ridgeline_by_scan), function(x){
   # Calculate peak area around the wavelet peak to find the best fitting wavelet
   sum(eic$intensity[((x-min_peak_width/2):(x+min_peak_width/2))-eic_scan_start])

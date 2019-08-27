@@ -576,3 +576,4 @@ do_findChromPeaks_milliWave <- function (mz, int, scantime, valsPerSpect,
   message(" OK: ", nrow(pr), " found.")
   return(pr)
 }
+

@@ -31,7 +31,7 @@ peakwidth <- c(20, 80) # Minimum and maximum width of a few random peaks, in sec
 mz_span <- c(0.0005) # Maximum spread of m/z values across a well-defined peak, plus some buffer
 ppm <- ceiling((mz_span*1000000)/132)
 snthresh = 10
-prefilter = c(3, 100000)
+prefilter = c(3, 10000)
 mzCenterFun = "weighted.mean"
 integrate = 1
 mzdiff = -0.001
@@ -101,7 +101,7 @@ sleep = 0
   #pb <- txtProgressBar(min = 0, max = length(roiList), style = 3)
   #for (f in 1:length(roiList)) { # For each region of interest
     # setTxtProgressBar(pb, f)
-  f <- 1000
+  f <- 500
     # Generate EICs
     feat <- roiList[[f]]
     peaks <- peakinfo <- NULL

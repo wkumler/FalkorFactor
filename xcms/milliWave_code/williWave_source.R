@@ -20,7 +20,7 @@ val_count <- cumsum(lengths(mzs, FALSE))
 mz <- unlist(mzs, use.names = FALSE)
 int <- unlist(lapply(x, intensity), use.names = FALSE)
 rt <- unlist(lapply(x, rtime), use.names = FALSE)
-
+rts <- rep(rt, sapply(mzs, length))
 
 scanindex <- as.integer(c(0, val_count[-length(val_count)]))
 scantime = rt
@@ -31,7 +31,7 @@ peakwidth <- c(20, 80)
 min_peak_width <- min(peakwidth)/2
 #min_centroids <- max(4, min_peak_width - 2)
 min_centroids <- 9 #To parallel milliWave
-prefilter = c(3, 100000)
+prefilter = c(3, 10000)
 noise = 0
 
 roi_list <- .Call("findmzROI", 
@@ -47,7 +47,6 @@ roi_list <- .Call("findmzROI",
 
 # For each ROI ----
 # Get EIC
-f <- 1000
 roi <- roi_list[[f]]
 mzrange <- c(roi$mzmin, roi$mzmax)
 eic_span <- c(max(scanrange[1], roi$scmin - max(peakwidth)*3/2), 
@@ -55,21 +54,17 @@ eic_span <- c(max(scanrange[1], roi$scmin - max(peakwidth)*3/2),
 eic <- .Call("getEIC", mz, int, scanindex, as.double(mzrange), 
              as.integer(eic_span), as.integer(length(scanindex)), PACKAGE = "xcms")
 eic_scan_start <- min(eic$scan)
-plot(eic$scan, eic$intensity, type="l", lwd=2, ylim=c(-max(eic$intensity), 2*max(eic$intensity)))
 
 
 # Get wavelets
 #scales <- seq.int(peakwidth[1]/2, peakwidth[2]/2)
 scales <- 11:44 #To parallel milliWave
 w_coefs <- xcms:::MSW.cwt(eic$intensity, scales = scales, wavelet = "mexh")
-for(i in 1:dim(wCoefs)[2]){
-  points(eic$scan, wCoefs[,i], col=rainbow(dim(wCoefs)[2])[i], cex=0.5, pch=19)
-}
 
 
 
 # Get Ridgelines
-local_maxima <- xcms:::MSW.getLocalMaximumCWT(wCoefs)
+local_maxima <- xcms:::MSW.getLocalMaximumCWT(w_coefs)
 ridgelines <- xcms:::MSW.getRidge(local_maxima)
 ridgeline_maxima <- lapply(ridgelines, function(x){x+eic_scan_start})
 ridge_length <- sapply(ridgelines, length)
@@ -84,7 +79,9 @@ peaks_in_roi <- matrix(numeric(5*length(ridgeline_maxima)), ncol = 5,
 for(wavelet_peak in seq_along(ridgeline_maxima)){
   wavelet_ints <- sapply(unique(ridgeline_maxima[[wavelet_peak]]), function(x){
     # Calculate peak area around the wavelet peak to find the best fitting wavelet
-    sum(eic$intensity[((x-min_peak_width/2):(x+min_peak_width/2))-eic_scan_start])
+    left_bound <- max(eic_scan_start, x-min_peak_width/2)
+    right_bound <- min(max(eic$scan), x+min_peak_width/2)
+    sum(eic$intensity[(left_bound:right_bound)-eic_scan_start])
   })
   # Find the wavelet scans with the best match
   best_wavelet_scan <- unique(ridgeline_maxima[[wavelet_peak]])[which.max(wavelet_ints)]
@@ -97,17 +94,17 @@ for(wavelet_peak in seq_along(ridgeline_maxima)){
   peak_edges <- xcms:::descendMinTol(eic$intensity, 
                                      startpos = c(left_shoulder_offset, right_shoulder_offset),
                                      maxDescOutlier = min_peak_width)+eic_scan_start
-  if(peak_edges[1]<1){
-    warning(paste0("Found a peak in ROI ",f, ", wavelet peak ", 
-                   wavelet_peak, ", off the left edge of the map!"))
-    peak_edges[1] <- 1
+  if(peak_edges[1]<eic$scan[1]){
+    # warning(paste0("Found a peak in ROI ",f, ", wavelet peak ", 
+    #                wavelet_peak, ", off the left edge of the map!"))
+    peak_edges[1] <- eic$scan[1]
   }
-  if(peak_edges[2]>length(rt)){
-    warning(paste0("Found a peak in ROI ",f, ", wavelet peak ", 
-                   wavelet_peak, ", off the right edge of the map!"))
-    peak_edges[2] <- length(rt)
+  if(peak_edges[2]>eic$scan[length(eic$scan)]){
+    # warning(paste0("Found a peak in ROI ",f, ", wavelet peak ", 
+    #                wavelet_peak, ", off the right edge of the map!"))
+    peak_edges[2] <- eic$scan[length(eic$scan)]
   }
-  peak_height <- max(eic$intensity[peak_edges[1]:peak_edges[2]])
+  peak_height <- max(eic$intensity[(peak_edges[1]:peak_edges[2])-eic_scan_start])
   peakinfo <- c("best_wavelet_scale"=best_wavelet,
                 "peak_midpoint"=best_wavelet_scan,
                 "peak_left_edge"=peak_edges[1],
@@ -125,50 +122,60 @@ riemann_vals <- 2:length(peak_scans)
 integral <- as.double((peak_scans[riemann_vals] - peak_scans[riemann_vals-1]) %*% 
                         (peak_ints[riemann_vals] + peak_ints[riemann_vals-1]))/2
 # Debug peak area calculation
-xleft = peak_edges[1]
-xright = peak_edges[2]
-height = integral/(xright-xleft)
-lines(eic$scan, eic$intensity, lwd=2)
-rect(xleft, 0, xright, height, lwd=2)
+# xleft = peak_edges[1]
+# xright = peak_edges[2]
+# height = integral/(xright-xleft)
+# lines(eic$scan, eic$intensity, lwd=2)
+# rect(xleft, 0, xright, height, lwd=2)
 
 
 # Filters ----
-getPointsAboveThreshold()
-getSignal2Noise()
-getWaveletCoef1()
-getWaveletCoef2()
-getRidgelineIntensity()
-getRidgelineLength()
-getCoef2Area()
-getPeakShape()
+# getPointsAboveThreshold()
+# getSignal2Noise()
+# getWaveletCoef1()
+# getWaveletCoef2()
+# getRidgelineIntensity()
+# getRidgelineLength()
+# getCoef2Area()
+# getPeakShape()
 
 # Diagnostics ----
 diagnoseROI <- function(ROI_number){
+  roi <- roi_list[[ROI_number]]
   mzrange <- c(roi$mzmin, roi$mzmax)
   eic_span <- c(max(scanrange[1], roi$scmin - max(peakwidth)*3/2), 
                 min(scanrange[2], roi$scmax + max(peakwidth)*3/2))
   eic <- .Call("getEIC", mz, int, scanindex, as.double(mzrange), 
                as.integer(eic_span), as.integer(length(scanindex)), PACKAGE = "xcms")
   eic_scan_start <- min(eic$scan)
+  
+  
+  # Get wavelets
   #scales <- seq.int(peakwidth[1]/2, peakwidth[2]/2)
   scales <- 11:44 #To parallel milliWave
   w_coefs <- xcms:::MSW.cwt(eic$intensity, scales = scales, wavelet = "mexh")
-  local_maxima <- xcms:::MSW.getLocalMaximumCWT(wCoefs)
+  
+  
+  
+  # Get Ridgelines
+  local_maxima <- xcms:::MSW.getLocalMaximumCWT(w_coefs)
   ridgelines <- xcms:::MSW.getRidge(local_maxima)
   ridgeline_maxima <- lapply(ridgelines, function(x){x+eic_scan_start})
   ridge_length <- sapply(ridgelines, length)
+  ridge_percentage <- ridge_length/length(scales)
   
   # Find all local maxima in wavelets
   # Preallocate matrix
-  peaks_in_roi <- matrix(numeric(4*length(ridgeline_maxima)), 
-                         ncol = 4, dimnames = list(NULL, c("best_wavelet_scale",
-                                                           "peak_midpoint",
-                                                           "peak_left_edge",
-                                                           "peak_right_edge")))
+  peaks_in_roi <- matrix(numeric(5*length(ridgeline_maxima)), ncol = 5, 
+                         dimnames = list(NULL, c("best_wavelet_scale", 
+                                                 "peak_midpoint", "peak_left_edge",
+                                                 "peak_right_edge", "peak_height")))
   for(wavelet_peak in seq_along(ridgeline_maxima)){
     wavelet_ints <- sapply(unique(ridgeline_maxima[[wavelet_peak]]), function(x){
       # Calculate peak area around the wavelet peak to find the best fitting wavelet
-      sum(eic$intensity[((x-min_peak_width/2):(x+min_peak_width/2))-eic_scan_start])
+      left_bound <- max(eic_scan_start, x-min_peak_width/2)
+      right_bound <- min(max(eic$scan), x+min_peak_width/2)
+      sum(eic$intensity[(left_bound:right_bound)-eic_scan_start])
     })
     # Find the wavelet scans with the best match
     best_wavelet_scan <- unique(ridgeline_maxima[[wavelet_peak]])[which.max(wavelet_ints)]
@@ -181,31 +188,46 @@ diagnoseROI <- function(ROI_number){
     peak_edges <- xcms:::descendMinTol(eic$intensity, 
                                        startpos = c(left_shoulder_offset, right_shoulder_offset),
                                        maxDescOutlier = min_peak_width)+eic_scan_start
+    if(peak_edges[1]<eic$scan[1]){
+      # warning(paste0("Found a peak in ROI ",f, ", wavelet peak ", 
+      #                wavelet_peak, ", off the left edge of the map!"))
+      peak_edges[1] <- eic$scan[1]
+    }
+    if(peak_edges[2]>eic$scan[length(eic$scan)]){
+      # warning(paste0("Found a peak in ROI ",f, ", wavelet peak ", 
+      #                wavelet_peak, ", off the right edge of the map!"))
+      peak_edges[2] <- eic$scan[length(eic$scan)]
+    }
+    peak_height <- max(eic$intensity[(peak_edges[1]:peak_edges[2])-eic_scan_start])
     peakinfo <- c("best_wavelet_scale"=best_wavelet,
                   "peak_midpoint"=best_wavelet_scan,
                   "peak_left_edge"=peak_edges[1],
-                  "peak_right_edge"=peak_edges[2])
+                  "peak_right_edge"=peak_edges[2],
+                  "peak_height"=peak_height)
     peaks_in_roi[wavelet_peak,] <- peakinfo
   }
-  peak_table_roi <- cbind(peaks_in_roi, ridge_length)
+  peak_table_roi <- cbind(peaks_in_roi, ridge_length, ridge_percentage)
   
-  
-  layout(matrix(c(1,2,3), nrow = 3))
-  par(mar=c(0.1, 4.1, 0.1, 0.1))
+  layout(matrix(c(rep(1, 30), rep(2, 30), 0, rep(3, 28), 0), nrow = 3, byrow = T))
+  par(mar=c(0.1, 4.1, 2.1, 0.1))
   plot(eic$scan, eic$intensity, type="l", lwd=1, xaxt="n", ylab="EIC intensity",
-       xlim=c(min(eic$scan), max(eic$scan)))
-  plot(eic$scan, wCoefs[,dim(w_coefs)[2]], xaxt="n", ylab="Wavelet coefficient",
-       xlim=c(min(eic$scan), max(eic$scan)))
-  for(i in dim(wCoefs)[2]:1){
-    points(eic$scan, wCoefs[,i], col=rainbow(dim(wCoefs)[2])[i], cex=0.5, pch=19)
+       main=paste0("Peak at ", roi$mz, "m/z"))
+  par(mar=c(0.1, 4.1, 0.1, 0.1))
+  plot(eic$scan, w_coefs[,dim(w_coefs)[2]], xaxt="n", ylab="Wavelet coefficient")
+  for(i in dim(w_coefs)[2]:1){
+    points(eic$scan, w_coefs[,i], col=rainbow(dim(w_coefs)[2])[i], cex=0.5, pch=19)
   }
   abline(h=0, lwd=2)
+  par(mar=c(4.1, 4.1, 0.1, 0.1))
   image(w_coefs, axes=F, col=hcl.colors(100, "Geyser"))
-  xax <- pretty(eic$scan)
+  xax <- pretty(eic$scan)-min(pretty(eic$scan))
   min_scale <- as.numeric(min(colnames(w_coefs)))
   yax <- pretty(colnames(w_coefs))-min_scale
   axis(side = 1, at = xax/max(xax), labels = xax)
-  axis(side = 2, at = yax/max(yax), labels = yax+min_scale, las=1)
-  mtext(text = "Wavelet scale", side = 2, line = 2.5)
+  axis(side = 2, at = yax/max(yax), labels = yax+min_scale, las=1, line = 1.7)
+  mtext(text = "Wavelet scale", side = 2, line = 4)
   image(local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
+  layout(1)
+  
+  return(peak_table_roi)
 }

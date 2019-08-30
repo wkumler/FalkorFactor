@@ -48,7 +48,7 @@ roi_list <- .Call("findmzROI",
 
 # For each ROI ----
 # Get EIC
-f <- 500
+f <- 1156
 roi <- roi_list[[f]]
 mzrange <- c(roi$mzmin, roi$mzmax)
 eic_span <- c(max(scanrange[1], roi$scmin - max(peakwidth)*3/2), 
@@ -119,10 +119,50 @@ for(wavelet_peak in seq_along(ridgeline_maxima)){
                                          noiserange, length(scantime), 
                                          threshold = xcms_noise_baseline, 
                                          num = minPtsAboveBaseLine)
-  # Estimate peak noise (ADAP algorithm)
-  ADAP_noise <- estimateADAPnoise(eic$scan, eic$intensity, peak_edges)
   
-  # 
+  # Estimate peak noise (by removing intensity points corresponding to peak, 
+  #                      then external IQR's worth of points, then calculating mean&SD)
+  background_noise <- estimateBackgroundNoise(eic$scan, eic$intensity, peak_edges)
+  
+  
+  # Estimate peak area using xcms methods
+  scaleNr <- best_wavelet - min(scales)
+  scpos <- best_wavelet_scan
+  scmin <- max(1, best_wavelet_scan - best_wavelet)
+  scmax <- min(best_wavelet_scan + best_wavelet, length(eic$scan))
+  
+  
+  maxDescOutlier <- floor(minPeakWidth/2)
+  if (integrate == 1) {
+    lm <- xcms:::descendMin(w_coefs[, peakinfo[p, "scaleNr"]], 
+                            istart = peakinfo[p, "scpos"])
+    gap <- all(eic$intensity[lm[1]:lm[2]] == 0)
+    if ((lm[1] == lm[2]) || gap)
+      lm <- xcms:::descendMinTol(eic$intensity, startpos = c(peakinfo[p, "scmin"], 
+                                                 peakinfo[p, "scmax"]), 
+                                 maxDescOutlier)
+  } else {
+    lm <- xcms:::descendMinTol(d, startpos = c(peakinfo[p, "scmin"], 
+                                               peakinfo[p, "scmax"]), 
+                               maxDescOutlier)
+  }
+  
+  lm <- xcms:::.narrow_rt_boundaries(lm, eic$intensity)
+  
+  peakrange <- td[lm]
+  pwid <- (scantime[peakrange[2]] - scantime[peakrange[1]])/(peakrange[2] - peakrange[1])
+  
+  lm_seq <- lm[1]:lm[2]
+  pd <- eic$intensity[lm_seq]
+  
+  into <- pwid * sum(pd)
+  
+  
+  
+  
+  
+  
+  
   
   # Collect all the information
   peakinfo <- c("best_wavelet_scale"=best_wavelet,
@@ -259,3 +299,15 @@ diagnoseROI <- function(ROI_number){
 
 
 # Additional functions ----
+estimateBackgroundNoise <- function(eic_scan, eic_intensity, peak_edges){
+  background <- eic_intensity[eic_scan[-c(peak_edges[1]:peak_edges[2])]]
+  median_p_IQR <- median(background)+IQR(background)
+  median_m_IQR <- median(background)-IQR(background)
+  noise <- background[background<median_p_IQR&background>median_m_IQR]
+  return(c(mean(noise), sd(noise))+1)
+}
+
+
+
+
+

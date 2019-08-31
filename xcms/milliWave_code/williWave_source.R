@@ -70,6 +70,7 @@ ridgelines <- xcms:::MSW.getRidge(local_maxima)
 ridgeline_maxima <- lapply(ridgelines, function(x){x+eic_scan_start})
 ridge_length <- sapply(ridgelines, length)
 ridge_percentage <- round(ridge_length/ncol(w_coefs), digits = 2)
+ridge_drift <- sapply(ridgelines, function(x)length(unique(x)))/ridge_length
 
 
 # Find all local maxima in wavelets

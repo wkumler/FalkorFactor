@@ -53,13 +53,13 @@ lmaoPlotEm <- function(data_i, default_layout=T, labels = T) {
     layout(1)
   }
 }
-all_data %>% filter(mz>90.0910&mz<90.0925) %>% lmaoPlotEm()
-all_data %>% filter(mz>100.023&mz<100.025) %>% lmaoPlotEm()
-all_data %>% filter(mz>117.048&mz<117.049) %>% lmaoPlotEm()
-all_data %>% filter(mz>285.040&mz<285.050) %>% lmaoPlotEm()
-all_data %>% filter(mz>800.810&mz<800.815) %>% lmaoPlotEm()
-all_data %>% filter(mz>135.0&mz<135.1) %>% lmaoPlotEm()
-all_data %>% filter(mz>96.0&mz<96.1) %>% lmaoPlotEm()
+# all_data %>% filter(mz>90.0910&mz<90.0925) %>% lmaoPlotEm()
+# all_data %>% filter(mz>100.023&mz<100.025) %>% lmaoPlotEm()
+# all_data %>% filter(mz>117.048&mz<117.049) %>% lmaoPlotEm()
+# all_data %>% filter(mz>285.040&mz<285.050) %>% lmaoPlotEm()
+# all_data %>% filter(mz>800.810&mz<800.815) %>% lmaoPlotEm()
+# all_data %>% filter(mz>135.0&mz<135.1) %>% lmaoPlotEm()
+# all_data %>% filter(mz>96.0&mz<96.1) %>% lmaoPlotEm()
 
 
 
@@ -102,7 +102,7 @@ while(nrow(data)>0){
   consistency <- rle(rts%in%roi$rt)
   
   # Calculate ROI "sharpness": inverse metric of signal-to-noise?
-  sharpness <- summary(lm(sort(roi$int)~roi$rt))$r.squared
+  sharpness <- 1/summary(lm(sort(roi$int)~roi$rt))$r.squared
   
   # Other ROI-wide filters go here
   
@@ -112,11 +112,17 @@ while(nrow(data)>0){
   possible_peaks <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh") %>%
     xcms:::MSW.getLocalMaximumCWT() %>%
     xcms:::MSW.getRidge()
-  peak_centers <- sapply(ridgeline_maxima, function(x){
+  peak_centers <- sapply(possible_peaks, function(x){
+    wavelet_ints <- sapply(unique(x), function(y){
+      left_bound <- max(eic_scan_start, y-min(peak_width)/4)
+      right_bound <- min(max(eic$scan), y+min(peak_width)/4)
+      sum(eic$intensity[(left_bound:right_bound)-eic_scan_start])
+    })
     unique(x)[which.max(wavelet_ints)]
   })
-  peak_ridge_lengths <- sapply(wavelet_info$ridgelines, length)
-  peak_ridge_percentages <- round(ridge_length/ncol(w_coefs), digits = 2)
+  peak_ridge_lengths <- sapply(possible_peaks, length)
+  peak_ridge_percentages <- round(peak_ridge_lengths/length(attr(possible_peaks, "scales")), 
+                                  digits = 2)
   diagnoseWavelet(roi, wavelet_info)
   
   
@@ -136,27 +142,30 @@ close(pb)
 # Post-processing ----
 
 
-diagnoseWavelet <- function(roi, wavelet_info){
+diagnoseWavelet <- function(roi){
+  wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales = scales, wavelet = "mexh")
+  local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
+  
   layout(matrix(c(rep(1, 30), rep(2, 30), 0, rep(3, 28), 0), nrow = 3, byrow = T))
   par(mar=c(0.1, 4.1, 2.1, 0.1))
   plot(roi$rt, roi$int, type="l", lwd=1, xaxt="n", ylab="EIC intensity")
   par(mar=c(0.1, 4.1, 0.1, 0.1))
-  plot(roi$rt, wavelet_info$wcoef_matrix[,ncol(wavelet_info$wcoef_matrix)], 
+  plot(roi$rt, wcoef_matrix[,ncol(wcoef_matrix)], 
        xaxt="n", ylab="Wavelet coefficient", type="n")
-  for(i in ncol(wavelet_info$wcoef_matrix):1){
-    points(roi$rt, wavelet_info$wcoef_matrix[,i], 
-           col=rainbow(ncol(wavelet_info$wcoef_matrix))[i], pch=19)
+  for(i in ncol(wcoef_matrix):1){
+    points(roi$rt, wcoef_matrix[,i], 
+           col=rainbow(ncol(wcoef_matrix))[i], pch=19)
   }
   abline(h=0, lwd=2)
   par(mar=c(4.1, 4.1, 0.1, 0.1))
-  image(wavelet_info$wcoef_matrix, axes=F, col=hcl.colors(100, "Geyser"))
+  image(wcoef_matrix, axes=F, col=hcl.colors(100, "Geyser"))
   xax <- pretty(roi$rt)-min(pretty(roi$rt))
-  min_scale <- as.numeric(min(colnames(wavelet_info$wcoef_matrix)))
-  yax <- pretty(colnames(wavelet_info$wcoef_matrix))-min_scale
+  min_scale <- as.numeric(min(colnames(wcoef_matrix)))
+  yax <- pretty(colnames(wcoef_matrix))-min_scale
   axis(side = 1, at = xax/max(xax), labels = xax+min(pretty(roi$rt)))
   axis(side = 2, at = yax/max(yax), labels = yax+min_scale, las=1, line = 1.7)
   mtext(text = "Retention time (s)", side = 1, line = 3)
   mtext(text = "Wavelet scale", side = 2, line = 4)
-  image(wavelet_info$local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
+  image(local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
   layout(1)
 }

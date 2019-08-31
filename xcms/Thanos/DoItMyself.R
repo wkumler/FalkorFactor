@@ -82,6 +82,7 @@ while(nrow(data)>0){
   upper_roi_mz <- point_of_interest$mz+epsilon_Da
   lower_roi_mz <- point_of_interest$mz-epsilon_Da
   roi <- filter(data, mz>lower_roi_mz & mz<upper_roi_mz)
+  #QUESTION: Should the ROIs be sliced when they miss scans? Or drop below an intensity threshold?
   
   # If the ROI can't contain a peak bc too short, remove it
   if(nrow(roi)<peakwidth[1]){
@@ -104,27 +105,28 @@ while(nrow(data)>0){
   # Calculate ROI "sharpness": inverse metric of signal-to-noise?
   sharpness <- 1/summary(lm(sort(roi$int)~roi$rt))$r.squared
   
-  # Other ROI-wide filters go here
+  # Other ROI-wide filters can go here
   
   
   # Wavelet transform
-  scales <- seq(peakwidth[1]/2, peakwidth[2]/2)
+  # scales <- seq(peakwidth[1]/2, peakwidth[2]/2)
+  # Scales now run from 1+ to catch sharp peaks w/o surrounding noise
+  # See peak at mz>119.99&mz<119.994 which is missed because EIC is too short to support wavelets 10+
+  scales <- seq(1, peakwidth[2]/2)
+  # QUESTION: since only intensity is passed to the wavelet function, how does it handle missed scans?
   possible_peaks <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh") %>%
     xcms:::MSW.getLocalMaximumCWT() %>%
     xcms:::MSW.getRidge()
-  peak_centers <- sapply(possible_peaks, function(x){
-    wavelet_ints <- sapply(unique(x), function(y){
-      left_bound <- max(eic_scan_start, y-min(peak_width)/4)
-      right_bound <- min(max(eic$scan), y+min(peak_width)/4)
-      sum(eic$intensity[(left_bound:right_bound)-eic_scan_start])
+  peak_centers <- sapply(possible_peaks, function(ridge_maxes){
+    wavelet_ints <- sapply(unique(ridge_maxes), function(roi_row){
+      sum(roi$int[max(1, roi_row-5):(roi_row+5)], na.rm = T)
     })
-    unique(x)[which.max(wavelet_ints)]
+    unique(ridge_maxes)[which.max(wavelet_ints)]
   })
-  peak_ridge_lengths <- sapply(possible_peaks, length)
-  peak_ridge_percentages <- round(peak_ridge_lengths/length(attr(possible_peaks, "scales")), 
+  ridge_lengths <- sapply(possible_peaks, length)
+  ridge_percentages <- round(ridge_lengths/length(attr(possible_peaks, "scales")),
                                   digits = 2)
-  diagnoseWavelet(roi, wavelet_info)
-  
+  ridge_drift <- sapply(possible_peaks, function(x)length(unique(x)))/ridge_lengths
   
   # Put it all together and save
   roi_list[[length(roi_list)+1]] <- 
@@ -142,30 +144,31 @@ close(pb)
 # Post-processing ----
 
 
-diagnoseWavelet <- function(roi){
+diagnoseWavelets <- function(given_ROI){
+  roi <- given_ROI@data
+  
   wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales = scales, wavelet = "mexh")
   local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
   
   layout(matrix(c(rep(1, 30), rep(2, 30), 0, rep(3, 28), 0), nrow = 3, byrow = T))
   par(mar=c(0.1, 4.1, 2.1, 0.1))
   plot(roi$rt, roi$int, type="l", lwd=1, xaxt="n", ylab="EIC intensity")
-  par(mar=c(0.1, 4.1, 0.1, 0.1))
+  par(mar=c(4.1, 4.1, 0.1, 0.1))
   plot(roi$rt, wcoef_matrix[,ncol(wcoef_matrix)], 
-       xaxt="n", ylab="Wavelet coefficient", type="n")
+       xlab="Retention time (s)", ylab="Wavelet coefficient", type="n")
   for(i in ncol(wcoef_matrix):1){
-    points(roi$rt, wcoef_matrix[,i], 
-           col=rainbow(ncol(wcoef_matrix))[i], pch=19)
+    lines(roi$rt, wcoef_matrix[,i], lwd=2,
+           col=rainbow(ncol(wcoef_matrix))[i])
   }
   abline(h=0, lwd=2)
-  par(mar=c(4.1, 4.1, 0.1, 0.1))
+  par(mar=c(0.1, 4.1, 2.1, 0.1))
   image(wcoef_matrix, axes=F, col=hcl.colors(100, "Geyser"))
-  xax <- pretty(roi$rt)-min(pretty(roi$rt))
   min_scale <- as.numeric(min(colnames(wcoef_matrix)))
   yax <- pretty(colnames(wcoef_matrix))-min_scale
-  axis(side = 1, at = xax/max(xax), labels = xax+min(pretty(roi$rt)))
   axis(side = 2, at = yax/max(yax), labels = yax+min_scale, las=1, line = 1.7)
-  mtext(text = "Retention time (s)", side = 1, line = 3)
   mtext(text = "Wavelet scale", side = 2, line = 4)
   image(local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
   layout(1)
 }
+
+

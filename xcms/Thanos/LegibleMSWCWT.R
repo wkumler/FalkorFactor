@@ -1,19 +1,25 @@
 #roi <- filter(all_data, mz>119.99&mz<119.994)
 #lmaoPlotEm(roi)
 
-scales <- seq(1, 1.3, by = 0.033)
-#scales <- seq(1, 10, by = 0.5)
-roi_intensity <- roi$int[1:16]
+
+roi_intensity <- roi$int[1:999]
+# Produce 11 scales, running from 1 to the nearest exponential power of 2 (rounded up), divided by 12
+scales <- seq(1, 2^ceiling(log2(length(roi_intensity)))/12, length.out = 11)
 wavelet = "mexh"
+
+
+# Extend the ROI to an FFT-acceptable length (64, 128, 256, etc.)
+# Done by mirroring the last [however many scans] which are later removed
+roi_intensity_extended <- xcms:::MSW.extendNBase(roi_intensity, nLevel = NULL, base = 2)
+
 
 # xcms:::MSW.cwt
 # Define wavelet shape
 wavelet_xvals <- seq(-6, 6, length.out = 256)
 wavelet_shape <- (2/sqrt(3) * pi^(-0.25)) * (1 - wavelet_xvals^2) * exp(-wavelet_xvals^2/2)
 
-# Extend the ROI to an FFT-acceptable length (64, 128, 256, etc.)
-# Done by mirroring the last [however many scans] which are later removed
-roi_intensity_extended <- xcms:::MSW.extendNBase(roi_intensity, nLevel = NULL, base = 2)
+
+
 
 psi_xval <- seq(0,12, length.out = 256)
 dxval <- psi_xval[2]
@@ -23,7 +29,7 @@ wCoefs <- list()
 for (i in 1:length(scales)) {
   scale.i <- scales[i]
   mex_h <- rep(0, length(roi_intensity_extended))
-  sample_points <- 1 + floor((0:(scale.i * xmax))/(scale.i * dxval))
+  sample_points <- 1 + floor((0:(scale.i * 12))/(scale.i * 12/255))
   if (length(sample_points) == 1) 
     sample_points <- c(1, 1)
   mex_h[1:length(sample_points)] <- rev(wavelet_shape[sample_points]) - mean(wavelet_shape[sample_points])

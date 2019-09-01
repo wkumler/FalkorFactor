@@ -105,14 +105,15 @@ while(nrow(data)>0){
   # Calculate ROI "sharpness": inverse metric of signal-to-noise?
   sharpness <- 1/summary(lm(sort(roi$int)~roi$rt))$r.squared
   
-  # Other ROI-wide filters can go here
+  # Other ROI-wide information can go here
   
   
   # Wavelet transform
   # scales <- seq(peakwidth[1]/2, peakwidth[2]/2)
   # Scales now run from 1+ to catch sharp peaks w/o surrounding noise
   # See peak at mz>119.99&mz<119.994 which is missed because EIC is too short to support wavelets 10+
-  scales <- seq(1, peakwidth[2]/2)
+  scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
+  scales <- 1:20
   # QUESTION: since only intensity is passed to the wavelet function, how does it handle missed scans?
   possible_peaks <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh") %>%
     xcms:::MSW.getLocalMaximumCWT() %>%
@@ -144,9 +145,7 @@ close(pb)
 # Post-processing ----
 
 
-diagnoseWavelets <- function(given_ROI){
-  roi <- given_ROI@data
-  
+diagnoseWavelets <- function(roi){
   wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales = scales, wavelet = "mexh")
   local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
   
@@ -170,4 +169,3 @@ diagnoseWavelets <- function(given_ROI){
   image(local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
   layout(1)
 }
-

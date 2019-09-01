@@ -125,7 +125,7 @@ while(nrow(data)>0){
   })
   ridge_lengths <- sapply(possible_peaks, length)
   ridge_percentages <- round(ridge_lengths/length(attr(possible_peaks, "scales")),
-                                  digits = 2)
+                             digits = 2)
   ridge_drift <- sapply(possible_peaks, function(x)length(unique(x)))/ridge_lengths
   
   # Put it all together and save
@@ -158,7 +158,7 @@ diagnoseWavelets <- function(given_ROI){
        xlab="Retention time (s)", ylab="Wavelet coefficient", type="n")
   for(i in ncol(wcoef_matrix):1){
     lines(roi$rt, wcoef_matrix[,i], lwd=2,
-           col=rainbow(ncol(wcoef_matrix))[i])
+          col=rainbow(ncol(wcoef_matrix))[i])
   }
   abline(h=0, lwd=2)
   par(mar=c(0.1, 4.1, 2.1, 0.1))
@@ -170,5 +170,4 @@ diagnoseWavelets <- function(given_ROI){
   image(local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
   layout(1)
 }
-
 

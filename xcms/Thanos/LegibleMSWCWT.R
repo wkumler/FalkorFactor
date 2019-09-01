@@ -1,8 +1,9 @@
-roi <- filter(all_data, mz>119.99&mz<119.994)
-lmaoPlotEm(roi)
+#roi <- filter(all_data, mz>119.99&mz<119.994)
+#lmaoPlotEm(roi)
 
-scales <- seq(1, 10)
-roi_intensity <- roi$int
+scales <- seq(1, 1.3, by = 0.033)
+#scales <- seq(1, 10, by = 0.5)
+roi_intensity <- roi$int[1:16]
 wavelet = "mexh"
 
 # xcms:::MSW.cwt
@@ -56,3 +57,5 @@ plot(wCoefs[,ncol(wCoefs)], type="n")
 for(i in ncol(wCoefs):1){
   lines(wCoefs[,i], col=rainbow(ncol(wCoefs))[i], lwd=2)
 }
+ncol(wCoefs)
+colnames(wCoefs)

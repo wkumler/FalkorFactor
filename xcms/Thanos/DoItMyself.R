@@ -23,7 +23,6 @@ ppm <- 2.5
 
 
 # Generate ROI list ----
-ppm <- 2.5
 peakwidth <- c(20, 80)
 prefilter <- c(1, 1)
 
@@ -62,9 +61,23 @@ while(nrow(data)>0){
   sharpness <- 1-summary(lm(sort(roi$int)~roi$rt))$r.squared
   
   # Calculate ROI actual m/z diff vs predicted epsilon
-  (max(roi$mz)-min(roi$mz))/((roi$mz[which.max(roi$int)]*ppm/1000000)*2)
+  accuracy <- (max(roi$mz)-min(roi$mz))/((roi$mz[which.max(roi$int)]*ppm/1000000)*2)
   
-  # Other ROI-wide information can go here
+  
+  # Put it all together and save
+  roi_list[[length(roi_list)+1]] <- roi
+  data <- data[data$mz<lower_roi_mz | data$mz>upper_roi_mz,]
+}
+close(pb)
+
+
+
+# Peak picking ----
+for(i in 1:length(roi_list)){
+  # Separate by missed scans
+  roi_encoding <- rle(rts%in%roi$rt)
+  rle_switch_idxs <- cumsum(roi_encoding$lengths)
+  #roi_peak_list <- split()
   
   
   
@@ -84,16 +97,8 @@ while(nrow(data)>0){
   ridge_percentages <- round(ridge_lengths/length(attr(possible_peaks, "scales")),
                              digits = 2)
   ridge_drift <- sapply(possible_peaks, function(x)length(unique(x)))/ridge_lengths
-  
-  peak_edges <- 
-  
-  
-  
-  # Put it all together and save
-  roi_list[[length(roi_list)+1]] <- roi
-  data <- data[data$mz<lower_roi_mz | data$mz>upper_roi_mz,]
 }
-close(pb)
+
 
 
 # Post-processing ----

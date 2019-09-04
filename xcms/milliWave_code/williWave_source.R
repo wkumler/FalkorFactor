@@ -20,8 +20,8 @@ mzs <- lapply(x, mz)
 val_count <- cumsum(lengths(mzs, FALSE))
 mz <- unlist(mzs, use.names = FALSE)
 int <- unlist(lapply(x, intensity), use.names = FALSE)
-rt <- unlist(lapply(x, rtime), use.names = FALSE)
-rts <- rep(rt, sapply(mzs, length))
+rts <- unlist(lapply(x, rtime), use.names = FALSE)
+rt <- rep(rts, sapply(mzs, length))
 
 scanindex <- as.integer(c(0, val_count[-length(val_count)]))
 scantime = rt

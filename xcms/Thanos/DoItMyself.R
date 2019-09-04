@@ -1,3 +1,4 @@
+
 # Setup things ----
 library(xcms)
 library(tidyverse)
@@ -10,14 +11,8 @@ x <- raw_data %>%
   `[[`(1) %>%
   spectra()
 
-ROI <- setClass("ROI", slots = list(data="data.frame", 
-                                    ROI_number="numeric",
-                                    mz_info="list",
-                                    consistency="rle"))
 
-
-
-# Generating DF, pre-processing ----
+# Generate DF, pre-processing ----
 mzs <- lapply(x, mz)
 mz <- unlist(mzs, use.names = FALSE)
 int <- unlist(lapply(x, intensity), use.names = FALSE)
@@ -26,54 +21,16 @@ rt <- rep(rts, sapply(mzs, length))
 all_data <- data.frame(mz, int, rt)
 ppm <- 2.5
 
-# Optionally, remove all orphan data points
-#seq_data <- subset(all_data, duplicated(mz) | duplicated(mz, fromLast=TRUE))
-
-# Determine typical m/z spread for a couple good peaks
-# Unnecessary because m/z will be determined on-the-fly by ROI calculation, but looks nice
-lmaoPlotEm <- function(data_i, default_layout=T, labels = T) {
-  Da_spread <- data_i$mz[which.max(data_i$int)]*ppm/1000000
-  if(default_layout){
-    layout(matrix(c(1,2), nrow = 2))
-  }
-  par(mar=c(0.1, 4.1, 2.1, 0.1))
-  int_colors <- hcl.colors(100, palette = "plasma")[cut(data_i$int, breaks = 100)]
-  plot(data_i$rt, data_i$mz, col=int_colors, xaxt="n", xlab="", pch=19, cex=1,
-       ylim=c(min(data_i$mz)*0.999999, max(data_i$mz)*1.000001))
-  if(labels){
-    legend("topleft", legend = paste("Min m/z:", round(min(data_i$mz), 5)))
-    legend("topright", legend = paste("Max m/z:", round(max(data_i$mz), 5)))
-    legend("bottomleft", legend = paste("Actual m/z diff:", 
-                                        round(max(data_i$mz)-min(data_i$mz), 5)))
-    legend("bottomright", legend = paste("Predicted epsilon:", round(Da_spread*2, 5)))
-  }
-  par(mar=c(4.1, 4.1, 0.1, 0.1))
-  plot(data_i$rt, data_i$int, col=int_colors, pch=19)
-  if(default_layout){
-    layout(1)
-  }
-}
-# all_data %>% filter(mz>90.0910&mz<90.0925) %>% lmaoPlotEm()
-# all_data %>% filter(mz>100.023&mz<100.025) %>% lmaoPlotEm()
-# all_data %>% filter(mz>117.048&mz<117.049) %>% lmaoPlotEm()
-# all_data %>% filter(mz>285.040&mz<285.050) %>% lmaoPlotEm()
-# all_data %>% filter(mz>800.810&mz<800.815) %>% lmaoPlotEm()
-# all_data %>% filter(mz>135.0&mz<135.1) %>% lmaoPlotEm()
-# all_data %>% filter(mz>96.0&mz<96.1) %>% lmaoPlotEm()
-
-
 
 # Generate ROI list ----
-# Sort by intensity
 ppm <- 2.5
 peakwidth <- c(20, 80)
-prefilter <- c(3, 100)
+prefilter <- c(1, 1)
 
-roi_list <- list()
-
-data <- all_data %>% filter(mz>100&mz<120)
+data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
 pb <- txtProgressBar(min = 0, max = 1, style = 3)
+roi_list <- list()
 roi_start_length <- nrow(data)
 while(nrow(data)>0){
   setTxtProgressBar(pb, 1-(sqrt(nrow(data))/sqrt(roi_start_length)))
@@ -82,8 +39,7 @@ while(nrow(data)>0){
   upper_roi_mz <- point_of_interest$mz+epsilon_Da
   lower_roi_mz <- point_of_interest$mz-epsilon_Da
   roi <- filter(data, mz>lower_roi_mz & mz<upper_roi_mz)
-  #QUESTION: Should the ROIs be sliced when they miss scans? Or drop below an intensity threshold?
-  
+
   # If the ROI can't contain a peak bc too short, remove it
   if(nrow(roi)<peakwidth[1]){
     data <- data[data$mz<lower_roi_mz | data$mz>upper_roi_mz,]
@@ -103,47 +59,44 @@ while(nrow(data)>0){
   consistency <- rle(rts%in%roi$rt)
   
   # Calculate ROI "sharpness": inverse metric of signal-to-noise?
-  sharpness <- 1/summary(lm(sort(roi$int)~roi$rt))$r.squared
+  sharpness <- 1-summary(lm(sort(roi$int)~roi$rt))$r.squared
+  
+  # Calculate ROI actual m/z diff vs predicted epsilon
+  (max(roi$mz)-min(roi$mz))/((roi$mz[which.max(roi$int)]*ppm/1000000)*2)
   
   # Other ROI-wide information can go here
   
   
+  
   # Wavelet transform
-  # scales <- seq(peakwidth[1]/2, peakwidth[2]/2)
-  # Scales now run from 1+ to catch sharp peaks w/o surrounding noise
-  # See peak at mz>119.99&mz<119.994 which is missed because EIC is too short to support wavelets 10+
-  scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
-  scales <- 1:20
-  # QUESTION: since only intensity is passed to the wavelet function, how does it handle missed scans?
-  possible_peaks <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh") %>%
-    xcms:::MSW.getLocalMaximumCWT() %>%
+  # scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
+  scales <- 1:(peakwidth[2]/2)
+  wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
+  possible_peaks <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix) %>%
     xcms:::MSW.getRidge()
-  peak_centers <- sapply(possible_peaks, function(ridge_maxes){
+  peak_centers <- rts[sapply(possible_peaks, function(ridge_maxes){
     wavelet_ints <- sapply(unique(ridge_maxes), function(roi_row){
       sum(roi$int[max(1, roi_row-5):(roi_row+5)], na.rm = T)
     })
     unique(ridge_maxes)[which.max(wavelet_ints)]
-  })
+  })]
   ridge_lengths <- sapply(possible_peaks, length)
   ridge_percentages <- round(ridge_lengths/length(attr(possible_peaks, "scales")),
                              digits = 2)
   ridge_drift <- sapply(possible_peaks, function(x)length(unique(x)))/ridge_lengths
   
-  # Put it all together and save
-  roi_list[[length(roi_list)+1]] <- 
-    ROI(data = roi,
-        ROI_number = length(roi_list)+1,
-        mz_info = list("wmean"=weighted.mean(roi$mz, roi$int),
-                       "mz_min"=min(roi$mz), "mz_max"=max(roi$mz)),
-        consistency = consistency)
+  peak_edges <- 
   
+  
+  
+  # Put it all together and save
+  roi_list[[length(roi_list)+1]] <- roi
   data <- data[data$mz<lower_roi_mz | data$mz>upper_roi_mz,]
 }
 close(pb)
 
 
 # Post-processing ----
-
 
 diagnoseWavelets <- function(roi){
   wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales = scales, wavelet = "mexh")
@@ -169,3 +122,35 @@ diagnoseWavelets <- function(roi){
   image(local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
   layout(1)
 }
+
+lmaoPlotEm <- function(data_i, default_layout=T, labels = T) {
+  Da_spread <- data_i$mz[which.max(data_i$int)]*ppm/1000000
+  if(default_layout){
+    layout(matrix(c(1,2), nrow = 2))
+  }
+  par(mar=c(0.1, 4.1, 2.1, 0.1))
+  int_colors <- hcl.colors(100, palette = "plasma")[cut(data_i$int, breaks = 100)]
+  plot(data_i$rt, data_i$mz, col=int_colors, xaxt="n", xlab="", pch=19, cex=1,
+       ylim=c(min(data_i$mz)*0.999999, max(data_i$mz)*1.000001))
+  if(labels){
+    legend("topleft", legend = paste("Min m/z:", round(min(data_i$mz), 5)))
+    legend("topright", legend = paste("Max m/z:", round(max(data_i$mz), 5)))
+    legend("bottomleft", legend = paste("Actual m/z diff:", 
+                                        round(max(data_i$mz)-min(data_i$mz), 5)))
+    legend("bottomright", legend = paste("Predicted epsilon:", round(Da_spread*2, 5)))
+  }
+  par(mar=c(4.1, 4.1, 0.1, 0.1))
+  plot(data_i$rt, data_i$int, col=int_colors, pch=19)
+  if(default_layout){
+    layout(1)
+  }
+}
+
+
+
+lmaoPlotEm(roi_list[[1]])
+diagnoseWavelets(roi_list[[1]])
+
+roi <- roi_list[[sample(length(roi_list), 1)]]
+lmaoPlotEm(roi)
+diagnoseWavelets(roi)

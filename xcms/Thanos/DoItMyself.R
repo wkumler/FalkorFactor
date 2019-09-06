@@ -23,17 +23,6 @@ ppm <- 2.5
 
 
 # Auxilary functions ----
-splitByMissedScan <- function(roi){
-  roi_encoding <- rle(rts%in%roi$rt)
-  if(roi_encoding$values[1]){
-    peak_lengths <- roi_encoding$lengths[c(T,F)]
-  } else {
-    peak_lengths <- roi_encoding$lengths[c(F,T)]
-  }
-  roi_sub_list <- split(roi, rep(1:length(peak_lengths), times = peak_lengths))
-  # Only keep segments that might contain a peak
-  roi_sub_list <- roi_sub_list[sapply(roi_sub_list, nrow)>peakwidth[1]]
-}
 
 lmaoPlotEm <- function(eic, default_layout=T, labels = T) {
   Da_spread <- eic$mz[which.max(eic$int)]*ppm/1000000
@@ -63,25 +52,89 @@ lmaoPlotEm <- function(eic, default_layout=T, labels = T) {
     layout(1)
   }
 }
-diagnoseWavelets <- function(roi){
-  wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales = scales, wavelet = "mexh")
+diagnoseROI <- function(roi){
+  roi_start_scan <- which(rts==roi[1, "rt"])-1
+  
+  # Calculate ROI "sharpness": inverse metric of signal-to-noise?
+  sharpness <- 1-summary(lm(sort(roi$int)~roi$rt))$r.squared
+  
+  # Calculate ROI actual m/z diff vs predicted epsilon
+  accuracy <- (max(roi$mz)-min(roi$mz))/
+    ((roi$mz[which.max(roi$int)]*ppm/1000000)*2)
+  
+  
+  # Wavelet transform
+  # scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
+  scales <- 1:(peakwidth[2]/2)
+  wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
   local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
+  possible_peaks <- xcms:::MSW.getRidge(local_maxima)
+  num_scales <- length(attr(possible_peaks, "scales"))
+  # Remove all peaks that have maxima in less than half the scales 
+  # ADJUST THIS LATER IF NECESSARY
+  possible_peaks <- possible_peaks[sapply(possible_peaks, length)>
+                                     (num_scales/2)]
+  # Collect ridge data on simple peaks
+  ridge_lengths <- sapply(possible_peaks, length)
+  ridge_percentages <- round(ridge_lengths/num_scales, digits = 2)
+  ridge_drift <- sapply(possible_peaks, function(x)length(unique(x)))/ridge_lengths
+  
+  # Find centers by finding the scan with the highest values to left and right
+  peak_center_scans <- sapply(possible_peaks, function(ridge_maxes){
+    wavelet_ints <- sapply(unique(ridge_maxes), function(roi_row){
+      sum(roi$int[max(1, roi_row-5):(roi_row+5)], na.rm = T)
+    })
+    unique(ridge_maxes)[which.max(wavelet_ints)]
+  }, USE.NAMES = F)
+  best_scales <- sapply(peak_center_scans, function(x){
+    scale_maxes <- as.logical(local_maxima[x,])
+    max(as.numeric(colnames(local_maxima))[scale_maxes])
+  })
+  peak_edges <- lapply(seq_along(peak_center_scans), function(x){
+    left_shoulder_offset <- peak_center_scans[x]-best_scales[x]
+    right_shoulder_offset <- peak_center_scans[x]+best_scales[x]
+    peak_edges <- xcms:::descendMinTol(roi$int, maxDescOutlier = 2,
+                         startpos = c(left_shoulder_offset, right_shoulder_offset))
+  })
+  peak_lefts <- sapply(peak_edges, `[`, 1)
+  peak_lefts[peak_lefts<1] <- 1
+  peak_rights <- sapply(peak_edges, `[`, 2)
+  peak_rights[peak_rights>nrow(roi)] <- nrow(roi)
+  roi_sub_IQR <- roi$int[roi$int<median(roi$int)+IQR(roi$int)/2]
+  roi_noise_IQR <- c(median(roi_sub_IQR), sd(roi_sub_IQR))
+  xcms_noise_baseline <- xcms:::estimateChromNoise(roi$int, trim = 0.05, 
+                                                   minPts = 3*peakwidth[1])
+  roi_noise_xcms <- xcms:::getLocalNoiseEstimate(roi$int, 1:nrow(roi), 
+                                                 6:(nrow(roi)-5),
+                                                 peakwidth*3/2, length(rts), 
+                                                 xcms_noise_baseline, 8)
+  roi_peak_scans <- unlist(lapply(seq_along(peak_lefts), function(x){
+    seq(peak_lefts[x], peak_rights[x])}))
+  roi_nonpeak_scans <- (1:nrow(roi))[-roi_peak_scans]
+  if(!length(roi_nonpeak_scans)){ # If the peak runs the whole length of the ROI
+    roi_nonpeak_scans <- c(1, nrow(roi)) # Use just first and last scan
+  }
+  roi_noise_wopeaks <- c(mean(roi$int[roi_nonpeak_scans]), 
+                         sd(roi$int[roi_nonpeak_scans]))
+  roi_nonpeak_scans <- (1:nrow(roi))[-roi_peak_scans]
+  if(length(roi_nonpeak_scans)<2){ roi_nonpeak_scans <- c(1, nrow(roi))}
+  roi_noise_wopeaks <- c(median(roi$int[roi_nonpeak_scans]), 
+                         sd(roi$int[roi_nonpeak_scans]))
+  
   
   layout(matrix(c(rep(1, 30), rep(2, 30), 0, rep(3, 28), 0), nrow = 3, byrow = T))
   par(mar=c(0.1, 4.1, 2.1, 0.1))
   plot(roi$rt, roi$int, type="l", lwd=1, xaxt="n", ylab="EIC intensity")
-  possible_peaks <- xcms:::MSW.getRidge(local_maxima)
-  possible_peaks <- possible_peaks[sapply(possible_peaks, length)>
-                                     (length(attr(possible_peaks, "scales"))/2)]
-  peak_centers <- rts[sapply(possible_peaks, function(ridge_maxes){
-    wavelet_ints <- sapply(unique(ridge_maxes), function(roi_row){
-      sum(roi_data$int[max(1, roi_row-5):(roi_row+5)], na.rm = T)
-    })
-    unique(ridge_maxes)[which.max(wavelet_ints)]
-  })+which(rts==roi[1, "rt"])-1]
-  abline(v=peak_centers)
-  
-  
+  abline(v=rts[peak_center_scans+roi_start_scan], col="red")
+  abline(v=rts[peak_rights+roi_start_scan], col="blue")
+  abline(v=rts[peak_lefts+roi_start_scan], col="blue")
+  legend("topright", legend = c(paste("IQR SNR:", 
+                                    round((max(roi$int)-roi_noise_IQR[1])/roi_noise_IQR[2])),
+                                paste("xcms SNR:",
+                                    round((max(roi$int)-roi_noise_xcms[1])/roi_noise_xcms[2])),
+                                paste("nonpeak SNR:",
+                                    round((max(roi$int)-roi_noise_wopeaks[1])/
+                                            roi_noise_wopeaks[2]))))
   par(mar=c(4.1, 4.1, 0.1, 0.1))
   plot(roi$rt, wcoef_matrix[,ncol(wcoef_matrix)], 
        xlab="Retention time (s)", ylab="Wavelet coefficient", type="n")
@@ -89,7 +142,7 @@ diagnoseWavelets <- function(roi){
     lines(roi$rt, wcoef_matrix[,i], lwd=2,
           col=rainbow(ncol(wcoef_matrix))[i])
   }
-  abline(h=0, lwd=2)
+  abline(h=0)
   par(mar=c(0.1, 4.1, 2.1, 0.1))
   image(wcoef_matrix, axes=F, col=hcl.colors(100, "Geyser"))
   min_scale <- as.numeric(min(colnames(wcoef_matrix)))
@@ -136,14 +189,18 @@ while(nrow(data)>0){
   }
   
   # Split by missed scans
-  eic_split_list <- splitByMissedScan(eic)
+  roi_encoding <- rle(rts%in%eic$rt)
+  peak_lengths <- roi_encoding$lengths[roi_encoding$values]
+  roi_sub_list <- split(eic, rep(1:length(peak_lengths), times = peak_lengths))
+  eic_split_list <- roi_sub_list[sapply(roi_sub_list, nrow)>peakwidth[1]]
   if(!length(eic_split_list)){ # If there were no reasonable ROIs found
     data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
     next
   }
 
   # Put it all together and save
-  roi_list[(length(roi_list)+1):(length(roi_list)+length(eic_split_list))] <- eic_split_list
+  roi_slot <- (length(roi_list)+1):(length(roi_list)+length(eic_split_list))
+  roi_list[roi_slot] <- eic_split_list
   data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
 }
 close(pb)
@@ -162,20 +219,16 @@ for(i in 1:length(roi_list)){
   accuracy <- (max(roi$mz)-min(roi$mz))/
     ((roi$mz[which.max(roi$int)]*ppm/1000000)*2)
   
-  # Calculate ROI noise (IQR version)
-  roi_sub_IQR <- roi$int[roi$int<IQR(roi$int)]
-  roi_background <- median(roi_sub_IQR)
-  roi_noise <- sd(roi_sub_IQR)
-  
   
   # Wavelet transform
   # scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
   scales <- 1:(peakwidth[2]/2)
   wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
-  possible_peaks <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix) %>%
-    xcms:::MSW.getRidge()
+  local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
+  possible_peaks <- xcms:::MSW.getRidge(local_maxima)
   num_scales <- length(attr(possible_peaks, "scales"))
-  # Remove all peaks that have maxima in less than half the scales ADJUST THIS LATER IF NECESSARY
+  # Remove all peaks that have maxima in less than half the scales 
+  # ADJUST THIS LATER IF NECESSARY
   possible_peaks <- possible_peaks[sapply(possible_peaks, length)>
                                      (num_scales/2)]
   # Collect ridge data on simple peaks
@@ -184,25 +237,55 @@ for(i in 1:length(roi_list)){
   ridge_drift <- sapply(possible_peaks, function(x)length(unique(x)))/ridge_lengths
   
   # Find centers by finding the scan with the highest values to left and right
-  peak_centers <- rts[sapply(possible_peaks, function(ridge_maxes){
+  peak_center_scans <- sapply(possible_peaks, function(ridge_maxes){
     wavelet_ints <- sapply(unique(ridge_maxes), function(roi_row){
       sum(roi$int[max(1, roi_row-5):(roi_row+5)], na.rm = T)
     })
     unique(ridge_maxes)[which.max(wavelet_ints)]
-  })+roi_start_scan]
+  }, USE.NAMES = F)
   
-  # Calculate peak edges
-  # left_shoulder_offset <-
-  # peak_edges <- xcms:::descendMinTol(peak_data$int, maxDescOutlier = min_peak_width,
-  #                                    startpos = c(left_shoulder_offset,
-  #                                                 right_shoulder_offset))
+  # Find the best wavelet scale for each peak 
+  # I.e. the largest one whose maxima matched data max
+  best_scales <- sapply(peak_center_scans, function(x){
+    scale_maxes <- as.logical(local_maxima[x,])
+    max(as.numeric(colnames(local_maxima))[scale_maxes])
+  })
+  
+  # Convert peak scans to retention times
+  peak_rt_centers <- rts[peak_center_scans+roi_start_scan]
+  
+  # Calculate peak edges xcms way
+  peak_edges <- lapply(seq_along(peak_center_scans), function(x){
+    left_shoulder_offset <- peak_center_scans[x]-best_scales[x]
+    right_shoulder_offset <- peak_center_scans[x]+best_scales[x]
+    xcms:::descendMinTol(roi$int, maxDescOutlier = 2,
+                         startpos = c(left_shoulder_offset, right_shoulder_offset))
+  })
+  peak_lefts <- sapply(peak_edges, `[`, 1)
+  peak_lefts[peak_lefts<1] <- 1 # Make sure they're all on the map
+  peak_rights <- sapply(peak_edges, `[`, 2)
+  peak_rights[peak_rights>nrow(roi)] <- nrow(roi) # Same as above
+  
   # Calculate ROI noise (IQR method)
   roi_sub_IQR <- roi$int[roi$int<median(roi$int)+IQR(roi$int)/2]
-  roi_background_IQR <- median(roi_sub_IQR)
-  roi_noise_IQR <- sd(roi_sub_IQR)
+  roi_noise_IQR <- c(median(roi_sub_IQR), sd(roi_sub_IQR))
   # Calculate peak noise (xcms method)
+  xcms_noise_baseline <- xcms:::estimateChromNoise(roi$int, trim = 0.05, 
+                                                   minPts = 3*peakwidth[1])
+  roi_noise_xcms <- xcms:::getLocalNoiseEstimate(roi$int, 1:nrow(roi), 
+                                                 6:(nrow(roi)-5),
+                                                 peakwidth*3/2, length(rts), 
+                                                 xcms_noise_baseline, 8)
   
   # Calculate peak noise (peak removal method)
+  roi_peak_scans <- unlist(lapply(seq_along(peak_lefts), function(x){
+    seq(peak_lefts[x], peak_rights[x])}))
+  roi_nonpeak_scans <- (1:nrow(roi))[-roi_peak_scans]
+  if(length(roi_nonpeak_scans)<2){ # If the peak runs the whole length of the ROI
+    roi_nonpeak_scans <- c(1, nrow(roi)) # Use just first and last scan
+  }
+  roi_noise_wopeaks <- c(median(roi$int[roi_nonpeak_scans]), 
+                         sd(roi$int[roi_nonpeak_scans]))
 }
 
 
@@ -213,5 +296,6 @@ lmaoPlotEm(roi_list[[1]])
 diagnoseWavelets(roi_list[[1]])
 
 roi <- roi_list[[sample(length(roi_list), 1)]]
+diagnoseROI(roi)
 lmaoPlotEm(roi)
-diagnoseWavelets(roi)
+

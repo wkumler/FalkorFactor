@@ -24,6 +24,32 @@ ppm <- 2.5
 
 # Auxilary functions ----
 
+peak <- setClass("peak", slots = list(roi_data="data.frame",
+                                      peak_data="data.frame",
+                                      start_rt="numeric",
+                                      end_rt="numeric",
+                                      width_rt="numeric",
+                                      start_scan="numeric",
+                                      end_scan="numeric",
+                                      width_scan="numeric",
+                                      height="numeric",
+                                      area_absolute="numeric",
+                                      area_above_noise="numeric",
+                                      best_wavelet="numeric",
+                                      ridge_length="numeric",
+                                      ridge_percentage="numeric",
+                                      ridge_drift="numeric",
+                                      roi_sharpness="numeric",
+                                      roi_accuracy="numeric",
+                                      roi_noise_xcms="numeric",
+                                      roi_noise_IQR="numeric",
+                                      roi_noise_wopeaks="numeric",
+                                      SNR_xcms="numeric",
+                                      SNR_IQR="numeric",
+                                      SNR_wopeaks="numeric",
+                                      coef_area = "numeric"))
+
+
 lmaoPlotEm <- function(eic, default_layout=T, labels = T) {
   Da_spread <- eic$mz[which.max(eic$int)]*ppm/1000000
   if(default_layout){
@@ -207,6 +233,8 @@ close(pb)
 
 
 
+
+
 # Peak picking ----
 for(i in 1:length(roi_list)){
   roi <- roi_list[[i]]
@@ -229,9 +257,9 @@ for(i in 1:length(roi_list)){
   num_scales <- length(attr(possible_peaks, "scales"))
   # Remove all peaks that have maxima in less than half the scales 
   # ADJUST THIS LATER IF NECESSARY
-  possible_peaks <- possible_peaks[sapply(possible_peaks, length)>
-                                     (num_scales/2)]
-  # Collect ridge data on simple peaks
+  possible_peaks <- possible_peaks[sapply(possible_peaks, length)>(num_scales/2)]
+  
+  # Collect ridge data on peaks
   ridge_lengths <- sapply(possible_peaks, length)
   ridge_percentages <- round(ridge_lengths/num_scales, digits = 2)
   ridge_drift <- sapply(possible_peaks, function(x)length(unique(x)))/ridge_lengths
@@ -251,9 +279,6 @@ for(i in 1:length(roi_list)){
     max(as.numeric(colnames(local_maxima))[scale_maxes])
   })
   
-  # Convert peak scans to retention times
-  peak_rt_centers <- rts[peak_center_scans+roi_start_scan]
-  
   # Calculate peak edges xcms way
   peak_edges <- lapply(seq_along(peak_center_scans), function(x){
     left_shoulder_offset <- peak_center_scans[x]-best_scales[x]
@@ -266,18 +291,19 @@ for(i in 1:length(roi_list)){
   peak_rights <- sapply(peak_edges, `[`, 2)
   peak_rights[peak_rights>nrow(roi)] <- nrow(roi) # Same as above
   
-  # Calculate ROI noise (IQR method)
-  roi_sub_IQR <- roi$int[roi$int<median(roi$int)+IQR(roi$int)/2]
+  # Calculate noise for the ROI as a whole
+  # (IQR method)
+  roi_sub_IQR <- roi$int[roi$int<median(roi$int)+IQR(roi$int)]
   roi_noise_IQR <- c(median(roi_sub_IQR), sd(roi_sub_IQR))
-  # Calculate peak noise (xcms method)
+  # (xcms method)
   xcms_noise_baseline <- xcms:::estimateChromNoise(roi$int, trim = 0.05, 
                                                    minPts = 3*peakwidth[1])
   roi_noise_xcms <- xcms:::getLocalNoiseEstimate(roi$int, 1:nrow(roi), 
                                                  6:(nrow(roi)-5),
                                                  peakwidth*3/2, length(rts), 
                                                  xcms_noise_baseline, 8)
-  
-  # Calculate peak noise (peak removal method)
+  if(any(roi_noise_xcms==1)){warning("Peak has a noise value of 1")}
+  # (peak removal method)
   roi_peak_scans <- unlist(lapply(seq_along(peak_lefts), function(x){
     seq(peak_lefts[x], peak_rights[x])}))
   roi_nonpeak_scans <- (1:nrow(roi))[-roi_peak_scans]
@@ -286,6 +312,28 @@ for(i in 1:length(roi_list)){
   }
   roi_noise_wopeaks <- c(median(roi$int[roi_nonpeak_scans]), 
                          sd(roi$int[roi_nonpeak_scans]))
+  
+  # Calculate absolute and relative peak area
+  peak_areas <- lapply(seq_along(peak_center_scans), function(x){
+    given_peak_scans <- peak_lefts[x]:peak_rights[x]
+    idx = 2:length(given_peak_scans)
+    y <- roi$int[given_peak_scans]
+    absolute_area <- ((given_peak_scans[idx] - given_peak_scans[idx-1]) %*% 
+                        (y[idx] + y[idx-1]))/2
+    
+    area_above_noise <- absolute_area-roi_noise_xcms[x]*length(given_peak_scans)
+    
+    return(c(absolute_area, area_above_noise))
+  })
+  absolute_areas <- sapply(peak_areas, `[[`, 1)
+  relative_areas <- sapply(peak_areas, `[[`, 2)
+  
+  # Calculate best coefficient:area estimate
+  coef_areas <- sapply(seq_along(peak_areas), function(x){
+    given_peak_scans <- peak_lefts[x]:peak_rights[x]
+    given_peak_coefs <- wcoef_matrix[given_peak_scans, ]
+    return(max(given_peak_coefs)/absolute_areas[x])
+  })
 }
 
 

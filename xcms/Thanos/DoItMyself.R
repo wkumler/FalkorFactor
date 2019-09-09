@@ -50,8 +50,8 @@ peak <- setClass("peak", slots = list(roi_data="data.frame",
                                       coef_area = "numeric"))
 
 
-lmaoPlotEm <- function(eic, default_layout=T, labels = T) {
-  Da_spread <- eic$mz[which.max(eic$int)]*ppm/1000000
+lmaoPlotEm <- function(roi, default_layout=T, labels = T) {
+  Da_spread <- roi$mz[which.max(roi$int)]*ppm/1000000
   if(default_layout){
     layout(matrix(c(1,2), nrow = 2))
   }
@@ -61,18 +61,18 @@ lmaoPlotEm <- function(eic, default_layout=T, labels = T) {
   roi_noise <- sd(roi_sub_IQR)
   
   par(mar=c(0.1, 4.1, 2.1, 0.1))
-  int_colors <- hcl.colors(100, palette = "plasma")[cut(eic$int, breaks = 100)]
-  plot(eic$rt, eic$mz, col=int_colors, xaxt="n", xlab="", pch=19, cex=1,
-       ylim=c(min(eic$mz)*0.999999, max(eic$mz)*1.000001))
+  int_colors <- hcl.colors(100, palette = "plasma")[cut(roi$int, breaks = 100)]
+  plot(roi$rt, roi$mz, col=int_colors, xaxt="n", xlab="", pch=19, cex=1,
+       ylim=c(min(roi$mz)*0.999999, max(roi$mz)*1.000001))
   if(labels){
-    legend("topleft", legend = paste("Min m/z:", round(min(eic$mz), 5)))
-    legend("topright", legend = paste("Max m/z:", round(max(eic$mz), 5)))
+    legend("topleft", legend = paste("Min m/z:", round(min(roi$mz), 5)))
+    legend("topright", legend = paste("Max m/z:", round(max(roi$mz), 5)))
     legend("bottomleft", legend = paste("Actual m/z diff:", 
-                                        round(max(eic$mz)-min(eic$mz), 5)))
+                                        round(max(roi$mz)-min(roi$mz), 5)))
     legend("bottomright", legend = paste("Predicted epsilon:", round(Da_spread*2, 5)))
   }
   par(mar=c(4.1, 4.1, 0.1, 0.1))
-  plot(eic$rt, eic$int, col=int_colors, pch=19)
+  plot(roi$rt, roi$int, col=int_colors, pch=19)
   legend("topright", legend = paste("Simple Max/Noise:", round((max(roi$int)-roi_background)/roi_noise)))
   if(default_layout){
     layout(1)

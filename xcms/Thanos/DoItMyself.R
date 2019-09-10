@@ -249,7 +249,8 @@ for(i in 1:length(roi_list)){
   
   # Wavelet transform
   # scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
-  scales <- (peakwidth[1]/2):(peakwidth[2]/2)
+  # scales <- (peakwidth[1]/2):(peakwidth[2]/2)
+  scales <- 1:(peakwidth[2]/2)
   wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
   if(length(wcoef_matrix)==1){ # If CWT returns NA because the scales suck
     next
@@ -300,7 +301,7 @@ for(i in 1:length(roi_list)){
   peak_tops <- sapply(peak_edges, function(x){
     ints <- roi$int[seq(x[1]:x[2])]
     n <- length(ints)
-    mean(sort(ints, partial=n-2)[n:(n-2)])
+    median(sort(ints, partial=n-2)[n:(n-2)])
   })
   
   # Calculate absolute and relative peak area
@@ -337,8 +338,15 @@ for(i in 1:length(roi_list)){
   peak_list[[i]] <- peaks_info
 }
 close(pb)
-peak_df <- as.data.frame(do.call(rbind, peak_list))
+peak_df <- as.data.frame(do.call(rbind, peak_list)) %>% 
+  mutate(qty=ROI_sharpness*coef_areas*peak_tops) %>%
+  arrange(desc(qty))
 print(paste("Found", nrow(peak_df), "peaks!"))
+
+
+
+
+
 
 diagnosePeaks <- function(roi_number){
   roi <- roi_list[[roi_number]]
@@ -349,6 +357,20 @@ diagnosePeaks <- function(roi_number){
   abline(v=peaks$peak_rights, col="blue")
 }
 
+
+peakCheck <- function(peak_number){
+  peak <- peak_df[peak_number,]
+  roi <- roi_list[[peak$ROI_number]]
+  plot(roi$rt, roi$int, type="l")
+  peak_roi <- filter(roi, rt>=peak$peak_lefts&rt<=peak$peak_rights)
+  lines(peak_roi$rt, peak_roi$int, col="red")
+}
+peakCheck(3)
+peakCheck(sample(nrow(peak_df), 1))
+for(i in 1:nrow(peak_df)){
+  peakCheck(i)
+  readline(prompt="Press [enter] to continue")
+}
 
 # Calculate noise for the ROI as a whole
 # (IQR method)

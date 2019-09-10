@@ -198,10 +198,10 @@ while(nrow(data)>0){
   upper_eic_mz <- point_of_interest$mz+epsilon_Da
   lower_eic_mz <- point_of_interest$mz-epsilon_Da
   eic <- filter(data, mz>lower_eic_mz & mz<upper_eic_mz)
+  data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
 
   # If the ROI can't contain a peak bc too short, remove it
   if(nrow(eic)<peakwidth[1]){
-    data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
     next
   }
   
@@ -209,8 +209,6 @@ while(nrow(data)>0){
   runs_above_prefilter <- rle(eic$int>prefilter[2])
   max_run_length <- max(runs_above_prefilter$lengths[runs_above_prefilter$values])
   if(max_run_length<prefilter[1]){
-    # Remove the ROI
-    data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
     next
   }
   
@@ -220,38 +218,42 @@ while(nrow(data)>0){
   roi_sub_list <- split(eic, rep(1:length(peak_lengths), times = peak_lengths))
   eic_split_list <- roi_sub_list[sapply(roi_sub_list, nrow)>peakwidth[1]]
   if(!length(eic_split_list)){ # If there were no reasonable ROIs found
-    data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
     next
   }
 
   # Put it all together and save
   roi_slot <- (length(roi_list)+1):(length(roi_list)+length(eic_split_list))
   roi_list[roi_slot] <- eic_split_list
-  data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
 }
 close(pb)
-
+print("Found", length(roi_list), "regions of interest! Finding peaks...")
 
 
 
 
 # Peak picking ----
+peak_list <- list()
+pb <- txtProgressBar(min = 0, max = length(roi_list), style = 3)
 for(i in 1:length(roi_list)){
+  setTxtProgressBar(pb, i)
   roi <- roi_list[[i]]
   roi_start_scan <- which(rts==roi[1, "rt"])-1
   
   # Calculate ROI "sharpness": inverse metric of signal-to-noise?
-  sharpness <- 1-summary(lm(sort(roi$int)~roi$rt))$r.squared
+  ROI_sharpness <- 1-summary(lm(sort(roi$int)~roi$rt))$r.squared
   
   # Calculate ROI actual m/z diff vs predicted epsilon
-  accuracy <- (max(roi$mz)-min(roi$mz))/
+  ROI_accuracy <- (max(roi$mz)-min(roi$mz))/
     ((roi$mz[which.max(roi$int)]*ppm/1000000)*2)
   
   
   # Wavelet transform
   # scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
-  scales <- 1:(peakwidth[2]/2)
+  scales <- (peakwidth[1]/2):(peakwidth[2]/2)
   wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
+  if(length(wcoef_matrix)==1){ # If CWT returns NA because the scales suck
+    next
+  }
   local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
   possible_peaks <- xcms:::MSW.getRidge(local_maxima)
   num_scales <- length(attr(possible_peaks, "scales"))
@@ -291,52 +293,84 @@ for(i in 1:length(roi_list)){
   peak_rights <- sapply(peak_edges, `[`, 2)
   peak_rights[peak_rights>nrow(roi)] <- nrow(roi) # Same as above
   
-  # Calculate noise for the ROI as a whole
-  # (IQR method)
-  roi_sub_IQR <- roi$int[roi$int<median(roi$int)+IQR(roi$int)]
-  roi_noise_IQR <- c(median(roi_sub_IQR), sd(roi_sub_IQR))
-  # (xcms method)
-  xcms_noise_baseline <- xcms:::estimateChromNoise(roi$int, trim = 0.05, 
-                                                   minPts = 3*peakwidth[1])
-  roi_noise_xcms <- xcms:::getLocalNoiseEstimate(roi$int, 1:nrow(roi), 
-                                                 6:(nrow(roi)-5),
-                                                 peakwidth*3/2, length(rts), 
-                                                 xcms_noise_baseline, 8)
-  if(any(roi_noise_xcms==1)){warning("Peak has a noise value of 1")}
-  # (peak removal method)
-  roi_peak_scans <- unlist(lapply(seq_along(peak_lefts), function(x){
-    seq(peak_lefts[x], peak_rights[x])}))
-  roi_nonpeak_scans <- (1:nrow(roi))[-roi_peak_scans]
-  if(length(roi_nonpeak_scans)<2){ # If the peak runs the whole length of the ROI
-    roi_nonpeak_scans <- c(1, nrow(roi)) # Use just first and last scan
-  }
-  roi_noise_wopeaks <- c(median(roi$int[roi_nonpeak_scans]), 
-                         sd(roi$int[roi_nonpeak_scans]))
+  # Calculate peak heights (max point within peak bounds)
+  peak_heights <- sapply(peak_edges, function(x)max(roi$int[seq(x[1]:x[2])]))
+  
+  # Calculate average intensity of top 3 values in peak
+  peak_tops <- sapply(peak_edges, function(x){
+    ints <- roi$int[seq(x[1]:x[2])]
+    n <- length(ints)
+    mean(sort(ints, partial=n-2)[n:(n-2)])
+  })
   
   # Calculate absolute and relative peak area
-  peak_areas <- lapply(seq_along(peak_center_scans), function(x){
+  absolute_areas <- sapply(seq_along(peak_center_scans), function(x){
     given_peak_scans <- peak_lefts[x]:peak_rights[x]
     idx = 2:length(given_peak_scans)
     y <- roi$int[given_peak_scans]
-    absolute_area <- ((given_peak_scans[idx] - given_peak_scans[idx-1]) %*% 
-                        (y[idx] + y[idx-1]))/2
-    
-    area_above_noise <- absolute_area-roi_noise_xcms[x]*length(given_peak_scans)
-    
-    return(c(absolute_area, area_above_noise))
+    return(((given_peak_scans[idx] - given_peak_scans[idx-1]) %*% 
+              (y[idx] + y[idx-1]))/2)
   })
-  absolute_areas <- sapply(peak_areas, `[[`, 1)
-  relative_areas <- sapply(peak_areas, `[[`, 2)
   
   # Calculate best coefficient:area estimate
-  coef_areas <- sapply(seq_along(peak_areas), function(x){
+  coef_areas <- sapply(seq_along(absolute_areas), function(x){
     given_peak_scans <- peak_lefts[x]:peak_rights[x]
     given_peak_coefs <- wcoef_matrix[given_peak_scans, ]
     return(max(given_peak_coefs)/absolute_areas[x])
   })
+  
+  peaks_info <- 
+  cbind(ROI_number=i,
+        peak_centers=rts[peak_center_scans+roi_start_scan],
+        peak_lefts=rts[peak_lefts+roi_start_scan], 
+        peak_rights=rts[peak_rights+roi_start_scan], 
+        peak_heights, 
+        peak_tops, 
+        absolute_areas,
+        best_scales,
+        ridge_lengths,
+        ridge_percentages,
+        ridge_drift,
+        coef_areas,
+        ROI_sharpness,
+        ROI_accuracy)
+  peak_list[[i]] <- peaks_info
+}
+close(pb)
+peak_df <- as.data.frame(do.call(rbind, peak_list))
+print(paste("Found", nrow(peak_df), "peaks!"))
+
+diagnosePeaks <- function(roi_number){
+  roi <- roi_list[[roi_number]]
+  plot(roi$rt, roi$int, type="l")
+  peaks <- filter(peak_df, ROI_number==roi_number)
+  abline(v=peaks$peak_centers, col="red")
+  abline(v=peaks$peak_lefts, col="blue")
+  abline(v=peaks$peak_rights, col="blue")
 }
 
 
+# Calculate noise for the ROI as a whole
+# (IQR method)
+roi_sub_IQR <- roi$int[roi$int<median(roi$int)+IQR(roi$int)]
+roi_noise_IQR <- c(median(roi_sub_IQR), sd(roi_sub_IQR))
+# (xcms method)
+xcms_noise_baseline <- xcms:::estimateChromNoise(roi$int, trim = 0.05, 
+                                                 minPts = 3*peakwidth[1])
+roi_noise_xcms <- xcms:::getLocalNoiseEstimate(roi$int, 1:nrow(roi), 
+                                               6:(nrow(roi)-5),
+                                               peakwidth*3/2, length(rts), 
+                                               xcms_noise_baseline, 8)
+if(any(roi_noise_xcms==1)){warning("Peak has a noise value of 1")}
+# (peak removal method)
+roi_peak_scans <- unlist(lapply(seq_along(peak_lefts), function(x){
+  seq(peak_lefts[x], peak_rights[x])}))
+roi_nonpeak_scans <- (1:nrow(roi))[-roi_peak_scans]
+if(length(roi_nonpeak_scans)<2){ # If the peak runs the whole length of the ROI
+  roi_nonpeak_scans <- c(1, nrow(roi)) # Use just first and last scan
+}
+roi_noise_wopeaks <- c(median(roi$int[roi_nonpeak_scans]), 
+                       sd(roi$int[roi_nonpeak_scans]))
 
 # Post-processing ----
 

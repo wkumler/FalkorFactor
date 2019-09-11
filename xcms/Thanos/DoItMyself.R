@@ -24,32 +24,6 @@ ppm <- 2.5
 
 # Auxilary functions ----
 
-peak <- setClass("peak", slots = list(roi_data="data.frame",
-                                      peak_data="data.frame",
-                                      start_rt="numeric",
-                                      end_rt="numeric",
-                                      width_rt="numeric",
-                                      start_scan="numeric",
-                                      end_scan="numeric",
-                                      width_scan="numeric",
-                                      height="numeric",
-                                      area_absolute="numeric",
-                                      area_above_noise="numeric",
-                                      best_wavelet="numeric",
-                                      ridge_length="numeric",
-                                      ridge_percentage="numeric",
-                                      ridge_drift="numeric",
-                                      roi_sharpness="numeric",
-                                      roi_accuracy="numeric",
-                                      roi_noise_xcms="numeric",
-                                      roi_noise_IQR="numeric",
-                                      roi_noise_wopeaks="numeric",
-                                      SNR_xcms="numeric",
-                                      SNR_IQR="numeric",
-                                      SNR_wopeaks="numeric",
-                                      coef_area = "numeric"))
-
-
 lmaoPlotEm <- function(roi, default_layout=T, labels = T) {
   Da_spread <- roi$mz[which.max(roi$int)]*ppm/1000000
   if(default_layout){

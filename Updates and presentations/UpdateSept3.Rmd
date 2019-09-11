@@ -1,0 +1,505 @@
+---
+title: "Update Sept. 3"
+author: "wkumler"
+date: "September 3, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(dplyr)
+library(xcms)
+
+load("xcms/raw_data")
+x <- raw_data %>%
+  filterMsLevel(msLevel. = 1L) %>%
+  selectFeatureData(fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided")) %>%
+  lapply(1:length(fileNames(.)), FUN=filterFile, object = .) %>%
+  `[[`(1) %>%
+  spectra()
+
+mzs <- lapply(x, mz)
+mz <- unlist(mzs, use.names = FALSE)
+int <- unlist(lapply(x, intensity), use.names = FALSE)
+rt <- unlist(lapply(x, rtime), use.names = FALSE)
+rts <- rep(rt, sapply(mzs, length))
+
+all_data <- data.frame(mz, int, rts)
+scales <- seq(1, 40, by=4)
+
+lmaoPlotEm <- function(data_i, default_layout=T, labels = T) {
+  Da_spread <- data_i$mz[which.max(data_i$int)]*ppm/1000000
+  if(default_layout){
+    layout(matrix(c(1,2), nrow = 2))
+  }
+  par(mar=c(0.1, 4.1, 2.1, 0.1))
+  int_colors <- hcl.colors(100, palette = "plasma")[cut(data_i$int, breaks = 100)]
+  plot(data_i$rt, data_i$mz, col=int_colors, xaxt="n", xlab="", pch=19, cex=1,
+       ylim=c(min(data_i$mz)*0.999999, max(data_i$mz)*1.000001))
+  if(labels){
+    legend("topleft", legend = paste("Min m/z:", round(min(data_i$mz), 5)))
+    legend("topright", legend = paste("Max m/z:", round(max(data_i$mz), 5)))
+    legend("bottomleft", legend = paste("Actual m/z diff:", 
+                                        round(max(data_i$mz)-min(data_i$mz), 5)))
+    legend("bottomright", legend = paste("Predicted epsilon:", round(Da_spread*2, 5)))
+  }
+  par(mar=c(4.1, 4.1, 0.1, 0.1))
+  plot(data_i$rt, data_i$int, col=int_colors, pch=19)
+  if(default_layout){
+    layout(1)
+  }
+}
+```
+
+## Summary
+
+1. Peakfinding algorithms are mediocre and I think I can do better
+
+2. Secret weapon: peak *scoring* system, rather than black and white filters
+
+3. Good progress with writing my own algorithm, some points of difficulty but
+no solid blocks
+
+4. Eventually, I'll need help brainstorming peak score metrics and possibly
+help looking through a whole bunch of peaks
+
+## Background
+
+So, my journey through the Ingalls Lab pipeline continues. I spent some time
+playing in the Primordial Swamp of profile mode raw data, then spent a while wandering through the Early Wastes of centroiding algorithms we're using and whether there's room for improvement, and now I've reached the Mountains of Peakpicking. Up ahead I can see the Land of Compound Annotation and the long, winding road to High-Confidence Identification through the MS2 Forest.
+
+But now, I'm still in peakpicking mode. The problem here is that the existing algorithms are mediocre at best, and highly questionable at worst. After looking at MSDIAL, XCMS, and MzMine2, I'm unhappy with the ratio of good peaks to bad ones and concerned about the abundance of missed peaks that either never get flagged as a region of interest (ROI) or are incorrectly thrown out by a bogus filter down the line.
+
+The problem is that all three peakpicking softwares return a black-and-white list of peaks without any context for quality. In an ideal world, each peak would have a quality assessment based on various metrics such as peak height, width, shape, and more exotic things like signal-to-noise, ridgeline length, coefficient:area, or sorted *R$^2$*.
+
+Such a quality metric would allow us to select only well-formed peaks, ones that the human eye would unquestionably assign a high confidence to. Perhaps we'd only take peaks with a quality metric of 90% or higher, or even look just look in detail among the top 1% for significant differences between treatments. However, there are two problems that come with such a quality metric. The first is that there aren't any existing algorithms that do this (that I know of) and the second is in assigning weights to various peak characteristics, since some metrics will be very strong predictors of peak quality, while others are terrible or even hurtful.
+
+To resolve these two problems, I've started writing my own peakfinding algorithm, and hope that we'll be able to use it to test various peak metrics and bring our peak-detection algorithms closer to what the human eye can detect.
+
+## Peakfinding algorithm progress
+
+I started out hoping that I could use xcms' algorithms with some minor tweaking, but that proved surprisingly difficult. For one, the xcms code is barely human-readable. Variables are assigned one- or two-letter names that have no relation to their function, and much of the code itself is hidden in Rcpp calls to C++ code that's unreadable. For another, there are obvious and documented problems with each step of xcms' peakfinding methodology. The region-of-interest finder doesn't respond as documented, and cuts EICs into segments whenever a single scan is missed. [Myers et al. (2017)](https://pubs.acs.org/doi/10.1021/acs.analchem.7b01069) do an excellent job of highlighting problems down the line, with xcms' various ways of filtering out the vast number of false positives that the ROI generator identifies, discussing problems with the signal-to-noise estimation and cross-unit comparisons between intensity and wavelet coefficients. Two of my favorite quotes are below.
+
+On xcms' comparison of wavelet coefficients to signal intensity:
+
+> We must note that this comparison of wavelet coefficients with lnoisemean and sdthr is not valid as it mixes two entirely separate quantities. The coefficients from a CWT are found through an integral transform which produces a quantity with different units from that of the intensities in an EIC. Even if this check correctly filters out a select few false positives, it is not a valid way of filtering and its results are unpredictable.
+
+And later, on the odd way ridgelines are also compared to signal intensity:
+
+> We do not believe that this is a meaningful comparison and have no insight into the reasoning behind it.
+
+With xcms struggling to provide a good base for the quality algorithm, I looked into MSDIAL and MzMine. Neither of these provided reasonable alternatives, both because they're written in either unpublished or inaccessible code (MSDIAL is written in C with a Windows .exe wrapper that hides the code, and MzMine is written in Java which I can't read), and because their peakfinding algorithms are equally questionable. MzMine actually uses the xcms CentWave algorithm verbatim, bringing all of its problems along with it.
+
+So I decided to write my own.
+
+So far, it's been a productive exercise. I've been working in R and re-using the functional parts of the xcms code with modifications. The general layout for peakpicking with a continuous wavelet transform is broken down below:
+
+1. Construct EICs from the centroided data. Because spectrometers collect data by scan, but EICs are constructed around a single mass, this is a non-trivial step.
+
+2. Identify "regions of interest" where peaks might be present by filtering the constructed EICs by length, missed scans, or intensity.
+
+3. Perform the wavelet transform on each region of interest, which produces a collection of smoothed peaks according to the "Mexican hat" wavelet.
+
+4. For each peak in the wavelets, consider it a possible peak and collect information about it.
+
+5. Return a list of *all* possible peaks, each with a weighted metric of quality.
+
+I'm hoping that the above process will significantly reduce the number of missed peaks while simultaneously making it much easier to avoid noise.
+
+### EIC construction and ROI identification
+
+The xcms authors describe their EIC generation algorithm in detail in their [original CentWave paper](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-9-504), but it doesn't function as they claim it does. I'm not sure if this is because of later updates to the algorithm (currently, xcms is on version 3, while the paper only describes version 1) or because the code itself is buggy. The EIC construction algorithm is difficult to debug separately from the ROI generation algorithm, so I'll talk about those two steps together and give some examples later on. The basic workflow for xcms EIC generation and ROI identification is outlined below:
+
+1. For the first scan, start a new EIC for each point.
+
+2. For the following scans, determine whether there's a point from a previous scan within the mass error of the instrument. If so, append it, because they're probably from the same mass compound.
+
+3. If an EIC is not extended (i.e. there's no mass in a given scan to append to it), call it done. If it's shorter than some number of user-defined scans, or has an intensity less than a user-defined threshold, throw it out.
+
+The above process results in data that looks like the below:
+
+```{r xcmsROI, fig.show='hold', fig.width=4}
+masses_of_interest <- c(117.0545, 117.0550)
+xlim <- c(0, 570)
+prefilter <- c(1,1)
+
+val_count <- cumsum(lengths(mzs, FALSE))
+scanindex <- as.integer(c(0, val_count[-length(val_count)]))
+scantime = rt
+scanrange <- c(1, length(scantime))
+mz_span <- c(0.0005) # Maximum spread of m/z values across a well-defined peak, plus some buffer
+ppm <- ceiling((mz_span*1000000)/132)
+peakwidth <- c(20, 80)
+min_peak_width <- min(peakwidth)/2
+#min_centroids <- max(4, min_peak_width - 2)
+min_centroids <- 9 #To parallel milliWave
+noise = 0
+suppressMessages(
+roi_list <- .Call("findmzROI", 
+                  mz, int, scanindex, 
+                  as.double(c(0, 0)), 
+                  as.integer(scanrange), 
+                  as.integer(length(scantime)), 
+                  as.double(ppm * 1e-06), 
+                  as.integer(min_centroids), 
+                  as.integer(prefilter), 
+                  as.integer(noise), PACKAGE = "xcms")
+)
+
+xcms_found_rois <- as.data.frame(do.call(rbind, roi_list))
+xcms_given_roi <- xcms_found_rois %>% 
+  filter(mzmin>masses_of_interest[1]&mzmax<masses_of_interest[2])
+will_same_roi <- all_data %>% 
+  filter(mz>masses_of_interest[1]&mz<masses_of_interest[2])
+runthings <- rle(rt%in%will_same_roi$rt)
+print(xcms_given_roi)
+
+
+
+layout(matrix(c(1,2,2,2), nrow = 4))
+int_colors <- rev(hcl.colors(100, palette = "Terrain"))[cut(will_same_roi$int, breaks = 100)]
+par(mar=c(0, 4.1, 0.1, 0.1))
+plot(will_same_roi$rt, will_same_roi$int, pch=19, cex=1, col=int_colors, 
+     xlim = xlim, ylab="Intensity", xlab="", xaxt="n")
+par(mar=c(4.1, 4.1, 0, 0.1))
+plot(will_same_roi$rt, will_same_roi$mz, pch=19, cex=1, col=int_colors,
+     ylim=c(min(will_same_roi$mz)*0.999998, max(will_same_roi$mz)*1.000001),
+     xlim=xlim, xlab = "Retention time (s)", ylab= "m/z")
+if(nrow(xcms_given_roi)){
+  for(row in 1:nrow(xcms_given_roi)){
+    rect(xleft = rt[unlist(xcms_given_roi[row, "scmin"])],
+         xright = rt[unlist(xcms_given_roi[row, "scmax"])],
+         ytop = xcms_given_roi[row, "mzmax"],
+         ybottom = xcms_given_roi[row, "mzmin"],
+         border = "red", lwd=2)
+  }
+}
+for(i in 1:length(runthings$lengths[c(T, F)])){
+  if(runthings$values[1]){
+    x0 <- rt[sum(runthings$lengths[0:(i*2-2)])]
+    if(!length(x0)){
+      x0 <- 1
+    }
+    x1 <- rt[sum(runthings$lengths[0:(i*2-1)])]
+  } else {
+    x0 <- rt[sum(runthings$lengths[1:(i*2-1)])]
+    if(!length(x0)){
+      x0 <- 1
+    }
+    x1 <- rt[sum(runthings$lengths[1:(i*2)])]
+  }
+  arrows(x0 = x0, x1 = x1,
+         y0 = min(will_same_roi$mz)*0.999999,
+         y1 = min(will_same_roi$mz)*0.999999,
+         code = 3, angle = 90)
+}
+
+prefilter <- c(10,10000)
+
+val_count <- cumsum(lengths(mzs, FALSE))
+scanindex <- as.integer(c(0, val_count[-length(val_count)]))
+scantime = rt
+scanrange <- c(1, length(scantime))
+mz_span <- c(0.0005) # Maximum spread of m/z values across a well-defined peak, plus some buffer
+ppm <- ceiling((mz_span*1000000)/132)
+peakwidth <- c(20, 80)
+min_peak_width <- min(peakwidth)/2
+#min_centroids <- max(4, min_peak_width - 2)
+min_centroids <- 9 #To parallel milliWave
+noise = 0
+
+suppressMessages(
+roi_list <- .Call("findmzROI", 
+                  mz, int, scanindex, 
+                  as.double(c(0, 0)), 
+                  as.integer(scanrange), 
+                  as.integer(length(scantime)), 
+                  as.double(ppm * 1e-06), 
+                  as.integer(min_centroids), 
+                  as.integer(prefilter), 
+                  as.integer(noise), PACKAGE = "xcms")
+)
+
+xcms_found_rois <- as.data.frame(do.call(rbind, roi_list))
+xcms_given_roi <- xcms_found_rois %>% 
+  filter(mzmin>masses_of_interest[1]&mzmax<masses_of_interest[2])
+will_same_roi <- all_data %>% 
+  filter(mz>masses_of_interest[1]&mz<masses_of_interest[2])
+runthings <- rle(rt%in%will_same_roi$rt)
+
+
+
+layout(matrix(c(1,2,2,2), nrow = 4))
+int_colors <- rev(hcl.colors(100, palette = "Terrain"))[cut(will_same_roi$int, breaks = 100)]
+par(mar=c(0, 4.1, 0.1, 0.1))
+plot(will_same_roi$rt, will_same_roi$int, pch=19, cex=1, col=int_colors, 
+     xlim = xlim, ylab="Intensity", xlab="", xaxt="n")
+par(mar=c(4.1, 4.1, 0, 0.1))
+plot(will_same_roi$rt, will_same_roi$mz, pch=19, cex=1, col=int_colors,
+     ylim=c(min(will_same_roi$mz)*0.999998, max(will_same_roi$mz)*1.000001),
+     xlim=xlim, xlab = "Retention time (s)", ylab= "m/z")
+if(nrow(xcms_given_roi)){
+  for(row in 1:nrow(xcms_given_roi)){
+    rect(xleft = rt[unlist(xcms_given_roi[row, "scmin"])],
+         xright = rt[unlist(xcms_given_roi[row, "scmax"])],
+         ytop = xcms_given_roi[row, "mzmax"],
+         ybottom = xcms_given_roi[row, "mzmin"],
+         border = "red", lwd=2)
+  }
+}
+for(i in 1:length(runthings$lengths[c(T, F)])){
+  if(runthings$values[1]){
+    x0 <- rt[sum(runthings$lengths[0:(i*2-2)])]
+    if(!length(x0)){
+      x0 <- 1
+    }
+    x1 <- rt[sum(runthings$lengths[0:(i*2-1)])]
+  } else {
+    x0 <- rt[sum(runthings$lengths[1:(i*2-1)])]
+    if(!length(x0)){
+      x0 <- 1
+    }
+    x1 <- rt[sum(runthings$lengths[1:(i*2)])]
+  }
+  arrows(x0 = x0, x1 = x1,
+         y0 = min(will_same_roi$mz)*0.999999,
+         y1 = min(will_same_roi$mz)*0.999999,
+         code = 3, angle = 90)
+}
+```
+
+This is a single EIC from the Falkor data, arbitrarily chosen for illustration purposes. The red boxes denote regions of interest: the upper and lower bounds are the largest and smallest masses found, and the left and right edges are the retention time of the region. The black segments at the bottom are my own addition, to denote continuous scan regions (areas without any missed scans) and highlight the way xcms ends a region of interest after a single missed scan. The right image is identical to the first one, except that a logical prefilter (10 scans, 10,000 intensity) has been applied so some ROIs have been discarded. Some experimentation has shown the intensity prefilter to be seriously buggy.
+
+The MzMine algorithm, produced by the Du lab, provides some improvements to the xcms one. For one, it begins each EIC with the point of highest intensity - and therefore, in theory, the lowest error. They also don't slice the EIC if it misses a scan, but are more forgiving and accepting of the realities of mass-spec data. This algorithm was also discussed in detail because it uses instrument m/z instead of ppm, which the authors claim is a significant improvement *if one single mass tolerance is to be used
+for all of the m/z values in a data file.*
+
+My own algorithm replaces the initial xcms one, but includes the improvements from the MzMine and takes it a step further. My algorithm defines the mass slice by using the highest intensity mass and the instrument's documented ppm. This accounts for the fact that higher masses have larger mass windows, and avoids the problems inherent in using a single mass value for an entire file (i.e. accidentally binning together small masses and artificially slicing large masses). This algorithm is also reasonably fast, although not comparable to the fully optimized C code used in the original xcms. If this ends up becoming a bottleneck for processing speed (unlikely), I can write it in C++ for an equivalent speed upgrade.
+
+My algorithm also doesn't slice the EIC in the retention time domain at all - I'm completely forgiving of missed scans. I think this is overly optimistic, but would like some feedback on how often we see peaks with missed scans (if at all, given that our previous algorithms have thrown these out or artificially separated them). In the end, only EICs too short to contain a peak (less than user-provided minimum peakwidth) are not considered for the rest of the algorithm. This method therefore preserves all true peaks.
+
+### Continous wavelet transform (CWT)
+
+Now that EICs have been constructed, we can apply the wavelet transform to convert the spiky, noisy peaks into smooth wavelets at a variety of scales. The mother wavelet for the CWT is the Ricker Wavelet, also known as the Mexican Hat wavelet because of its shape. The base equation:
+
+$$(1-x^2)*e^\frac{-x^2}{2}$$
+
+And the wavelet plotted at a variety of scales:
+
+```{r, fig.height=1.5, fig.align='center'}
+par(mfrow=c(1,3))
+
+xvals <- seq(-6, 6, length.out = 256)
+yvals <- (1-xvals^2)*exp((-xvals^2)/2)
+par(mar=c(0.1, 0.1, 0.1, 0.1))
+plot(xvals, yvals, type="l", xaxt="n", yaxt="n", ylab="", xlab="")
+
+yvals <-  seq(-6, 6, length.out = 128)
+yvals <- c(rep(0, 64), (1-yvals^2)*exp((-yvals^2)/2), rep(0, 64))
+par(mar=c(0.1, 0.1, 0.1, 0.1))
+plot(xvals, yvals, type="l", xaxt="n", yaxt="n", ylab="", xlab="")
+
+yvals <-  seq(-6, 6, length.out = 64)
+yvals <- c(rep(0, 96), (1-yvals^2)*exp((-yvals^2)/2), rep(0, 96))
+par(mar=c(0.1, 0.1, 0.1, 0.1))
+plot(xvals, yvals, type="l", xaxt="n", yaxt="n", ylab="", xlab="")
+```
+
+There's a lot of scary integral calculus I don't understand that's involved in matching the mother wavelet to the actual data, but the magical R function is *convolve*, which I believe slides the mother wavelet across the entire EIC and reports a best-fit metric.
+
+The output of the CWT is essentially a smoothed EIC at a wide variety of smoothing levels. This is a useful tactic because true peaks will produce local maxima in the smoothed wavelets at most scales, while false positives will only show up in one or two. Check out the image below for a visual:
+
+```{r}
+roi <- all_data %>% 
+  filter(mz>90.0910&mz<90.0925)
+
+wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales = scales, wavelet = "mexh")
+local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
+
+layout(matrix(c(1,1,1,1,1,0,2,2,2,2,2,0), nrow = 2, byrow = T))
+par(mar=c(0.1, 4.1, 2.1, 0.1))
+plot(roi$rt, roi$int, type="l", lwd=1, xaxt="n", ylab="EIC intensity",
+     xlim=c(200,800))
+par(mar=c(4.1, 4.1, 0.1, 0.1))
+plot(roi$rt, wcoef_matrix[,ncol(wcoef_matrix)], 
+     xlab="Retention time (s)", ylab="Wavelet coefficient", type="n",
+     xlim=c(200,800))
+for(i in ncol(wcoef_matrix):1){
+  lines(roi$rt, wcoef_matrix[,i], lwd=2,
+        col=rainbow(ncol(wcoef_matrix))[i])
+}
+abline(h=0, lwd=1)
+legend("right", legend = paste(colnames(wcoef_matrix)), 
+       col = rainbow(10),
+       lwd=2,title = "Wavelet Scale")
+```
+
+There's some discussion about what wavelet scales are the best to use, and I don't really have much to contribute to it. xcms uses oddly determined scales that are essentially proportional to half the min/max peak width (a peakwidth argument of (20, 80) will produce scales from 11 to 44). xcms also throws out many of the higher wavelet values if they're too broad for the EIC; only very long EICs make it up to 44. MzMine uses scales between 1 and 10, although I haven't looked through their algorithms to make sure that the scaling is the same. For now, I'm planning to stick with the xcms default of half the min/max peak width.
+
+### Collect peak information
+
+Now that we've got the wavelets, we can collect information from every place that there's a local maximum in the wavelets. This is *certainly* an overestimate of all the peaks that will eventually be found, as the small wavelets tend to vary almost as much as the noise does. However, collecting information about each one of these allows us to make sure that no peak is left behind, and we can apply strong filters without worrying about eliminating true peaks.
+
+The next bit of information to collect, and the basis for one of the strongest filters we can apply, are the ridgelines. These ridgelines are traces of the local maxima in the wavelets, essentially finding areas where the local maxima agree - and where there's likely to be a true peak. The image below visualizes the wavelets from "above", and the overlaid white lines denote ridgeline traces. Longer ridgelines generally correlate with true peaks.
+
+```{r ridgelines, fig.align='center'}
+par(mar=c(3.1, 4.1, 0.1, 0.1))
+layout(matrix(c(1,1,1,1,1,0,2,2,2,2,2,0), nrow = 2, byrow = T))
+plot(roi$rt, wcoef_matrix[,ncol(wcoef_matrix)], 
+     xlab="Retention time (s)", ylab="Wavelet coefficient", type="n",
+     xlim=c(200,800))
+for(i in ncol(wcoef_matrix):1){
+  lines(roi$rt, wcoef_matrix[,i], lwd=2,
+        col=rainbow(ncol(wcoef_matrix))[i])
+}
+abline(h=0, lwd=1)
+legend("right", legend = paste(colnames(wcoef_matrix)), 
+       col = rainbow(10),
+       lwd=2,title = "Wavelet Scale")
+
+image(wcoef_matrix[225:850,], axes=F, col=hcl.colors(100))
+min_scale <- as.numeric(min(colnames(wcoef_matrix)))
+yax <- pretty(as.numeric(colnames(wcoef_matrix)))
+axis(side = 2, at = yax/max(yax), labels = yax, las=1, line = 1.7)
+mtext(text = "Wavelet scale", side = 2, line = 4)
+image(local_maxima[225:850,], add=T, col=c("#FFFFFF00", "#FFFFFFFF"))
+
+scene = list(camera = list(eye = list(x = -2, y = 0.1, z = 0.5)),
+             yaxis = list(autorange = "reversed", title = "Retention time"),
+             xaxis = list(title = "Wavelet scale", 
+                          ticktext = list(colnames(wcoef_matrix)), 
+                          tickvals = list(seq(0, 9, length.out = ncol(wcoef_matrix))),
+                          tickmode = "array"),
+             zaxis = list(title = "Wavelet intensity"))
+plotly::plot_ly(z = ~wcoef_matrix[225:850,], hoverinfo='skip') %>%
+  plotly::add_surface(hoverinfo='skip', showscale=F, showlegend=F) %>%
+  plotly::layout(title = "3D rendering of wavelet coefficients", 
+                 scene = scene)
+```
+
+These ridgelines are helpful because they're longest when there's a true signal in the data, and many false peaks can be removed or flagged as low quality because the ridgeline isn't long enough. The amount of "wander" can also be a good indicator of a true peak, as true peaks have very little wander but false ridges will often deviate significantly from their original value.
+
+#### xcms peak filters
+
+xcms uses five filters after EIC construction to identify "true" peaks:
+
+1. Baseline check: xcms checks to make sure a certain number of continuous peaks are above a given threshold, otherwise the peak is discarded. This is different from the prefilter provided to the EIC constructor, however, and the baseline is constructed in a strange way.
+
+2. Signal-to-noise ratio: xcms checks that the max peak height minus the baseline, divided by the SD of the nearby noise, is above a user-provided value (default 10). This is problematic for a variety of reasons discussed in Myers et al (2017), but the largest of which is its tendency to set the noise value to 1, artificially inflating the signal-to-noise to enormous values.
+
+3. First wavelet check: xcms checks if the wavelet coefficients are also above the noise level. This isn't a valid check because the two quantities can't be compared directly; the wavelets have integrated units of intensity, and shouldn't be directly subtracted from the value.
+
+4. Ridgeline check: xcms doesn't filter at all by ridgeline length, but instead weirdly grabs the lowest intensity ridgeline and checks whether it exceeds a certain intensity threshold. This check alone is responsible for several false negatives I've found just browsing through the data.
+
+5. Final signal-to-noise check: xcms checks the intensity at each of the local maxima within a wavelet to ensure that at least one of them exceeds the signal-to-noise ratio.
+
+6. (Optional) Gaussian shape: xcms can optionally check to see how closely the peak represents a Gaussian distribution, and will report this score in the final peak information but does not filter peaks directly based on it.
+
+The above filters are weak, at best, and eliminate many true peaks while preserving many false positives, often with a deceptively high signal-to-noise ratio. Many of these problems cascade from the initial noise estimate, which is especially buggy but *must* be robust if so much depends on it.
+
+#### MzMine peak filters
+
+MzMine, on the other hand, does a better job of filtering out peaks. To begin with, it uses a complex (and computationally intensive) method to estimate local noise, with sliding windows around the detected peak edges. It also handles the ridgelines better.
+
+The peak filters I've been able to discover in the code are as follows:
+
+1. Ridgeline check: Ridgelines must be found in 7/10 scales, and cannot be missing more than 2.
+
+2. Wavelet coefficient filter: After peak area is estimated using the above noise value, the largest wavelet coefficient is divided by the peak area. Large values correspond to peaks similar in shape to the wavelet. MzMine provides this information at the end, but does not eliminate peaks on any given value. The authors note that "This is beneficial for finding messy low intensity peaks but can also be problematic if the area is so small it results in the detection of a peak with a very bad shape."
+
+3. Minimum peak height: Similar to the prefilter, peaks with a maximum height below a user-provided value can be optionally removed.
+
+## Proposed metrics for my algorithm
+
+It's unclear to me why both of these algorithms use such strong filters to throw out peaks. Anything that serves as a "filter" could be just as easily provided to the end user as a value, and the user could then sort or filter themselves after interaction with the data and perhaps by looking at the peaks that are on the edge. This tendency to remove peaks behind the scenes and present peaks in black-and-white is likely responsible for an unfairly high confidence in peak annotation and later interpretation, especially since this peak-detection step occurs so early in the pipeline. One possible reason for this is computational time; by running every possible peak all the way through the process, the processing will take longer. However, this is difficult to justify in an age of powerful computers and cloud hosting. Even if the algorithms took several days to run, that time is a small consideration in the larger scheme of data collection and processing, especially in oceanography (rather than, say, pharmaceuticals where tens of thousands of samples might be produced every day).
+
+Far more useful would be a scoring system that takes into account various metrics of peak quality, possibly to filter out peaks on, or alternatively to return a single, weighted metric of quality from which only the most confident peaks can be selected.
+
+To this end, I've been writing my own algorithm with a mind toward removing an absolute minimum of true peaks. This algorithm will go through and report many metrics for each possible peak, which can then be compared to a human-generated list of good and bad peaks to see which metrics correlate most strongly with what the human eye is doing when picking out good and bad peaks.
+
+As of right now, the complete list of metrics:
+
+1. Peak width
+
+2. Peak height
+
+3. Peak area (integrated from zero)
+
+4. Peak area (integrated from background)
+
+5. Signal to noise ($\frac{\text{max peakheight}-\text{baseline average}}{\text{baseline SD}}$)
+
+  - According to xcms (shrink EIC, then remove top and bottom 5%)
+  
+  - According to MzMine (sliding windows)
+  
+  - Simple SD within EIC (no points removed)
+  
+  - IQR method (remove upper quartile)
+
+6. Peak consistency ($\frac{\text{missed scans}}{\text{EIC length}}$)
+
+7. Gaussian peak shape
+
+8. Peak kurtosis
+
+9. Ridgeline length ($\frac{\text{length}}{\text{number of scales}}$)
+
+10. Ridgeline wander ($\frac{\text{ridgeline length}}{\text{ridgeline deviation}}$)
+
+11. MzMine coefficient:area metric
+
+12. xcms filters:
+
+  - Continuous points above threshold
+  
+  - First wavelet check
+  
+  - Second wavelet check
+  
+  - Final intensity check
+
+13. $R^2$ of sorted intensity\*
+
+14. Others???
+
+\* I've got a pet theory that says that sorting the EIC by intensity, then taking its $R^2$ will be a good way to filter out noise. Noise tends to be uniformly distributed, so a sorted noise will have an $R^2$ close to 1. Peaks, on the other hand, create weird shapes when sorted, so they'll have a much lower correlation coefficient:
+
+```{r pet}
+layout(matrix(1:6, nrow=2, byrow = F))
+
+par(mar=c(4.1, 4.1, 0.1, 0.1))
+
+samplenoise <- all_data %>% filter(mz>135.05&mz<135.06) %>% arrange(rts)
+plot(samplenoise$rts, samplenoise$int, type="l", xlab="", ylab="Intensity")
+xvals <- as.integer(row.names(samplenoise))
+plot(sort(samplenoise$int)~xvals, ylab="Sorted intensity", xlab="")
+model <- lm(sort(samplenoise$int)~xvals)
+abline(model, col="red", lwd=2)
+legend("topright", legend = paste("R^2", summary(model)$r.squared))
+
+samplepeak <- all_data %>% filter(mz>135&mz<135.04) %>% arrange(rts)
+plot(samplepeak$rts, samplepeak$int, type="l", xlab="Retention time (s)", ylab="")
+xvals <- as.integer(row.names(samplepeak))
+plot(sort(samplepeak$int)~xvals, xlab="Sorted scan number", ylab="")
+model <- lm(sort(samplepeak$int)~xvals)
+abline(model, col="red", lwd=2)
+legend("topright", legend = paste("R^2", summary(model)$r.squared))
+
+samplepeak <- all_data %>% filter(mz>135.04&mz<135.05) %>% arrange(rts)
+plot(samplepeak$rts, samplepeak$int, type="l", xlab="", ylab="")
+xvals <- as.integer(row.names(samplepeak))
+plot(sort(samplepeak$int)~xvals, xlab="", ylab="")
+model <- lm(sort(samplepeak$int)~xvals)
+abline(model, col="red", lwd=2)
+legend("topright", legend = paste("R^2", summary(model)$r.squared))
+```
+
+There are a lot of other peak metrics, and some more closely connected to calculating derivatives and second derivates like MSDIAL does (as far as I can tell) that would also be good to include, but I need to finish the algorithm first.
+
+## Help from the lab
+
+Sometime soon, it'd be great to get help from the lab as a whole brainstorming other metrics to score peaks on. Everyone's had at least some exposure to what good peaks look like, and we've all got a general sense of how our brains pick out good peaks so I'm hoping people will be happy to help me think about what other things we should measure.
+
+Finally, the last piece of this puzzle will be a big collection of possible peaks that have been manually tagged as "good" or "bad". I'm planning to write a nice GUI that'll present potential peaks one at a time with "Good", "Bad", and "Meh" buttons. Each peak that shows up will have its metrics tracked, and in the end it'll all hopefully go into one big multivariate regression that provides a relative score for each metric. Repeated measurements of the same peak by different people would be especially strong, so I'd like to buy the lab pizza for lunch some day and get their help for an hour to classify peaks.
+

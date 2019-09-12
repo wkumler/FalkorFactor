@@ -52,7 +52,7 @@ lmaoPlotEm <- function(roi, default_layout=T, labels = T) {
     layout(1)
   }
 }
-diagnoseROI <- function(roi){
+diagnoseROI <- function(roi, default_layout=T){
   roi_start_scan <- which(rts==roi[1, "rt"])-1
   
   # Calculate ROI "sharpness": inverse metric of signal-to-noise?
@@ -66,7 +66,7 @@ diagnoseROI <- function(roi){
   # Wavelet transform
   # scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
   scales <- 1:(peakwidth[2]/2)
-  wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
+  wcoef_matrix <- round(xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh"))
   local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
   possible_peaks <- xcms:::MSW.getRidge(local_maxima)
   num_scales <- length(attr(possible_peaks, "scales"))
@@ -121,8 +121,9 @@ diagnoseROI <- function(roi){
   roi_noise_wopeaks <- c(median(roi$int[roi_nonpeak_scans]), 
                          sd(roi$int[roi_nonpeak_scans]))
   
-  
-  layout(matrix(c(rep(1, 30), rep(2, 30), 0, rep(3, 28), 0), nrow = 3, byrow = T))
+  if(default_layout){
+    layout(matrix(c(rep(1, 30), rep(2, 30), 0, rep(3, 28), 0), nrow = 3, byrow = T))
+  }
   par(mar=c(0.1, 4.1, 2.1, 0.1))
   plot(roi$rt, roi$int, type="l", lwd=1, xaxt="n", ylab="EIC intensity")
   abline(v=rts[peak_center_scans+roi_start_scan], col="red")
@@ -135,7 +136,8 @@ diagnoseROI <- function(roi){
                                 paste("nonpeak SNR:",
                                     round((max(roi$int)-roi_noise_wopeaks[1])/
                                             roi_noise_wopeaks[2]))))
-  par(mar=c(4.1, 4.1, 0.1, 0.1))
+  #par(mar=c(4.1, 4.1, 0.1, 0.1))
+  par(mar=c(0.1, 4.1, 0.1, 0.1))
   plot(roi$rt, wcoef_matrix[,ncol(wcoef_matrix)], 
        xlab="Retention time (s)", ylab="Wavelet coefficient", type="n")
   for(i in ncol(wcoef_matrix):1){
@@ -145,14 +147,32 @@ diagnoseROI <- function(roi){
   abline(h=0)
   par(mar=c(0.1, 4.1, 2.1, 0.1))
   image(wcoef_matrix, axes=F, col=hcl.colors(100, "Geyser"))
-  min_scale <- as.numeric(min(colnames(wcoef_matrix)))
-  yax <- pretty(colnames(wcoef_matrix))-min_scale
-  axis(side = 2, at = yax/max(yax), labels = yax+min_scale, las=1, line = 1.7)
-  mtext(text = "Wavelet scale", side = 2, line = 4)
+  # min_scale <- as.numeric(min(colnames(wcoef_matrix)))
+  # yax <- pretty(colnames(wcoef_matrix))-min_scale
+  # axis(side = 2, at = yax/max(yax), labels = yax+min_scale, las=1, line = 1.7)
+  # mtext(text = "Wavelet scale", side = 2, line = 4)
   image(local_maxima, add=T, col=c("#FFFFFF00", "#000000FF"))
-  layout(1)
+  if(default_layout){
+    layout(1)
+  }
   par(mar=c(4.1, 4.1, 0.1, 0.1))
 }
+diagnosePeaks <- function(roi_number){
+  roi <- roi_list[[roi_number]]
+  plot(roi$rt, roi$int, type="l")
+  peaks <- filter(peak_df, ROI_number==roi_number)
+  abline(v=peaks$peak_centers, col="red")
+  abline(v=peaks$peak_lefts, col="blue")
+  abline(v=peaks$peak_rights, col="blue")
+}
+peakCheck <- function(peak_number){
+  peak <- peak_df[peak_number,]
+  roi <- roi_list[[peak$ROI_number]]
+  plot(roi$rt, roi$int, type="l")
+  peak_roi <- filter(roi, rt>=peak$peak_lefts&rt<=peak$peak_rights)
+  lines(peak_roi$rt, peak_roi$int, col="red")
+}
+
 
 
 
@@ -312,41 +332,14 @@ for(i in 1:length(roi_list)){
   peak_list[[i]] <- peaks_info
 }
 close(pb)
-peak_df <- as.data.frame(do.call(rbind, peak_list)) %>% 
-  mutate(qty=ROI_sharpness*coef_areas*peak_tops) %>%
-  arrange(desc(qty))
+peak_df <- as.data.frame(do.call(rbind, peak_list))
 print(paste("Found", nrow(peak_df), "peaks!"))
 
 
 
 
 
-
-diagnosePeaks <- function(roi_number){
-  roi <- roi_list[[roi_number]]
-  plot(roi$rt, roi$int, type="l")
-  peaks <- filter(peak_df, ROI_number==roi_number)
-  abline(v=peaks$peak_centers, col="red")
-  abline(v=peaks$peak_lefts, col="blue")
-  abline(v=peaks$peak_rights, col="blue")
-}
-
-
-peakCheck <- function(peak_number){
-  peak <- peak_df[peak_number,]
-  roi <- roi_list[[peak$ROI_number]]
-  plot(roi$rt, roi$int, type="l")
-  peak_roi <- filter(roi, rt>=peak$peak_lefts&rt<=peak$peak_rights)
-  lines(peak_roi$rt, peak_roi$int, col="red")
-}
-peakCheck(3)
-peakCheck(sample(nrow(peak_df), 1))
-for(i in 1:nrow(peak_df)){
-  peakCheck(i)
-  readline(prompt="Press [enter] to continue")
-}
-
-# Calculate noise for the ROI as a whole
+# Noise estimation ----
 # (IQR method)
 roi_sub_IQR <- roi$int[roi$int<median(roi$int)+IQR(roi$int)]
 roi_noise_IQR <- c(median(roi_sub_IQR), sd(roi_sub_IQR))
@@ -357,7 +350,6 @@ roi_noise_xcms <- xcms:::getLocalNoiseEstimate(roi$int, 1:nrow(roi),
                                                6:(nrow(roi)-5),
                                                peakwidth*3/2, length(rts), 
                                                xcms_noise_baseline, 8)
-if(any(roi_noise_xcms==1)){warning("Peak has a noise value of 1")}
 # (peak removal method)
 roi_peak_scans <- unlist(lapply(seq_along(peak_lefts), function(x){
   seq(peak_lefts[x], peak_rights[x])}))
@@ -368,12 +360,27 @@ if(length(roi_nonpeak_scans)<2){ # If the peak runs the whole length of the ROI
 roi_noise_wopeaks <- c(median(roi$int[roi_nonpeak_scans]), 
                        sd(roi$int[roi_nonpeak_scans]))
 
+
+
 # Post-processing ----
+layout(matrix(c(rep(1, 6), rep(2, 3), rep(3, 3), rep(4, 4), rep(5, 4), rep(6, 4)), ncol = 2))
 
-lmaoPlotEm(roi_list[[1]])
-diagnoseWavelets(roi_list[[1]])
+peak <- 1
+peakCheck(peak)
+lmaoPlotEm(roi_list[[peak_df[peak,]$ROI_number]], default_layout = F)
+diagnoseROI(roi_list[[peak_df[peak,]$ROI_number]], default_layout = F)
 
-roi <- roi_list[[sample(length(roi_list), 1)]]
-diagnoseROI(roi)
-lmaoPlotEm(roi)
+peak <- 3
+peakCheck(peak)
+lmaoPlotEm(roi_list[[peak_df[peak,]$ROI_number]], default_layout = F)
+diagnoseROI(roi_list[[peak_df[peak,]$ROI_number]], default_layout = F)
 
+for(i in sample(1:nrow(peak_df), 1)){
+  peak <- i
+  peakCheck(peak)
+  diagnosePeaks(peak_df[peak,]$ROI_number)
+  lmaoPlotEm(roi_list[[peak_df[peak,]$ROI_number]], default_layout = F)
+  diagnoseROI(roi_list[[peak_df[peak,]$ROI_number]], default_layout = F)
+  
+  readline(prompt="Press [enter] to continue")
+}

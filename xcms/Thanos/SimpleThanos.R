@@ -278,7 +278,8 @@ for(i in 1:length(eic_list)){
               "Peak_ridge_drift"=peak_k@ridge_drift,
               "Peak_linearity"=peak_k@linearity,
               "Peak_coef_fit"=peak_k@coef_fit,
-              "Peak_sigma_star"=peak_k@sigma_star)
+              "Peak_sigma_star"=peak_k@sigma_star,
+              "Peak_norm_sigma_star"=peak_k@norm_sigma_star)
     }
     roi_peak_df <- as.data.frame(do.call(rbind, roi_peak_list))
     eic_peak_list[[j]] <- roi_peak_df
@@ -288,3 +289,4 @@ for(i in 1:length(eic_list)){
 }
 close(pb)
 all_peak_df <- do.call(rbind, all_peak_list)
+

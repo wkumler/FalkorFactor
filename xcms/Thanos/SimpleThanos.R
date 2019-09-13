@@ -263,7 +263,7 @@ for(i in 1:length(eic_list)){
       peak_k@norm_sigma_star <- peak_k@sigma_star/(max(roi$mz)-min(roi$mz))
       
       roi_peak_list[[k]] <- 
-        cbind("Peak_id"=paste(i, j, k, sep = "."),
+        list("Peak_id"=paste(i, j, k, sep = "."),
               "Peak_center"=rts[peak_k@center+roi_start_scan], 
               "Peak_height"=peak_k@height, 
               "Peak_width"=peak_k@width*mean(diff(rts)), 
@@ -279,14 +279,24 @@ for(i in 1:length(eic_list)){
               "Peak_linearity"=peak_k@linearity,
               "Peak_coef_fit"=peak_k@coef_fit,
               "Peak_sigma_star"=peak_k@sigma_star,
-              "Peak_norm_sigma_star"=peak_k@norm_sigma_star)
+              "Peak_norm_sigma_star"=peak_k@norm_sigma_star,
+              "EIC_ints"=eic$int,
+              "EIC_rts"=eic$rt,
+              "Peak_ints"=peak_ints,
+              "Peak_rts"=rts[(peak_k@scan_start:peak_k@scan_end)-1])
     }
-    roi_peak_df <- as.data.frame(do.call(rbind, roi_peak_list))
-    eic_peak_list[[j]] <- roi_peak_df
+    eic_peak_list[[j]] <- roi_peak_list
   }
-  eic_peak_df <- do.call(rbind, eic_peak_list)
-  all_peak_list[[i]] <- eic_peak_df
+  all_peak_list[[i]] <- eic_peak_list
 }
 close(pb)
-all_peak_df <- do.call(rbind, all_peak_list)
 
+peakCheck <- function(peak_id){
+  idxs <- as.numeric(strsplit(peak_id, "\\.")[[1]])
+  plot(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$EIC_rts,
+       all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$EIC_ints,
+       type="l", lwd=2, ylim=c(0,1000000))
+  lines(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$Peak_rts,
+        all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$Peak_ints,
+        lwd=2, col="red")
+}

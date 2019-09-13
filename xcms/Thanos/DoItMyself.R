@@ -19,7 +19,6 @@ int <- unlist(lapply(x, intensity), use.names = FALSE)
 rts <- unlist(lapply(x, rtime))
 rt <- rep(rts, sapply(mzs, length))
 all_data <- data.frame(mz, int, rt)
-ppm <- 2.5
 
 
 # Auxilary functions ----
@@ -66,7 +65,7 @@ diagnoseROI <- function(roi, default_layout=T){
   # Wavelet transform
   # scales <- seq(1, 2^ceiling(log2(length(roi$int)))/12, length.out = 11)
   scales <- 1:(peakwidth[2]/2)
-  wcoef_matrix <- round(xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh"))
+  wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
   local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
   possible_peaks <- xcms:::MSW.getRidge(local_maxima)
   num_scales <- length(attr(possible_peaks, "scales"))
@@ -93,7 +92,7 @@ diagnoseROI <- function(roi, default_layout=T){
   peak_edges <- lapply(seq_along(peak_center_scans), function(x){
     left_shoulder_offset <- peak_center_scans[x]-best_scales[x]
     right_shoulder_offset <- peak_center_scans[x]+best_scales[x]
-    peak_edges <- xcms:::descendMinTol(roi$int, maxDescOutlier = 2,
+    peak_edges <- xcms:::descendMinTol(roi$int, maxDescOutlier = 1,
                          startpos = c(left_shoulder_offset, right_shoulder_offset))
   })
   peak_lefts <- sapply(peak_edges, `[`, 1)
@@ -179,11 +178,14 @@ peakCheck <- function(peak_number){
 # Generate ROI list ----
 peakwidth <- c(20, 80)
 prefilter <- c(1, 1)
+ppm <- 2.5
 
 data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
 pb <- txtProgressBar(min = 0, max = 1, style = 3)
 roi_list <- list()
+eic_roi_list <- list()
+eic_num <- 1
 data_start_length <- nrow(data)
 while(nrow(data)>0){
   setTxtProgressBar(pb, 1-(sqrt(nrow(data))/sqrt(data_start_length)))
@@ -194,7 +196,7 @@ while(nrow(data)>0){
   eic <- filter(data, mz>lower_eic_mz & mz<upper_eic_mz)
   data <- data[data$mz<lower_eic_mz | data$mz>upper_eic_mz,]
 
-  # If the ROI can't contain a peak bc too short, remove it
+  # If the EIC can't contain a peak bc too short, remove it
   if(nrow(eic)<peakwidth[1]){
     next
   }
@@ -214,13 +216,22 @@ while(nrow(data)>0){
   if(!length(eic_split_list)){ # If there were no reasonable ROIs found
     next
   }
+  eic_roi_list[[eic_num]] <- cbind(eic_num, 1:length(eic_split_list))
+  eic_num <- eic_num + 1
+  
 
   # Put it all together and save
   roi_slot <- (length(roi_list)+1):(length(roi_list)+length(eic_split_list))
   roi_list[roi_slot] <- eic_split_list
 }
 close(pb)
+eic_roi_df <- do.call(rbind, eic_roi_list)
 print("Found", length(roi_list), "regions of interest! Finding peaks...")
+
+
+
+
+
 
 
 

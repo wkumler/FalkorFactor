@@ -109,7 +109,7 @@ findBestScale <- function(peak_instance){
 findPeakEdges <- function(peak_instance){
   left_shoulder_offset <- peak_instance@center-peak_instance@best_scale
   right_shoulder_offset <- peak_instance@center+peak_instance@best_scale
-  xcms:::descendMinTol(roi$int, maxDescOutlier = 0,
+  xcms:::descendMinTol(roi$int, maxDescOutlier = 2,
                        startpos = c(left_shoulder_offset, right_shoulder_offset))
 }
 
@@ -137,7 +137,7 @@ findPeakArea <- function(peak_instance){
 mzs <- lapply(x, mz)
 mz <- unlist(mzs, use.names = FALSE)
 int <- unlist(lapply(x, intensity), use.names = FALSE)
-rts <- unlist(lapply(x, rtime))
+rts <- unname(unlist(lapply(x, rtime)))
 rt <- rep(rts, sapply(mzs, length))
 all_data <- data.frame(mz, int, rt)
 
@@ -187,6 +187,7 @@ print(paste("Extracted", length(eic_list), "ion chromatograms! Now finding peaks
 # Find peaks ----
 # Loop over EICs
 all_peak_list <- list()
+all_peak_ids <- list()
 pb <- txtProgressBar(min = 0, max = length(eic_list), style = 3)
 for(i in 1:length(eic_list)){
   setTxtProgressBar(pb, i)
@@ -235,15 +236,15 @@ for(i in 1:length(eic_list)){
       peak_k@scan_end <- min(peak_edges[2], nrow(roi))
       peak_k@width <- peak_k@scan_end-peak_k@scan_start
       
-      if(peak_k@width < peakwidth_scans[1] || peak_k@width > peakwidth[2]){
+      if(peak_k@width < peakwidth_scans[1]){
         next
       }
       
-      peak_ints <- roi$int[seq(peak_k@scan_start:peak_k@scan_end)]
+      peak_ints <- roi$int[seq(peak_k@scan_start, peak_k@scan_end)]
       peak_k@height <- max(peak_ints)
       
-      # peak_k@height_top3 <- 
-      #   mean(sort(peak_ints, partial=peak_k@width-2)[peak_k@width:(peak_k@width-2)])
+      peak_k@height_top3 <-
+        mean(sort(peak_ints, partial=peak_k@width-2)[peak_k@width:(peak_k@width-2)])
       
       peak_k@area <- findPeakArea(peak_k)
       
@@ -259,8 +260,7 @@ for(i in 1:length(eic_list)){
       peak_k@coef_fit <- cor(peak_ints, peak_coefs[, peak_k@best_scale])
       
       peak_mzs <- roi$mz[peak_k@scan_start:peak_k@scan_end]
-      peak_k@sigma_star <- max(peak_mzs)-min(peak_mzs)
-      peak_k@norm_sigma_star <- peak_k@sigma_star/(max(roi$mz)-min(roi$mz))
+      peak_k@sigma_star <- (max(peak_mzs)-min(peak_mzs))/(max(roi$mz)-min(roi$mz))
       
       roi_peak_list[[k]] <- 
         list("Peak_id"=paste(i, j, k, sep = "."),
@@ -271,7 +271,7 @@ for(i in 1:length(eic_list)){
               "Peak_best_scale"=peak_k@best_scale, 
               "Peak_start_time"=rts[peak_k@scan_start+roi_start_scan],
               "Peak_end_time"=rts[peak_k@scan_end+roi_start_scan], 
-              #"Peak_area_top"=peak_k@height_top3, 
+              "Peak_area_top"=peak_k@height_top3, 
               "Peak_coef2area"=peak_k@coef2area, 
               "Peak_ridge_length"=peak_k@ridge_length, 
               "Peak_ridge_prop"=peak_k@ridge_prop, 
@@ -279,24 +279,45 @@ for(i in 1:length(eic_list)){
               "Peak_linearity"=peak_k@linearity,
               "Peak_coef_fit"=peak_k@coef_fit,
               "Peak_sigma_star"=peak_k@sigma_star,
-              "Peak_norm_sigma_star"=peak_k@norm_sigma_star,
               "EIC_ints"=eic$int,
               "EIC_rts"=eic$rt,
               "Peak_ints"=peak_ints,
-              "Peak_rts"=rts[(peak_k@scan_start:peak_k@scan_end)-1])
+              "Peak_rts"=rts[(peak_k@scan_start:peak_k@scan_end)+roi_start_scan])
+      all_peak_ids[[length(all_peak_ids)+1]] <- paste(i, j, k, sep = ".")
     }
     eic_peak_list[[j]] <- roi_peak_list
   }
   all_peak_list[[i]] <- eic_peak_list
 }
 close(pb)
+# And assemble single values into data frame
+peak_df <- as.data.frame(do.call(rbind, lapply(all_peak_ids, function(x){
+  idxs <- as.numeric(strsplit(x, "\\.")[[1]])
+  unlist(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]][sapply(
+    all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]], length)<=1])
+})))
+for(i in 2:ncol(peak_df)){
+  peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
+}
+peak_df <- mutate(peak_df, qty=Peak_area_top*Peak_ridge_prop*sqrt(Peak_ridge_drift)*
+                    (1-Peak_linearity)*Peak_coef_fit*(1-Peak_sigma_star))
+peak_df <- arrange(peak_df, desc(qty))
 
+# Other functions ----
 peakCheck <- function(peak_id){
   idxs <- as.numeric(strsplit(peak_id, "\\.")[[1]])
-  plot(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$EIC_rts,
-       all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$EIC_ints,
-       type="l", lwd=2, ylim=c(0,1000000))
-  lines(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$Peak_rts,
-        all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]$Peak_ints,
+  peak_data <- all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]
+  plot(peak_data$EIC_rts, peak_data$EIC_ints,
+       type="l", lwd=2, 
+       xlim=c(min(peak_data$EIC_rts), max(peak_data$EIC_rts)*1.5))
+  lines(peak_data$Peak_rts, peak_data$Peak_ints,
         lwd=2, col="red")
+  reportvals <- suppressWarnings(sapply(as.numeric(peak_data[sapply(peak_data, length)<=1])[-1], round, digits=2))
+  reportnames <- gsub("Peak_", "", names(peak_data[sapply(peak_data, length)<=1])[-1])
+  legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
+}
+
+for(i in peak_df$Peak_id){
+  peakCheck(i)
+  readline(prompt = "Press Enter")
 }

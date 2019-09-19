@@ -132,6 +132,32 @@ findPeakArea <- function(peak_instance){
                 (peak_instance@ints[idx] + peak_instance@ints[idx-1]))/2)
 }
 
+#' Extend a Region of Interest to account for missed scans
+#' 
+#' \code{extendROI} accepts a data frame containing ROI information (mz, rt, int)
+#' and extends it \code{ext_width} number of seconds in the retention
+#' time direction. This accounts for peaks that may be split by missed scans, but
+#' also introduces the potential for overlapping peaks and is less likely to
+#' throw out peaks because each ROI is more likely to be long enough to 
+#' theoretically support a peak.
+#' 
+#' @param roi_df A Region of Interest data frame, with rt, mz, and int columns.
+#' Typically produced by calling \code{split()} on a complete EIC.
+#' 
+#' @param ext_width The time, in seconds, that the ROI will be extended in both
+#' directions. If close to the EIC boundaries, the ROI will not be extended
+#' beyond them.
+#' 
+#' @param eic An Extracted Ion Chromatogram, typically produced by the first
+#' portion of the Thanos workflow. A dataframe, with mz, rt, and int information
+#' each in its own column.
+#' 
+#' @return The extended ROI.
+extendROI <- function(roi_df, ext_width, eic = eic){
+  min_ext_rt <- max(min(eic$rt), min(roi_df$rt)-ext_width)
+  max_ext_rt <- min(max(eic$rt), max(roi_df$rt)+ext_width)
+  d <- subset(eic, eic$rt>min_ext_rt&eic$rt<max_ext_rt)
+}
 
 # Generate DF, pre-processing ----
 mzs <- lapply(x, mz)
@@ -196,7 +222,9 @@ for(i in 1:length(eic_list)){
   roi_encoding <- rle(rts%in%eic$rt)
   peak_lengths <- roi_encoding$lengths[roi_encoding$values]
   roi_all_list <- split(eic, rep(1:length(peak_lengths), times = peak_lengths))
-  roi_list <- roi_all_list[sapply(roi_all_list, nrow)>peakwidth_scans[1]]
+  roi_ext_list <- lapply(roi_all_list, extendROI, ext_width=max(peakwidth)/2, eic=eic)
+  # Remove all ROIs less than 20 scans long
+  roi_list <- roi_ext_list[sapply(roi_ext_list, nrow)>peakwidth_scans[1]]
   if(!length(roi_list)){ # If there were no reasonable ROIs found
     next
   }
@@ -296,12 +324,14 @@ peak_df <- as.data.frame(do.call(rbind, lapply(all_peak_ids, function(x){
   unlist(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]][sapply(
     all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]], length)<=1])
 })))
+all_peak_ids <- unlist(all_peak_ids)
+# Convert columns to numeric values
 for(i in 2:ncol(peak_df)){
   peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
 }
 peak_df <- mutate(peak_df, qty=Peak_area_top*Peak_ridge_prop*sqrt(Peak_ridge_drift)*
                     (1-Peak_linearity)*Peak_coef_fit*(1-Peak_sigma_star))
-peak_df <- arrange(peak_df, desc(qty))
+peak_df <- arrange(peak_df, desc(Peak_sigma_star))
 
 # Other functions ----
 peakCheck <- function(peak_id){

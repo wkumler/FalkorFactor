@@ -4,11 +4,21 @@ roi <- roi_list[[2]]@data
 lmaoPlotEm(roi)
 diagnoseWavelets(roi)
 
+roi_intensity <- as.numeric(table(cut(rnorm(10000), breaks = 20)))
+roi_intensity <- c(roi_intensity, rep(0, 1024-length(roi_intensity)))
+plot(roi_intensity, type="l")
+wCoefs <- xcms:::MSW.cwt(roi_intensity, scales)
+plot(roi_intensity, type="l", lwd=2)
+for(i in seq_along(colnames(wCoefs))){
+  lines(wCoefs[,i], col=rainbow(length(colnames(wCoefs)))[i])
+}
+
 scales <- round(seq(1, 2^ceiling(log2(length(roi_intensity)))/12, length.out = 11))
+scales <- seq(11,44)
+
 possible_peaks <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh") %>%
   xcms:::MSW.getLocalMaximumCWT() %>%
   xcms:::MSW.getRidge()
-
 
 
 
@@ -40,6 +50,7 @@ wCoefs <- list()
 for (i in 1:length(scales)) {
   scale.i <- scales[i]
   mex_h <- rep(0, length(roi_intensity_extended))
+  # WHAT DECIDES THE LENGTH OF THIS LINE
   sample_points <- 1 + floor((0:(scale.i * 12))/(scale.i * 12/255))
   if (length(sample_points) == 1) 
     sample_points <- c(1, 1)
@@ -76,24 +87,3 @@ for(i in ncol(wCoefs):1){
 }
 ncol(wCoefs)
 colnames(wCoefs)
-
-
-# Expanding on xcms:::MSW.getLocalMaximumCWT to debug warnings()
-minWinSize = 5
-amp.Th = 0
-
-localMax <- NULL
-scales <- round(as.numeric(colnames(wCoefs)))
-for (i in 1:length(scales)) {
-  scale.i <- scales[i]
-  winSize.i <- scale.i * 2 + 1
-  if (winSize.i < minWinSize) {
-    winSize.i <- minWinSize
-  }
-  temp <- xcms:::MSW.localMaximum(wCoefs[, i], winSize.i)
-  localMax <- cbind(localMax, temp)
-}
-localMax[wCoefs < amp.Th] <- 0
-colnames(localMax) <- colnames(wCoefs)
-rownames(localMax) <- rownames(wCoefs)
-localMax

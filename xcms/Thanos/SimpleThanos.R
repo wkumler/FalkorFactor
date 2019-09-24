@@ -12,7 +12,7 @@ x <- raw_data %>%
   `[[`(1) %>%
   spectra()
 
-# Peak objects ----
+# Peak object definition ----
 peak_object <- setClass("peak_object", slots = list(center="numeric",
                                                     height="numeric",
                                                     width="numeric",
@@ -236,7 +236,7 @@ for(i in 1:length(eic_list)){
     roi_start_scan <- which(rts==roi[1, "rt"])-1
     
     # Make some waves (same for all peaks in ROI)
-    scales <- 1:(peakwidth_scans[2]/2)
+    scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
     wcoef_matrix <- xcms:::MSW.cwt(roi$int, scales, wavelet = "mexh")
     if(length(wcoef_matrix)==1){ # If CWT returns NA because the scales suck
       next
@@ -244,8 +244,11 @@ for(i in 1:length(eic_list)){
     local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
     possible_peaks <- xcms:::MSW.getRidge(local_maxima)
     num_scales <- length(attr(possible_peaks, "scales"))
-    # Remove all peaks that have maxima in less than half the scales ADJUST LATER
-    possible_peaks <- possible_peaks[sapply(possible_peaks, length)>(num_scales/2)]
+    # Remove all peaks that have maxima in only a single scale ADJUST LATER
+    possible_peaks <- possible_peaks[sapply(possible_peaks, length)>2]
+    if(!length(possible_peaks)){
+      next
+    }
     
     # Loop over peaks
     roi_peak_list <- list()
@@ -285,7 +288,7 @@ for(i in 1:length(eic_list)){
       
       peak_k@linearity <- cor(sort(peak_ints), 1:length(peak_ints))^2
       
-      peak_k@coef_fit <- cor(peak_ints, peak_coefs[, peak_k@best_scale])
+      peak_k@coef_fit <- cor(peak_ints, peak_coefs[, as.character(peak_k@best_scale)])
       
       peak_mzs <- roi$mz[peak_k@scan_start:peak_k@scan_end]
       peak_k@sigma_star <- (max(peak_mzs)-min(peak_mzs))/(max(roi$mz)-min(roi$mz))

@@ -37,3 +37,32 @@ plot(shortest_chrom)
 newmapply_findChromPeaks(shortest_chrom, param = CentWaveParam(snthresh = 1), fixMSW=F)
 newmapply_findChromPeaks(shortest_chrom, param = CentWaveParam(snthresh = 1), fixMSW=T)
 
+
+
+
+
+getRtROI <- function (int, rt, peakwidth = c(20, 50), 
+                      noise = 0, prefilter = c(3, 100)) {
+  peakwidth <- range(peakwidth)
+  if (length(prefilter) != 2) 
+    stop("'prefilter' has to be a 'numeric' of length 2")
+  int_len <- length(int)
+  if (int_len != length(rt)) 
+    stop("lengths of 'int' and 'rt' have to match")
+  rt_step <- mean(diff(rt), na.rm = TRUE)
+  up_bound <- ceiling(peakwidth[2]/rt_step)
+  pk_idx <- which(MALDIquant:::.localMaxima(int, floor(peakwidth[1]/rt_step)))
+  pk_idx <- pk_idx[int[pk_idx] >= noise]
+  if (!length(pk_idx)) 
+    return(matrix(ncol = 2, nrow = 0))
+  scmin <- sapply(pk_idx - up_bound, max, y = 1)
+  scmax <- sapply(pk_idx + up_bound, min, y = int_len)
+  roi_idxs <- mapply(scmin, scmax, FUN = seq, SIMPLIFY = F)
+  ok <- vapply(roi_idxs, FUN = function(x, k, I) {
+    sum(int[x] >= I) >= k
+  }, FUN.VALUE = logical(1), k = prefilter[1], I = prefilter[2], 
+  USE.NAMES = FALSE)
+  if (any(ok)) 
+    cbind(scmin = scmin[ok], scmax = scmax[ok], sccent = pk_idx[ok])
+  else matrix(ncol = 3, nrow = 0)
+}

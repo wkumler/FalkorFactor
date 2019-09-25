@@ -1,10 +1,26 @@
 # Getting metabolites database into reasonable shape to try peak identification
 
+
+# Setup things ----
 library(httr)
 library(xml2)
+library(dplyr)
 pm <- function(x, d){c(x-d, x+d)}
 mzr <- function(mz, ppm=2.5){round(pm(mz, mz*ppm/1000000), digits = 5)}
 
+amino_masses <- "http://www.matrixscience.com/help/aa_help.html" %>%
+  read_html() %>%
+  xml_find_all(xpath="//td") %>%
+  xml_text() %>%
+  matrix(ncol=6, byrow=T) %>%
+  gsub("\r\n    ", "", .) %>%
+  `rownames<-`(.[,1]) %>%
+  `[`(1:24, 4) %>%
+  `mode<-`("numeric") %>% 
+  na.omit() %>%
+  `+`(18.010565)
+
+# getMetlin code ----
 getMetlin <- function(cmpd_mz){
   mz_range <- mzr(cmpd_mz)
   metlin_url <- paste0("https://metlin.scripps.edu/advanced_search_result.php?",
@@ -30,15 +46,5 @@ getMetlin <- function(cmpd_mz){
 
 sample_data <- getMetlin(135.054495)
 
-amino_masses <- "http://www.matrixscience.com/help/aa_help.html" %>%
-  read_html() %>%
-  xml_find_all(xpath="//td") %>%
-  xml_text() %>%
-  matrix(ncol=6, byrow=T) %>%
-  gsub("\r\n    ", "", .)
-amino_names <- amino_masses[,1]
-amino_masses <- as.numeric(amino_masses[,4])
-names(amino_masses) <- amino_names
-amino_masses <- amino_masses[!is.na(amino_masses)]+18.010565
+metlin_data <- lapply(amino_masses, getMetlin)
 
-lapply(amino_masses, getMetlin)

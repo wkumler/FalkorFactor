@@ -57,14 +57,13 @@ getMetlin <- function(cmpd_mz, ppm=2.5){
 
 sample_data <- getMetlin(135.054495)
 sample_data <- getMetlin(117.078979)
-
 metlin_data <- lapply(amino_masses[1:3], getMetlin)
 
+
 getMetlinMS2 <- function(cmpd_id){
-  metlin_data <- paste0("https://metlin.scripps.edu/showChart.php?molid=", cmpd_id,
-                        "&etype=experimental") %>%
-    GET() %>%
-    stop_for_status()
+  metlin_data <- paste0("https://metlin.scripps.edu/showChart.php?molid=", 
+                        cmpd_id,"&etype=experimental") %>%
+    GET() %>% stop_for_status()
   ms2_raw <- metlin_data %>%
     content(encoding = "UTF-8") %>%
     xml_find_all(xpath = '/html/head/script[5]') %>%
@@ -81,9 +80,13 @@ getMetlinMS2 <- function(cmpd_id){
   if(!length(ms2_raw)){stop("No MS2 data found. Are you sure Metlin has this data?")}
   
   ms2_titles <- sapply(ms2_raw, `[[`, 1)[1,] #Not sure why this works but OK
-  ms2_polarities <- ifelse(grepl(ms2_titles, pattern = "(\\+)"), "Pos", "Neg")
-  ms2_voltages <- as.numeric(unlist(regmatches(ms2_titles, m = gregexpr("\\d+\\.?\\d*", ms2_titles))))
-  ms2_adducts <- unlist(regmatches(ms2_titles, m = gregexpr("\\[M.*\\]", ms2_titles)))
+  ms2_polarities <- ifelse(grepl(ms2_titles, pattern = "(\\+)"), "+", "-")
+  ms2_voltages <- gregexpr("\\d+\\.?\\d*", ms2_titles) %>%
+    regmatches(x=ms2_titles) %>%
+    unlist() %>% as.numeric()
+  ms2_adducts <- gregexpr("\\[M.*\\]", ms2_titles) %>%
+    regmatches(x = ms2_titles) %>% 
+    unlist()
   
   ms2_list <- sapply(ms2_raw, `[[`, 1)[2,] %>%
     gsub(pattern = " ]},", replacement = "") %>%
@@ -97,5 +100,28 @@ getMetlinMS2 <- function(cmpd_id){
       names(ms2_df) <- c("mass", "rel_intensity")
       return(ms2_df)
     })
-  v <- mapply(FUN= list, ms2_polarities, ms2_adducts, ms2_voltages)
+  for(i in seq_along(ms2_list)){
+    ms2_list[[i]] <- cbind(ms2_polarities[i], ms2_adducts[i], 
+                           ms2_voltages[i], ms2_list[[i]])
+  }
+  ms2_df <- as.data.frame(do.call(rbind, ms2_list))
+  names(ms2_df) <- c("polarity", "adduct", "voltage", "frag_mass", "frag_int")
+  
+  print(paste("Metlin had", length(ms2_titles), "MS2 records for this compound,",
+              "with collision energies of", 
+              paste(paste0(ms2_polarities, ms2_voltages), collapse=", ")))
+  
+  return(ms2_df)
 }
+
+betaine_ms2 <- getMetlinMS2(287)
+(betaine_ms2 %>%
+  filter(polarity=="+") %>%
+    #filter(voltage==20) %>%
+    ggplot(label=frag_mass) + 
+    geom_segment(aes(yend=0, x=frag_mass, y=frag_int, xend=frag_mass)) +
+    #geom_hline(yintercept=0) + 
+    facet_wrap(~voltage) +
+    theme_bw() +
+    xlim(0, max(betaine_ms2$frag_mass))) %>%
+  ggplotly(tooltip = c("y", "x"))

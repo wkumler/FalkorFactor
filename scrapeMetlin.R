@@ -21,7 +21,7 @@ amino_masses <- "http://www.matrixscience.com/help/aa_help.html" %>%
   na.omit() %>%
   `+`(18.010565)
 
-# getMetlin code ----
+# getMetlin functions ----
 getMetlin <- function(cmpd_mz, ppm=2.5){
   mz_range <- mzr(cmpd_mz, ppm)
   metlin_data <- paste0("https://metlin.scripps.edu/advanced_search_result.php?",
@@ -54,12 +54,6 @@ getMetlin <- function(cmpd_mz, ppm=2.5){
   
   return(search_data)
 }
-
-sample_data <- getMetlin(135.054495)
-sample_data <- getMetlin(117.078979)
-metlin_data <- lapply(amino_masses[1:3], getMetlin)
-
-
 getMetlinMS2 <- function(cmpd_id){
   metlin_data <- paste0("https://metlin.scripps.edu/showChart.php?molid=", 
                         cmpd_id,"&etype=experimental") %>%
@@ -114,7 +108,12 @@ getMetlinMS2 <- function(cmpd_id){
   return(ms2_df)
 }
 
-betaine_ms2 <- getMetlinMS2(287)
+# Using getMetlin functions ----
+sample_data <- getMetlin(135.054495)
+
+sample_cmpd <- sample_data %>% filter(MSMS!="NO") %>% slice(1) %>% pull(cmpd_id)
+
+sample_ms2 <- getMetlinMS2(sample_cmpd)
 (betaine_ms2 %>%
   filter(polarity=="+") %>%
     #filter(voltage==20) %>%

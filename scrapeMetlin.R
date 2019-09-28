@@ -109,18 +109,40 @@ getMetlinMS2 <- function(cmpd_id){
 }
 
 # Using getMetlin functions ----
-sample_data <- getMetlin(135.054495)
 
-sample_cmpd <- sample_data %>% filter(MSMS!="NO") %>% slice(1) %>% pull(cmpd_id)
+sample_data <- getMetlin(117.078979)
 
-sample_ms2 <- getMetlinMS2(sample_cmpd)
-(betaine_ms2 %>%
+sample_ms2_cmpd <- sample_data %>% filter(MSMS=="experimental") %>% slice(1)
+
+sample_ms2 <- getMetlinMS2(sample_ms2_cmpd$cmpd_id)
+
+split_volt_pos_ms2 <- sample_ms2 %>%
+  subset(polarity=="+") %>%
+  split(.$voltage)
+layout(matrix(c(1, rep(2:(length(split_volt_pos_ms2)+1), each=2),  1), ncol = 1))
+par(mar=c(0.1, 4.1, 0.1, 0.1))
+plot.new()
+text(x = 0.5, y=1, labels = sample_ms2_cmpd$cmpd_name, cex=3)
+for(i in split_volt_pos_ms2){
+  plot(i$frag_mass, i$frag_int, xlab = "", 
+       ylab=paste("Voltage", unique(i$voltage)),
+       xlim=c(0, max(sample_ms2$frag_mass)), 
+       xaxt="n", yaxt="n", type="n", ylim=c(0, 120))
+  segments(x0 = i$frag_mass, x1 = i$frag_mass,
+           y0 = 0, y1 = i$frag_int)
+  axis(side = 2, at = c(0, 50, 100), labels = c(0, 50, 100))
+}
+axis(side = 1)
+
+library(ggplot2)
+library(plotly)
+(sample_ms2 %>%
   filter(polarity=="+") %>%
     #filter(voltage==20) %>%
-    ggplot(label=frag_mass) + 
+    ggplot(label=frag_mass) +
     geom_segment(aes(yend=0, x=frag_mass, y=frag_int, xend=frag_mass)) +
-    #geom_hline(yintercept=0) + 
+    #geom_hline(yintercept=0) +
     facet_wrap(~voltage) +
     theme_bw() +
-    xlim(0, max(betaine_ms2$frag_mass))) %>%
+    xlim(0, max(sample_ms2$frag_mass))) %>%
   ggplotly(tooltip = c("y", "x"))

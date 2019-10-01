@@ -1,4 +1,5 @@
-# Getting metabolites database into reasonable shape to try peak identification
+# Obtain data from Metlin by submitting GET request behind their Javascript wall
+# Three main functions: getMetlinMz, getMetlinName, getMetlinMS2
 
 
 # Setup things ----
@@ -8,21 +9,21 @@ library(dplyr)
 pm <- function(x, d){c(x-d, x+d)}
 mzr <- function(mz, ppm){round(pm(mz, mz*ppm/1000000), digits = 5)}
 
-amino_masses <- "http://www.matrixscience.com/help/aa_help.html" %>%
-  GET() %>%
-  content() %>%
-  xml_find_all(xpath="//td") %>%
-  xml_text() %>%
-  matrix(ncol=6, byrow=T) %>%
-  gsub("\r\n    ", "", .) %>%
-  `rownames<-`(.[,1]) %>%
-  `[`(1:24, 4) %>%
-  `mode<-`("numeric") %>% 
-  na.omit() %>%
-  `+`(18.010565)
+# amino_masses <- "http://www.matrixscience.com/help/aa_help.html" %>%
+#   GET() %>%
+#   content() %>%
+#   xml_find_all(xpath="//td") %>%
+#   xml_text() %>%
+#   matrix(ncol=6, byrow=T) %>%
+#   gsub("\r\n    ", "", .) %>%
+#   `rownames<-`(.[,1]) %>%
+#   `[`(1:24, 4) %>%
+#   `mode<-`("numeric") %>% 
+#   na.omit() %>%
+#   `+`(18.010565)
 
 # getMetlin functions ----
-getMetlin <- function(cmpd_mz, ppm=2.5){
+getMetlinMz <- function(cmpd_mz, ppm=2.5){
   mz_range <- mzr(cmpd_mz, ppm)
   metlin_data <- paste0("https://metlin.scripps.edu/advanced_search_result.php?",
                        "molid=&mass_min=", min(mz_range),
@@ -46,14 +47,62 @@ getMetlin <- function(cmpd_mz, ppm=2.5){
     `names<-`(c("cmpd_id", "exact_mass", "cmpd_name", "formula", 
                 "CAS", "KEGG", "MSMS", "Structure"))
   
+  MSMS_subset <- subset(search_data, MSMS=="experimental")
+  
   print(paste("Metlin returned", nrow(search_data), "compound(s) between", 
         min(mz_range), "and", max(mz_range), "m/z with", 
         length(levels(search_data$formula)), "unique formula(s):", 
-        paste(levels(search_data$formula), sep = ", ")))
-  print(paste("Of those,", sum(search_data$MSMS!="NO"), "have MS/MS data"))
+        paste(levels(search_data$formula), collapse = ", ")))
+  if(nrow(MSMS_subset)){
+    print(paste("Of those,", nrow(MSMS_subset), 
+                "have experimental MS/MS data:", 
+                paste(as.character(MSMS_subset$cmpd_name), collapse = ", ")))
+  } else {
+    print("None of these compounds have experimental MS/MS data")
+  }
   
   return(search_data)
 }
+
+getMetlinName <- function(name){
+  metlin_data <- paste0("https://metlin.scripps.edu/advanced_search_result.php?", 
+                        "name=", name, "&AminoAcid=add&drug=add&toxinEPA=add&",
+                        "keggIDFilter=add") %>%
+    GET() %>%
+    stop_for_status() %>%
+    content(encoding = "UTF-8") %>%
+    xml_find_all(xpath = "//tbody")
+  
+  search_ids <- metlin_data %>%
+    xml_find_all(xpath = "//th[@scope]/a") %>%
+    xml_text()
+  
+  search_data <- metlin_data %>%
+    xml_find_all(xpath="//td") %>%
+    xml_text() %>%
+    matrix(ncol=7, byrow=T) %>%
+    cbind(search_ids, .) %>%
+    as.data.frame() %>%
+    `names<-`(c("cmpd_id", "exact_mass", "cmpd_name", "formula", 
+                "CAS", "KEGG", "MSMS", "Structure"))
+  
+  MSMS_subset <- subset(search_data, MSMS=="experimental")
+  
+  print(paste("Metlin returned", nrow(search_data), "compound(s) with name", 
+              name, " with", 
+              length(levels(search_data$formula)), "unique formula(s):", 
+              paste(levels(search_data$formula), collapse = ", ")))
+  if(nrow(MSMS_subset)){
+    print(paste("Of those,", nrow(MSMS_subset), 
+                "have experimental MS/MS data:", 
+                paste(as.character(MSMS_subset$cmpd_name), collapse = ", ")))
+  } else {
+    print("None of these compounds have experimental MS/MS data")
+  }
+  
+  return(search_data)
+}
+
 getMetlinMS2 <- function(cmpd_id){
   metlin_data <- paste0("https://metlin.scripps.edu/showChart.php?molid=", 
                         cmpd_id,"&etype=experimental") %>%
@@ -110,12 +159,16 @@ getMetlinMS2 <- function(cmpd_id){
 
 # Using getMetlin functions ----
 
-sample_data <- getMetlin(117.078979)
+sample_data <- getMetlinMz(117.078979)
+sample_data <- getMetlinMz(117.078979, ppm = 500)
+sample_data <- getMetlinName("Arsenobetaine")
 
 sample_ms2_cmpd <- sample_data %>% filter(MSMS=="experimental") %>% slice(1)
 
 sample_ms2 <- getMetlinMS2(sample_ms2_cmpd$cmpd_id)
 
+
+# Visualize the ill-gotten data ----
 split_volt_pos_ms2 <- sample_ms2 %>%
   subset(polarity=="+") %>%
   split(.$voltage)
@@ -135,14 +188,16 @@ for(i in split_volt_pos_ms2){
 axis(side = 1)
 
 library(ggplot2)
-library(plotly)
-(sample_ms2 %>%
+gp <- sample_ms2 %>%
   filter(polarity=="+") %>%
     #filter(voltage==20) %>%
     ggplot(label=frag_mass) +
     geom_segment(aes(yend=0, x=frag_mass, y=frag_int, xend=frag_mass)) +
     #geom_hline(yintercept=0) +
-    facet_wrap(~voltage) +
+    facet_wrap(~voltage, ncol = 1) +
     theme_bw() +
-    xlim(0, max(sample_ms2$frag_mass))) %>%
-  ggplotly(tooltip = c("y", "x"))
+    xlim(0, max(sample_ms2$frag_mass))
+gp
+
+library(plotly)
+ggplotly(gp, tooltip = c("y", "x"))

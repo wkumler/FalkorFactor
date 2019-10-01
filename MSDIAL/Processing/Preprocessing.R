@@ -41,3 +41,13 @@ for(i in 1:10){
     filterRt(c(rt_i-100, rt_i+100)) %>%
     will_plot()
 }
+
+
+
+# Looking for Thiamine
+mz_i <- 265.112307
+mz_i <- mz_i+1.007276
+raw_data %>%
+  filterMz(mz_i+c(mz_i*-2.5, mz_i*2.5)/1000000) %>%
+  #filterRt(c(rt_i-100, rt_i+100)) %>%
+  as("data.frame")

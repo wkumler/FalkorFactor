@@ -9,19 +9,6 @@ library(dplyr)
 pm <- function(x, d){c(x-d, x+d)}
 mzr <- function(mz, ppm){round(pm(mz, mz*ppm/1000000), digits = 5)}
 
-# amino_masses <- "http://www.matrixscience.com/help/aa_help.html" %>%
-#   GET() %>%
-#   content() %>%
-#   xml_find_all(xpath="//td") %>%
-#   xml_text() %>%
-#   matrix(ncol=6, byrow=T) %>%
-#   gsub("\r\n    ", "", .) %>%
-#   `rownames<-`(.[,1]) %>%
-#   `[`(1:24, 4) %>%
-#   `mode<-`("numeric") %>% 
-#   na.omit() %>%
-#   `+`(18.010565)
-
 # getMetlin functions ----
 getMetlinMz <- function(cmpd_mz, ppm=2.5){
   mz_range <- mzr(cmpd_mz, ppm)
@@ -201,3 +188,47 @@ gp
 
 library(plotly)
 ggplotly(gp, tooltip = c("y", "x"))
+
+
+# Begin preparations to scrape the whole database ----
+getMetlinMzRange <- function(mz_min, mz_max){
+  metlin_data <- paste0("https://metlin.scripps.edu/advanced_search_result.php?",
+                        "molid=&mass_min=", mz_min,
+                        "&mass_max=", mz_max, "&Amino",
+                        "Acid=add&drug=add&toxinEPA=add&keggIDFilter=add") %>%
+    GET() %>%
+    stop_for_status() %>%
+    content(encoding = "UTF-8") %>%
+    xml_find_all(xpath = "//tbody")
+  
+  search_ids <- metlin_data %>%
+    xml_find_all(xpath = "//th[@scope]/a") %>%
+    xml_text()
+  
+  search_data <- metlin_data %>%
+    xml_find_all(xpath="//td") %>%
+    xml_text() %>%
+    matrix(ncol=7, byrow=T) %>%
+    cbind(search_ids, .) %>%
+    as.data.frame() %>%
+    `names<-`(c("cmpd_id", "exact_mass", "cmpd_name", "formula", 
+                "CAS", "KEGG", "MSMS", "Structure"))
+  return(search_data)
+}
+
+for(i in seq(146, 150)){
+  print(c(i, i+0.06))
+  print(nrow(getMetlinMzRange(i, (i+0.06))))
+  print(c(i+0.06, i+0.1))
+  print(nrow(getMetlinMzRange(i+0.06, (i+.1))))
+  print(c(i+0.1, i+1))
+  print(nrow(getMetlinMzRange(i+0.1, i+1)))
+  Sys.sleep(runif(1))
+}
+
+c(0, 59, 72, 80, 86, 90, 95, 98, 100, 102, 104, 106, 108, 110, 111:124,
+  124.1, 125, 125.1, 126, 126.1, 127, 127.1, 128, 128.08, 129, 129.08,
+  130, 130.08, 131, 131.08, 132, 132.08, 133, 133.08, 134, 134.08, 
+  135, 135.08, 136, 136.08, 137, 137.08, 138, 138.08, 139, 139.08, 
+  140, 140.08, 140.12, 141, 141, 141.06, 141.1, 142, 142.06, 142.1, 143, 
+  143.06, 143.1, 144, 144.06, 144.1, 145, 145.06, 145.1, 146)

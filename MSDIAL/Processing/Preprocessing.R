@@ -20,6 +20,19 @@ will_plot <- function(MSnExp_obj){
   })
 }
 
+all_plot <- function(MSnExp_obj, sroloc="black"){
+  x <- suppressWarnings(as(MSnExp_obj, "data.frame"))
+  plot(1:10, type = "n", xlim=c(min(x$rt), max(x$rt)), ylim = c(min(x$i), max(x$i)))
+  y <- split(x, x$file)
+  
+  if(length(sroloc)==1)sroloc <- rep(sroloc, length(y))
+  
+  for(z in seq_along(y)){
+    bpi <- unlist(lapply(split(y[[z]]$i, y[[z]]$rt), max, na.rm = TRUE))
+    lines(as.numeric(names(bpi)), col=sroloc[z], bpi, pch=19)
+  }
+}
+
 all_peaks <- read.table("MSDIAL/Processing/Height_0_2019104109.txt", skip = 4, 
                         sep = "\t", header = T)[,c(1,2,3,4,29:56)]
 
@@ -54,20 +67,22 @@ load("MSDIAL/Processing/Preprocessing_all_peaks")
 
 cw_ccw_enriched <- subset(all_peaks, cw_ccw_pvals<0.001)
 
-
+treats <- factor(gsub(".*\\.|_.*", "", names(cw_ccw_enriched)[c(5, 9:32)]),
+                 levels = c("Blk", "25m", "DCM"))
 
 
 # Check interesting peak shapes
 
 mzml_files <- list.files("mzMLs", full.names = T)[c(17:50)]
 raw_data <- readMSData(files = mzml_files, msLevel. = 1, mode = "onDisk")
-par(mfrow=c(2,2))
-par(mar=c(2.1, 2.1, 0.1, 0.1))
-for(i in 1:10){
-  rt_i <- known_peaks$Average.Rt.min.[i]*60
-  mz_i <- known_peaks$Average.Mz[i]
-  raw_data %>%
-    filterMz(mz_i+c(mz_i*-2.5, mz_i*2.5)/1000000) %>%
-    filterRt(c(rt_i-100, rt_i+100)) %>%
-    will_plot()
-}
+
+mz_i <- cw_ccw_enriched$Average.Mz[1]
+rt_i <- cw_ccw_enriched$Average.Rt.min.[1]*60
+
+pcols <- c("red", "blue", "green")
+pcols <- pcols[treats]
+
+raw_data %>%
+  filterMz(mz_i+c(mz_i*-2.5, mz_i*2.5)/1000000) %>%
+  filterRt(c(rt_i-100, rt_i+100)) %>%
+  all_plot(sroloc = pcols)

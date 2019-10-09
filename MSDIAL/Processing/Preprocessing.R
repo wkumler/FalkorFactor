@@ -22,32 +22,26 @@ will_plot <- function(MSnExp_obj){
 
 all_peaks <- read.table("MSDIAL/Processing/Height_0_2019924102.txt", skip = 4, 
                         sep = "\t", header = T)[,c(1, 2, 3, 4, 29, 30, 31, 32)]
-
-boxplot(log10(as.matrix(all_peaks[,c(5,6,7,8)])))
-
-known_peaks <- filter(all_peaks, Metabolite.name!="Unknown")
+all_peaks <- read.table("MSDIAL/Processing/Height_0_2019104109.txt", skip = 4, 
+                        sep = "\t", header = T)[,c(1,2,3,4,29:56)]
 
 
-mzml_files <- list.files("mzMLs", full.names = T)[c(1,5,6,7)]
-raw_data <- readMSData(files = mzml_files, msLevel. = 1, mode = "onDisk")
+boxplot(log10(as.matrix(all_peaks[,c(5:32)])))
 
-par(mfrow=c(2,2))
-par(mar=c(2.1, 2.1, 0.1, 0.1))
-for(i in 1:10){
-  rt_i <- known_peaks$Average.Rt.min.[i]*60
-  mz_i <- known_peaks$Average.Mz[i]
-  raw_data %>%
-    filterMz(mz_i+c(mz_i*-2.5, mz_i*2.5)/1000000) %>%
-    filterRt(c(rt_i-100, rt_i+100)) %>%
-    will_plot()
-}
+# mzml_files <- list.files("mzMLs", full.names = T)[c(1,5,6,7)]
+# raw_data <- readMSData(files = mzml_files, msLevel. = 1, mode = "onDisk")
+# par(mfrow=c(2,2))
+# par(mar=c(2.1, 2.1, 0.1, 0.1))
+# for(i in 1:10){
+#   rt_i <- known_peaks$Average.Rt.min.[i]*60
+#   mz_i <- known_peaks$Average.Mz[i]
+#   raw_data %>%
+#     filterMz(mz_i+c(mz_i*-2.5, mz_i*2.5)/1000000) %>%
+#     filterRt(c(rt_i-100, rt_i+100)) %>%
+#     will_plot()
+# }
 
 
-
-# Looking for Thiamine
-mz_i <- 265.112307
-mz_i <- mz_i+1.007276
-raw_data %>%
-  filterMz(mz_i+c(mz_i*-2.5, mz_i*2.5)/1000000) %>%
-  #filterRt(c(rt_i-100, rt_i+100)) %>%
-  as("data.frame")
+interesting_peaks <- all_peaks %>%
+  slice(1) %>%
+  rowwise() %>% 

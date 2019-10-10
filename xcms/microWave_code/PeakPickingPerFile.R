@@ -32,8 +32,7 @@ peak_object <- setClass("peak_object", slots = list(center="numeric",
                                                     ridge_drift="numeric",
                                                     linearity="numeric",
                                                     coef_fit="numeric",
-                                                    sigma_star="numeric",
-                                                    norm_sigma_star="numeric"))
+                                                    sigma_star="numeric"))
 
 
 
@@ -62,10 +61,10 @@ findPeakCenter <- function(peak_instance, roi_ints){
   if(!length(peak_instance@possible_centers)){ # If slot is empty
     stop("The 'possible_centers' slot of this object is empty")
   }
-  wavelet_ints <- sapply(unique(peak_instance@possible_centers), function(x){
+  wavelet_ints <- sapply(peak_instance@possible_centers, function(x){
     sum(roi_ints[max(1, x-5):(x+5)], na.rm = T)
   })
-  unique(peak_instance@possible_centers)[which.max(wavelet_ints)]
+  peak_instance@possible_centers[which.max(wavelet_ints)]
 }
 
 #' Finds the best wavelet scale for a given peak object
@@ -245,7 +244,11 @@ for(i in 1:length(eic_list)){
     # 6 is magic number (12/2) because scales are half peakwidth, and 12
     # is the magical constant from MSW.cwt code
     min_cwt_length <- 2^(ceiling(log2(max(peakwidth_scans)*6)))
-    roi_intensity <- c(roi$int, integer(min_cwt_length-nrow(roi)))
+    if(nrow(roi)<min_cwt_length){ #Buffer with zeros at end
+      roi_intensity <- c(roi$int, integer(min_cwt_length-nrow(roi)))
+    } else {
+      roi_intensity <- roi$int
+    }
     wcoef_matrix <- xcms:::MSW.cwt(roi_intensity, scales, wavelet = "mexh")
     wcoef_matrix <- wcoef_matrix[1:nrow(roi),]
     
@@ -266,7 +269,7 @@ for(i in 1:length(eic_list)){
     for(k in 1:length(possible_peaks)){
       peak_k <- peak_object(wavelet_coefs = wcoef_matrix, 
                             local_maxima = local_maxima,
-                            possible_centers = possible_peaks[[k]])
+                            possible_centers = unique(possible_peaks[[k]]))
       
       peak_k@center <- findPeakCenter(peak_k, roi$int)
       
@@ -282,11 +285,11 @@ for(i in 1:length(eic_list)){
         next
       }
       
-      peak_ints <- roi$int[seq(peak_k@scan_start, peak_k@scan_end)]
-      peak_k@height <- max(peak_ints)
+      peak_k@ints <- roi$int[seq(peak_k@scan_start, peak_k@scan_end)]
+      peak_k@height <- max(peak_k@ints)
       
       peak_k@height_top3 <-
-        mean(sort(peak_ints, partial=peak_k@width-2)[peak_k@width:(peak_k@width-2)])
+        mean(sort(peak_k@ints, partial=peak_k@width-2)[peak_k@width:(peak_k@width-2)])
       
       peak_k@area <- findPeakArea(peak_k)
       
@@ -297,9 +300,9 @@ for(i in 1:length(eic_list)){
       peak_k@ridge_prop <- round(peak_k@ridge_length/peak_k@num_used_scales, digits = 2)
       peak_k@ridge_drift <- length(unique(peak_k@possible_centers))/peak_k@ridge_length
       
-      peak_k@linearity <- cor(sort(peak_ints), 1:length(peak_ints))^2
+      peak_k@linearity <- cor(sort(peak_k@ints), 1:length(peak_k@ints))^2
       
-      peak_k@coef_fit <- cor(peak_ints, peak_coefs[, as.character(peak_k@best_scale)])
+      peak_k@coef_fit <- cor(peak_k@ints, peak_coefs[, as.character(peak_k@best_scale)])
       
       peak_mzs <- roi$mz[peak_k@scan_start:peak_k@scan_end]
       peak_k@sigma_star <- (max(peak_mzs)-min(peak_mzs))/(max(roi$mz)-min(roi$mz))
@@ -323,7 +326,7 @@ for(i in 1:length(eic_list)){
               "Peak_sigma_star"=peak_k@sigma_star,
               "EIC_ints"=eic$int,
               "EIC_rts"=eic$rt,
-              "Peak_ints"=peak_ints,
+              "Peak_ints"=peak_k@ints,
               "Peak_rts"=rts[(peak_k@scan_start:peak_k@scan_end)+roi_start_scan])
       all_peak_ids[[length(all_peak_ids)+1]] <- paste(i, j, k, sep = ".")
     }

@@ -5,12 +5,14 @@ library(tidyverse)
 library(roxygen2)
 
 load("xcms/raw_data")
-x <- raw_data %>%
-  filterMsLevel(msLevel. = 1L) %>%
-  selectFeatureData(fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided")) %>%
-  lapply(1:length(fileNames(.)), FUN=filterFile, object = .) %>%
-  `[[`(1) %>%
-  spectra()
+x <- raw_data
+x <- filterMsLevel(x, msLevel. = 1L)
+x <- selectFeatureData(x, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
+x <- lapply(1:length(fileNames(x)), FUN=filterFile, object = x)
+x <- x[[1]]
+x <- spectra(x)
+
+
 
 # Peak object definition ----
 peak_object <- setClass("peak_object", slots = list(center="numeric",
@@ -276,9 +278,9 @@ for(i in 1:length(eic_list)){
       roi_intensity <- roi$int
     }
     wcoef_matrix <- xcms:::MSW.cwt(roi_intensity, scales, wavelet = "mexh")
-    possible_peaks <- wcoef_matrix[1:nrow(roi),] %>%
-      xcms:::MSW.getLocalMaximumCWT() %>%
-      xcms:::MSW.getRidge()
+    wcoef_matrix <- wcoef_matrix[1:nrow(roi),]
+    local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
+    possible_peaks <- xcms:::MSW.getRidge(local_maxima)
 
     # Loop over peaks
     peaks_per_roi <- list()

@@ -25,6 +25,7 @@ peak_object <- setClass("peak_object", slots = list(center="numeric",
                                                     best_scale="numeric",
                                                     scan_start="numeric",
                                                     scan_end="numeric",
+                                                    gauss_fit="numeric",
                                                     height_top3="numeric",
                                                     coef2area="numeric",
                                                     ridge_length="numeric",
@@ -110,6 +111,22 @@ findPeakEdges <- function(peak_instance){
   right_shoulder_offset <- peak_instance@center+peak_instance@best_scale
   xcms:::descendMinTol(roi$int, maxDescOutlier = 2,
                        startpos = c(left_shoulder_offset, right_shoulder_offset))
+}
+
+widthFinder <- function(peak_ints, peak_center, peakwidth){
+  peak_widths_to_check <- seq(min(peakwidth), max(peakwidth), 2)
+  peak_ints_buffered <- c(numeric(max(peakwidth)/2), peak_ints, numeric(max(peakwidth)/2))
+  peak_fits <- sapply(peak_widths_to_check, function(pred_peak_width){
+    perf_peak <- exp((-seq(-3, 3, length.out = pred_peak_width+1)^2))
+    peak_left <- (peak_center+max(peakwidth)/2-pred_peak_width/2)
+    peak_right <- (peak_center+max(peakwidth)/2+pred_peak_width/2)
+    relevant_ints <- peak_ints_buffered[peak_left:peak_right]
+    return(cor(relevant_ints, perf_peak))
+  })
+  peak_width <- peak_widths_to_check[which.max(peak_fits)]
+  return(list(edges=c(floor(peak_center-peak_width/2), 
+                      ceiling(peak_center+peak_width/2)),
+              cor=max(peak_fits)))
 }
 
 #' Find the total area underneath a curve by Riemann trapezoidal sum
@@ -273,12 +290,17 @@ for(i in 1:length(eic_list)){
       
       peak_k@center <- findPeakCenter(peak_k, roi$int)
       
+      
+      
       peak_k@best_scale <- findBestScale(peak_k)
       peak_k@num_used_scales <- num_scales
       
-      peak_edges <- findPeakEdges(peak_k)
-      peak_k@scan_start <- max(1, peak_edges[1])
-      peak_k@scan_end <- min(peak_edges[2], nrow(roi))
+      edges_output <- widthFinder(roi$int, peak_k@center, peakwidth)
+      peak_k@scan_start <- max(1, edges_output$edges[1])
+      peak_k@scan_end <- min(edges_output$edges[2], nrow(roi))
+      
+      peak_k@gauss_fit <- edges_output$cor
+      
       peak_k@width <- peak_k@scan_end-peak_k@scan_start
       
       if(peak_k@width < peakwidth_scans[1]){
@@ -324,6 +346,7 @@ for(i in 1:length(eic_list)){
               "Peak_linearity"=peak_k@linearity,
               "Peak_coef_fit"=peak_k@coef_fit,
               "Peak_sigma_star"=peak_k@sigma_star,
+              "Peak_gauss_fit"=peak_k@gauss_fit,
               "EIC_ints"=eic$int,
               "EIC_rts"=eic$rt,
               "Peak_ints"=peak_k@ints,
@@ -348,7 +371,7 @@ for(i in 2:ncol(peak_df)){
 }
 peak_df <- mutate(peak_df, qty=Peak_area_top*Peak_ridge_prop*sqrt(Peak_ridge_drift)*
                     (1-Peak_linearity)*Peak_coef_fit*(1-Peak_sigma_star))
-peak_df <- arrange(peak_df, desc(Peak_sigma_star))
+peak_df <- arrange(peak_df, desc(Peak_gauss_fit))
 
 # Other functions ----
 peakCheck <- function(peak_id){

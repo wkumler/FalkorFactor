@@ -18,8 +18,6 @@ peak_object <- setClass("peak_object", slots = list(center="numeric",
                                                     width="numeric",
                                                     area="numeric",
                                                     ints="numeric",
-                                                    wavelet_coefs="matrix",
-                                                    local_maxima="matrix",
                                                     possible_centers = "numeric",
                                                     scan_start="numeric",
                                                     scan_end="numeric",
@@ -110,7 +108,7 @@ widthFinder <- function(peak_ints, peak_center, peakwidth){
   peak_widths_to_check <- seq(min(peakwidth), max(peakwidth), 2)
   peak_ints_buffered <- c(numeric(max(peakwidth)/2), peak_ints, numeric(max(peakwidth)/2))
   peak_fits <- sapply(peak_widths_to_check, function(pred_peak_width){
-    perf_peak <- exp((-seq(-3, 3, length.out = pred_peak_width+1)^2))
+    perf_peak <- perf_peak_list[[as.character(pred_peak_width)]]
     peak_left <- (peak_center+max(peakwidth)/2-pred_peak_width/2)
     peak_right <- (peak_center+max(peakwidth)/2+pred_peak_width/2)
     relevant_ints <- peak_ints_buffered[peak_left:peak_right]
@@ -121,7 +119,6 @@ widthFinder <- function(peak_ints, peak_center, peakwidth){
                       ceiling(peak_center+peak_width/2)),
               cor=max(peak_fits)))
 }
-
 #' Find the total area underneath a curve by Riemann trapezoidal sum
 #' 
 #' \code{findPeakArea} accepts a peak object with pre-established start, end,
@@ -236,6 +233,17 @@ print(paste("Extracted", length(eic_list), "ion chromatograms! Now finding peaks
 
 
 # Find peaks ----
+
+# Define variables created within loops
+min_cwt_length <- 2^(ceiling(log2(max(peakwidth_scans)*6)))
+scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
+possible_peakwidths <- min(peakwidth_scans):max(peakwidth_scans)
+perf_peak_list <- lapply(possible_peakwidths, function(x){
+  exp((-seq(-2, 2, length.out = x+1)^2))
+})
+names(perf_peak_list) <- as.character(possible_peakwidths)
+
+
 # Loop over EICs
 all_peak_list <- list()
 all_peak_ids <- list()
@@ -243,13 +251,11 @@ pb <- txtProgressBar(min = 0, max = length(eic_list), style = 3)
 for(i in 1:length(eic_list)){
   setTxtProgressBar(pb, i)
   eic <- eic_list[[i]]
+  
   # Split EIC by missed scans to turn into ROIs
   roi_encoding <- rle(rts%in%eic$rt)
   peak_lengths <- roi_encoding$lengths[roi_encoding$values]
   roi_all_list <- split(eic, rep(1:length(peak_lengths), times = peak_lengths))
-  
-  # If seeking peaks with missed scans, uncomment below
-  # roi_all_list <- lapply(roi_all_list, extendROI, ext_width=max(peakwidth)/2, eic=eic)
   
   # Remove all ROIs less than a peakwidth long
   roi_list <- roi_all_list[sapply(roi_all_list, nrow)>min(peakwidth_scans)]
@@ -258,49 +264,32 @@ for(i in 1:length(eic_list)){
   }
   
   # Loop over ROIs
-  eic_peak_list <- list()
+  rois_per_eic <- list()
   for(j in 1:length(roi_list)){
     roi <- roi_list[[j]]
     roi_start_scan <- which(rts==roi[1, "rt"])-1
     
-    # Make some waves (same for all peaks in ROI)
-    scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
-    
     # Extend the ROI if necessary to ensure all scales are run
-    # 6 is magic number (12/2) because scales are half peakwidth, and 12
-    # is the magical constant from MSW.cwt code
-    min_cwt_length <- 2^(ceiling(log2(max(peakwidth_scans)*6)))
     if(nrow(roi)<min_cwt_length){ #Buffer with zeros at end
       roi_intensity <- c(roi$int, integer(min_cwt_length-nrow(roi)))
     } else {
       roi_intensity <- roi$int
     }
     wcoef_matrix <- xcms:::MSW.cwt(roi_intensity, scales, wavelet = "mexh")
-    wcoef_matrix <- wcoef_matrix[1:nrow(roi),]
-    
-    if(length(wcoef_matrix)==1){ # If CWT returns NA because the scales suck
-      next
-    }
-    local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
-    possible_peaks <- xcms:::MSW.getRidge(local_maxima)
-    num_scales <- length(attr(possible_peaks, "scales"))
-    # Remove all peaks that have maxima in only a single scale ADJUST LATER
-    possible_peaks <- possible_peaks[sapply(possible_peaks, length)>2]
-    if(!length(possible_peaks)){
-      next
-    }
-    
+    possible_peaks <- wcoef_matrix[1:nrow(roi),] %>%
+      xcms:::MSW.getLocalMaximumCWT() %>%
+      xcms:::MSW.getRidge()
+
     # Loop over peaks
-    roi_peak_list <- list()
+    peaks_per_roi <- list()
     for(k in 1:length(possible_peaks)){
-      peak_k <- peak_object(wavelet_coefs = wcoef_matrix, 
-                            local_maxima = local_maxima,
-                            possible_centers = possible_peaks[[k]])
+      peak_k <- peak_object(possible_centers = possible_peaks[[k]])
+      
       #Center
       peak_k@center <- findPeakCenter(peak_k, roi$int)
       
       #Edges and fit
-      edges_output <- widthFinder(roi$int, peak_k@center, peakwidth)
+      edges_output <- widthFinder(roi$int, peak_k@center, peakwidth_scans)
       peak_k@gauss_fit <- edges_output$cor
       peak_k@scan_start <- max(1, edges_output$edges[1])
       peak_k@scan_end <- min(edges_output$edges[2], nrow(roi))
@@ -320,7 +309,11 @@ for(i in 1:length(eic_list)){
       peak_k@ridge_length <- length(peak_k@possible_centers)
       peak_k@ridge_drift <- length(unique(peak_k@possible_centers))/peak_k@ridge_length
       
-      roi_peak_list[[k]] <- 
+      #Signal-to-noise
+      #peak_k@SNR <- getSNR(peak_k, eic$int)
+      
+      
+      peaks_per_roi[[k]] <- 
         list("Peak_id"=paste(i, j, k, sep = "."),
               "Peak_center"=rts[peak_k@center+roi_start_scan], 
               "Peak_height"=peak_k@height, 
@@ -338,12 +331,11 @@ for(i in 1:length(eic_list)){
               "Peak_rts"=rts[(peak_k@scan_start:peak_k@scan_end)+roi_start_scan])
       all_peak_ids[[length(all_peak_ids)+1]] <- paste(i, j, k, sep = ".")
     }
-    eic_peak_list[[j]] <- roi_peak_list
+    rois_per_eic[[j]] <- peaks_per_roi
   }
-  all_peak_list[[i]] <- eic_peak_list
+  all_peak_list[[i]] <- rois_per_eic
 }
 close(pb)
-
 
 
 # Assemble single values into data frame ----
@@ -358,7 +350,7 @@ for(i in 2:ncol(peak_df)){
   peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
 }
 peak_df <- arrange(peak_df, desc(Peak_gauss_fit))
-peak_df <- arrange(peak_df, Peak_ridge_drift)
+#peak_df <- arrange(peak_df, Peak_ridge_drift)
 
 for(i in peak_df$Peak_id){
   peakCheck(i)

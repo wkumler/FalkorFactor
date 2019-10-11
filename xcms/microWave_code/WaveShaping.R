@@ -24,32 +24,40 @@ for(i in seq_len(ncol(wcoefs))){
 layout(1)
 
 
+possible_peakwidths <- min(peakwidth_scans):max(peakwidth_scans)
+perf_peak_list <- lapply(possible_peakwidths, function(x){
+  exp((-seq(-2, 2, length.out = x+1)^2))
+})
+names(perf_peak_list) <- as.character(possible_peakwidths)
 
 
 widthFinder <- function(peak_ints, peak_center, peakwidth){
   peak_widths_to_check <- seq(min(peakwidth), max(peakwidth), 2)
   peak_ints_buffered <- c(numeric(max(peakwidth)/2), peak_ints, numeric(max(peakwidth)/2))
   peak_fits <- sapply(peak_widths_to_check, function(pred_peak_width){
-    perf_peak <- exp((-seq(-2, 2, length.out = pred_peak_width+1)^2))
+    perf_peak <- perf_peak_list[[as.character(pred_peak_width)]]
     peak_left <- (peak_center+max(peakwidth)/2-pred_peak_width/2)
     peak_right <- (peak_center+max(peakwidth)/2+pred_peak_width/2)
     relevant_ints <- peak_ints_buffered[peak_left:peak_right]
     return(cor(relevant_ints, perf_peak))
   })
-  return(c(peak_widths_to_check[which.max(peak_fits)]))
+  peak_width <- peak_widths_to_check[which.max(peak_fits)]
+  return(list(edges=c(floor(peak_center-peak_width/2), 
+                      ceiling(peak_center+peak_width/2)),
+              cor=max(peak_fits)))
 }
 
 
 
+
 peak <- as.numeric(table(cut(rnorm(100000), breaks = 50)))
-peak <- as.numeric(table(cut(rbeta(10000, 100, 4), breaks = 80)))
 plot(peak/max(peak), type="b")
 peak_width <- widthFinder(peak_ints = peak, 
                          peak_center = which.max(peak), 
-                         peakwidth = c(20, 80))
+                         peakwidth = c(21, 88))
 print(peak_width)
 plot(peak/max(peak), type="b")
-perf_peak <- exp((-seq(-2, 2, length.out = peak_width[1]+1)^2))
-id_idx <- floor(which.max(peak)-peak_width[1]/2):ceiling(which.max(peak)+peak_width[1]/2)
+perf_peak <- exp((-seq(-2, 2, length.out = peak_width$edges[1]+1)^2))
+id_idx <- peak_width$edges[1]:peak_width$edges[2]
 polygon(x = c(id_idx[1], id_idx, id_idx[length(id_idx)]), 
         y = c(0, peak[id_idx]/max(peak), 0), col = "#FF000022")

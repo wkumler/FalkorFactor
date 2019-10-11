@@ -62,10 +62,10 @@ findPeakCenter <- function(peak_instance, roi_ints){
   if(!length(peak_instance@possible_centers)){ # If slot is empty
     stop("The 'possible_centers' slot of this object is empty")
   }
-  wavelet_ints <- sapply(peak_instance@possible_centers, function(x){
+  wavelet_ints <- sapply(unique(peak_instance@possible_centers), function(x){
     sum(roi_ints[max(1, x-5):(x+5)], na.rm = T)
   })
-  peak_instance@possible_centers[which.max(wavelet_ints)]
+  unique(peak_instance@possible_centers[which.max(wavelet_ints)])
 }
 
 #' Finds the best wavelet scale for a given peak object
@@ -286,7 +286,7 @@ for(i in 1:length(eic_list)){
     for(k in 1:length(possible_peaks)){
       peak_k <- peak_object(wavelet_coefs = wcoef_matrix, 
                             local_maxima = local_maxima,
-                            possible_centers = unique(possible_peaks[[k]]))
+                            possible_centers = possible_peaks[[k]])
       
       peak_k@center <- findPeakCenter(peak_k, roi$int)
       
@@ -321,7 +321,6 @@ for(i in 1:length(eic_list)){
       peak_k@ridge_length <- length(peak_k@possible_centers)
       peak_k@ridge_prop <- round(peak_k@ridge_length/peak_k@num_used_scales, digits = 2)
       peak_k@ridge_drift <- length(unique(peak_k@possible_centers))/peak_k@ridge_length
-      
       peak_k@linearity <- cor(sort(peak_k@ints), 1:length(peak_k@ints))^2
       
       peak_k@coef_fit <- cor(peak_k@ints, peak_coefs[, as.character(peak_k@best_scale)])
@@ -391,3 +390,4 @@ for(i in peak_df$Peak_id){
   peakCheck(i)
   readline(prompt = "Press Enter")
 }
+

@@ -370,7 +370,8 @@ for(i in 2:ncol(peak_df)){
 }
 peak_df <- mutate(peak_df, qty=Peak_area_top*Peak_ridge_prop*sqrt(Peak_ridge_drift)*
                     (1-Peak_linearity)*Peak_coef_fit*(1-Peak_sigma_star))
-peak_df <- arrange(peak_df, desc(Peak_gauss_fit))
+#peak_df <- arrange(peak_df, desc(Peak_gauss_fit))
+peak_df <- arrange(peak_df, Peak_ridge_length)
 
 # Other functions ----
 peakCheck <- function(peak_id){

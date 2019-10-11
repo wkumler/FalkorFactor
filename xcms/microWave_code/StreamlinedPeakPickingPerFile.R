@@ -198,7 +198,7 @@ peakwidth_scans <- c(floor(peakwidth[1]/mean(diff(rts))),
 prefilter <- c(1, 1)
 ppm <- 2.5
 
-data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
+data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1200)
 
 pb <- txtProgressBar(min = 0, max = 1, style = 3)
 eic_list <- list()
@@ -239,7 +239,7 @@ min_cwt_length <- 2^(ceiling(log2(max(peakwidth_scans)*6)))
 scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
 possible_peakwidths <- min(peakwidth_scans):max(peakwidth_scans)
 perf_peak_list <- lapply(possible_peakwidths, function(x){
-  exp((-seq(-2, 2, length.out = x+1)^2))
+  exp((-seq(-2.5, 2.5, length.out = x+1)^2))
 })
 names(perf_peak_list) <- as.character(possible_peakwidths)
 
@@ -356,4 +356,3 @@ for(i in peak_df$Peak_id){
   peakCheck(i)
   readline(prompt = "Press Enter")
 }
-

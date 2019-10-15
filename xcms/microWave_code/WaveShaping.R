@@ -41,23 +41,33 @@ widthFinder <- function(peak_ints, peak_center, peakwidth){
     relevant_ints <- peak_ints_buffered[peak_left:peak_right]
     return(cor(relevant_ints, perf_peak))
   })
-  peak_width <- peak_widths_to_check[which.max(peak_fits)]
-  return(list(edges=c(floor(peak_center-peak_width/2), 
-                      ceiling(peak_center+peak_width/2)),
-              cor=max(peak_fits)))
+  best_peak_width <- peak_widths_to_check[which.max(peak_fits)]
+  
+  peak_left <- (peak_center+max(peakwidth)/2-best_peak_width/2)
+  peak_right <- (peak_center+max(peakwidth)/2+best_peak_width/2)
+  relevant_ints <- peak_ints_buffered[peak_left:peak_right]
+  
+  best_perf_peak <- perf_peak_list[[best_peak_width-min(peakwidth)+1]]
+  
+  residuals <- best_perf_peak-relevant_ints/max(relevant_ints)
+  
+  return(list(edges=c(floor(peak_center-best_peak_width/2), 
+                      ceiling(peak_center+best_peak_width/2)),
+              cor=max(peak_fits),
+              residuals=residuals))
 }
 
 
 
-
-peak <- as.numeric(table(cut(rnorm(100000), breaks = 50)))
-plot(peak/max(peak), type="b")
+peak <- as.numeric(table(cut(rnorm(1000), breaks = 80)))
 peak_width <- widthFinder(peak_ints = peak, 
                          peak_center = which.max(peak), 
                          peakwidth = c(21, 88))
-print(peak_width)
-plot(peak/max(peak), type="b")
-perf_peak <- exp((-seq(-2, 2, length.out = peak_width$edges[1]+1)^2))
-id_idx <- peak_width$edges[1]:peak_width$edges[2]
-polygon(x = c(id_idx[1], id_idx, id_idx[length(id_idx)]), 
-        y = c(0, peak[id_idx]/max(peak), 0), col = "#FF000022")
+layout(matrix(c(1,1,2), nrow=3))
+plot(peak, type="b")
+peak_background <- mean(c(head(peak, 3), tail(peak, 3)))
+peak_noise <- sd(peak_width$residuals)*max(peak)
+abline(h=peak_background+peak_noise)
+legend("topleft", legend=peak_width$edges[2]-peak_width$edges[1])
+legend("topright", legend=max(peak)/(peak_background+peak_noise))
+plot(peak_width$residuals)

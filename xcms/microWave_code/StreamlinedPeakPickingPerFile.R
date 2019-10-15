@@ -26,7 +26,8 @@ peak_object <- setClass("peak_object", slots = list(center="numeric",
                                                     gauss_fit="numeric",
                                                     height_top3="numeric",
                                                     ridge_length="numeric",
-                                                    ridge_drift="numeric"))
+                                                    ridge_drift="numeric",
+                                                    SNR="numeric"))
 
 
 
@@ -116,10 +117,23 @@ widthFinder <- function(peak_ints, peak_center, peakwidth){
     relevant_ints <- peak_ints_buffered[peak_left:peak_right]
     return(cor(relevant_ints, perf_peak))
   })
-  peak_width <- peak_widths_to_check[which.max(peak_fits)]
-  return(list(edges=c(floor(peak_center-peak_width/2), 
-                      ceiling(peak_center+peak_width/2)),
-              cor=max(peak_fits)))
+  best_peak_width <- peak_widths_to_check[which.max(peak_fits)]
+  
+  peak_left <- (peak_center+max(peakwidth)/2-best_peak_width/2)
+  peak_right <- (peak_center+max(peakwidth)/2+best_peak_width/2)
+  relevant_ints <- peak_ints_buffered[peak_left:peak_right]
+  
+  best_perf_peak <- perf_peak_list[[best_peak_width-min(peakwidth)+1]]
+  
+  residuals <- best_perf_peak-relevant_ints/max(relevant_ints)
+  peak_noise <- sd(residuals)*max(peak_ints)
+  peak_background <- mean(c(head(peak_ints, 3), tail(peak_ints, 3)))
+  SNR <- max(peak_ints)/(peak_background+peak_noise)
+  
+  return(list(edges=c(floor(peak_center-best_peak_width/2), 
+                      ceiling(peak_center+best_peak_width/2)),
+              cor=max(peak_fits),
+              SNR=SNR))
 }
 #' Find the total area underneath a curve by Riemann trapezoidal sum
 #' 
@@ -178,6 +192,7 @@ peakCheck <- function(peak_id){
   reportvals <- suppressWarnings(sapply(as.numeric(peak_data[sapply(peak_data, length)<=1])[-1], round, digits=2))
   reportnames <- gsub("Peak_", "", names(peak_data[sapply(peak_data, length)<=1])[-1])
   legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
+  legend("topleft", legend = paste0("Peak id: ", peak_id))
 }
 
 
@@ -200,7 +215,7 @@ peakwidth_scans <- c(floor(peakwidth[1]/mean(diff(rts))),
 prefilter <- c(1, 1)
 ppm <- 2.5
 
-data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1200)
+data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1100)
 
 pb <- txtProgressBar(min = 0, max = 1, style = 3)
 eic_list <- list()
@@ -241,7 +256,7 @@ min_cwt_length <- 2^(ceiling(log2(max(peakwidth_scans)*6)))
 scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
 possible_peakwidths <- min(peakwidth_scans):max(peakwidth_scans)
 perf_peak_list <- lapply(possible_peakwidths, function(x){
-  exp((-seq(-2.5, 2.5, length.out = x+1)^2))
+  exp((-seq(-3, 3, length.out = x+1)^2))
 })
 names(perf_peak_list) <- as.character(possible_peakwidths)
 
@@ -290,12 +305,13 @@ for(i in 1:length(eic_list)){
       #Center
       peak_k@center <- findPeakCenter(peak_k, roi$int)
       
-      #Edges and fit
-      edges_output <- widthFinder(roi$int, peak_k@center, peakwidth_scans)
-      peak_k@gauss_fit <- edges_output$cor
-      peak_k@scan_start <- max(1, edges_output$edges[1])
-      peak_k@scan_end <- min(edges_output$edges[2], nrow(roi))
+      #Edges, fit, and SNR
+      fitting_output <- widthFinder(roi$int, peak_k@center, peakwidth_scans)
+      peak_k@gauss_fit <- fitting_output$cor
+      peak_k@scan_start <- max(1, fitting_output$edges[1])
+      peak_k@scan_end <- min(fitting_output$edges[2], nrow(roi))
       peak_k@width <- peak_k@scan_end-peak_k@scan_start
+      peak_k@SNR <- fitting_output$SNR
       if(peak_k@width < peakwidth_scans[1]){
         next
       }
@@ -312,7 +328,7 @@ for(i in 1:length(eic_list)){
       peak_k@ridge_drift <- length(unique(peak_k@possible_centers))/peak_k@ridge_length
       
       #Signal-to-noise
-      #peak_k@SNR <- getSNR(peak_k, eic$int)
+      
       
       
       peaks_per_roi[[k]] <- 
@@ -327,6 +343,7 @@ for(i in 1:length(eic_list)){
               "Peak_ridge_length"=peak_k@ridge_length, 
               "Peak_ridge_drift"=peak_k@ridge_drift,
               "Peak_gauss_fit"=peak_k@gauss_fit,
+              "Peak_SNR"=peak_k@SNR,
               "EIC_ints"=eic$int,
               "EIC_rts"=eic$rt,
               "Peak_ints"=peak_k@ints,
@@ -351,8 +368,9 @@ all_peak_ids <- unlist(all_peak_ids)
 for(i in 2:ncol(peak_df)){
   peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
 }
-peak_df <- arrange(peak_df, desc(Peak_gauss_fit))
-#peak_df <- arrange(peak_df, Peak_ridge_drift)
+peak_df <- arrange(peak_df, desc(Peak_SNR))
+peak_df <- mutate(peak_df, qscore=Peak_SNR^2*Peak_gauss_fit^4*log10(Peak_height)) %>%
+  arrange(desc(qscore))
 
 for(i in peak_df$Peak_id){
   peakCheck(i)

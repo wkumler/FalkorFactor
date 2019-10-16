@@ -4,9 +4,12 @@ library(xcms)
 library(tidyverse)
 library(roxygen2)
 
+
+# msfiles <- list.files(path = "mzMLs", pattern = "Blk|Smp|Full\\d", full.names = T)
+# raw_data <- readMSData(files = msfiles, msLevel. = 1, centroided. = T, mode = "onDisk")
+# save(raw_data, file = "xcms/raw_data")
 load("xcms/raw_data")
-x <- raw_data
-x <- filterMsLevel(x, msLevel. = 1L)
+x <- filterMsLevel(raw_data, msLevel. = 1L)
 x <- selectFeatureData(x, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
 x <- lapply(1:length(fileNames(x)), FUN=filterFile, object = x)
 x <- x[[1]]
@@ -92,7 +95,8 @@ findBestScale <- function(peak_instance){
 #' \code{findPeakEdges} accepts a peak object which must have filled 
 #' "best_scale" and "center" slots. The function then finds the edges of the
 #' peak by using xcms:::descendMinTol, with center +/- best_scale as the
-#' offset parameters.
+#' offset parameters. This code is not currently being used by the microWave workflow,
+#' as it's been replaced by widthFinder instead.
 #' 
 #' @param peak_instance The peak_instance parameter is an S4 peak object, 
 #' usually produced by the normal Thanos workflow. Slots "best_scale" and
@@ -107,6 +111,34 @@ findPeakEdges <- function(peak_instance){
                        startpos = c(left_shoulder_offset, right_shoulder_offset))
 }
 
+
+#' Finds the edges of a peak, fits a Gaussian curve to it, and calculates SNR
+#' 
+#' \code{widthFinder} accepts peak information (intensity, peak center, 
+#' and maximum/minimum peakwidths) and uses a Gaussian fitting model to calculate
+#' the edges of the peak. In essence, the model fits a Gaussian curve corresponding
+#' to each possible peakwidth and tests which curve fits the peak best.
+#' 3 SDs to the left and right are used as peak edges, as long as they're 
+#' within a contiguous set of scans. The Gaussian fit of the best curve
+#' is reported, which appears to be a robust parameter for peak identification.
+#' Finally, the residuals of the Gaussian curve vs the actual peak are calculated
+#' and used to estimate the noise (curve - normalized peak intensity)/SD(residuals)
+#' and the three outermost scans on the left and the right are used to estimate the
+#' background intensity level.
+#' 
+#' @param peak_ints A vector of intensities corresponding to a peak. These must
+#' be contiguous (no missed scans) and typically correspond to all the intensities
+#' within an ROI. 
+#' 
+#' @param peak_center A single value, obtained from the wavelet matching algorithm
+#' in XCMS.
+#' 
+#' @param peakwidth_scans The possible peak widths in scans. This value is 
+#' typically set early on in the workflow in terms of seconds and converted
+#' to scans using the average time between scans.
+#' 
+#' @return A list containing the peak edges, the correlation coefficient of the
+#' Gaussian fit, and the signal-to-noise parameter.
 widthFinder <- function(peak_ints, peak_center, peakwidth){
   peak_widths_to_check <- seq(min(peakwidth), max(peakwidth), 2)
   peak_ints_buffered <- c(numeric(max(peakwidth)/2), peak_ints, numeric(max(peakwidth)/2))
@@ -135,6 +167,7 @@ widthFinder <- function(peak_ints, peak_center, peakwidth){
               cor=max(peak_fits),
               SNR=SNR))
 }
+
 #' Find the total area underneath a curve by Riemann trapezoidal sum
 #' 
 #' \code{findPeakArea} accepts a peak object with pre-established start, end,
@@ -198,24 +231,24 @@ peakCheck <- function(peak_id){
 
 
 
-# Generate DF, pre-processing ----
+# Generate DF, pre-processing, parameter input ----
 mzs <- lapply(x, mz)
 mz <- unlist(mzs, use.names = FALSE)
 int <- unlist(lapply(x, intensity), use.names = FALSE)
 rts <- unname(unlist(lapply(x, rtime)))
 rt <- rep(rts, sapply(mzs, length))
 all_data <- data.frame(mz, int, rt)
+data <- all_data %>% filter(mz>100&mz<250) %>% filter(rt>60&rt<1100)
 
-
-
-# Find all reasonable EICs ----
 peakwidth <- c(20, 80)
 peakwidth_scans <- c(floor(peakwidth[1]/mean(diff(rts))), 
                      ceiling(peakwidth[2]/mean(diff(rts))))
 prefilter <- c(1, 1)
 ppm <- 2.5
 
-data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1100)
+
+
+# Find all reasonable EICs ----
 
 pb <- txtProgressBar(min = 0, max = 1, style = 3)
 eic_list <- list()
@@ -369,7 +402,7 @@ for(i in 2:ncol(peak_df)){
   peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
 }
 peak_df <- arrange(peak_df, desc(Peak_SNR))
-peak_df <- mutate(peak_df, qscore=Peak_SNR^2*Peak_gauss_fit^4*log10(Peak_height)) %>%
+peak_df <- mutate(peak_df, qscore=Peak_SNR*Peak_gauss_fit^4*log10(Peak_height)) %>%
   arrange(desc(qscore))
 
 for(i in peak_df$Peak_id){

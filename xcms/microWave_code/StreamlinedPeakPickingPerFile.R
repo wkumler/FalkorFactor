@@ -12,7 +12,7 @@ load("xcms/raw_data")
 x <- filterMsLevel(raw_data, msLevel. = 1L)
 x <- selectFeatureData(x, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
 x <- lapply(1:length(fileNames(x)), FUN=filterFile, object = x)
-x <- x[[1]]
+x <- x[[2]]
 x <- spectra(x)
 
 
@@ -20,6 +20,7 @@ x <- spectra(x)
 # Peak object definition ----
 peak_object <- setClass("peak_object", slots = list(center="numeric",
                                                     height="numeric",
+                                                    mz="numeric",
                                                     width="numeric",
                                                     area="numeric",
                                                     ints="numeric",
@@ -214,21 +215,6 @@ extendROI <- function(roi_df, ext_width, eic = eic){
   d <- subset(eic, eic$rt>min_ext_rt&eic$rt<max_ext_rt)
 }
 
-peakCheck <- function(peak_id){
-  idxs <- as.numeric(strsplit(peak_id, "\\.")[[1]])
-  peak_data <- all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]
-  plot(peak_data$EIC_rts, peak_data$EIC_ints,
-       type="l", lwd=2, 
-       xlim=c(min(peak_data$EIC_rts), max(peak_data$EIC_rts)*1.5))
-  lines(peak_data$Peak_rts, peak_data$Peak_ints,
-        lwd=2, col="red")
-  reportvals <- suppressWarnings(sapply(as.numeric(peak_data[sapply(peak_data, length)<=1])[-1], round, digits=2))
-  reportnames <- gsub("Peak_", "", names(peak_data[sapply(peak_data, length)<=1])[-1])
-  legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
-  legend("topleft", legend = paste0("Peak id: ", peak_id))
-}
-
-
 
 
 # Generate DF, pre-processing, parameter input ----
@@ -238,7 +224,7 @@ int <- unlist(lapply(x, intensity), use.names = FALSE)
 rts <- unname(unlist(lapply(x, rtime)))
 rt <- rep(rts, sapply(mzs, length))
 all_data <- data.frame(mz, int, rt)
-data <- all_data %>% filter(mz>100&mz<250) %>% filter(rt>60&rt<1100)
+data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
 peakwidth <- c(20, 80)
 peakwidth_scans <- c(floor(peakwidth[1]/mean(diff(rts))), 
@@ -360,12 +346,14 @@ for(i in 1:length(eic_list)){
       peak_k@ridge_length <- length(peak_k@possible_centers)
       peak_k@ridge_drift <- length(unique(peak_k@possible_centers))/peak_k@ridge_length
       
-      #Signal-to-noise
-      
+      #Mz info
+      peak_mzs <- roi$mz[seq(peak_k@scan_start, peak_k@scan_end)]
+      peak_k@mz <- weighted.mean(peak_mzs, peak_k@ints)
       
       
       peaks_per_roi[[k]] <- 
         list("Peak_id"=paste(i, j, k, sep = "."),
+             "Peak_mz"=peak_k@mz,
               "Peak_center"=rts[peak_k@center+roi_start_scan], 
               "Peak_height"=peak_k@height, 
               "Peak_width"=peak_k@width*mean(diff(rts)), 
@@ -405,7 +393,26 @@ peak_df <- arrange(peak_df, desc(Peak_SNR))
 peak_df <- mutate(peak_df, qscore=Peak_SNR*Peak_gauss_fit^4*log10(Peak_height)) %>%
   arrange(desc(qscore))
 
+
+
+# Aaaand visualize ----
+
+peakCheck <- function(peak_id){
+  idxs <- as.numeric(strsplit(peak_id, "\\.")[[1]])
+  peak_data <- all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]
+  plot(peak_data$EIC_rts, peak_data$EIC_ints,
+       type="l", lwd=2, 
+       xlim=c(min(peak_data$EIC_rts), max(peak_data$EIC_rts)*1.5))
+  lines(peak_data$Peak_rts, peak_data$Peak_ints,
+        lwd=2, col="red")
+  reportvals <- c(peak_data$Peak_mz, suppressWarnings(sapply(as.numeric(peak_data[sapply(peak_data, length)<=1])[-c(1,2)], round, digits=2)))
+  reportnames <- gsub("Peak_", "", names(peak_data[sapply(peak_data, length)<=1])[-1])
+  legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
+  legend("topleft", legend = paste0("Peak id: ", peak_id))
+}
+
 for(i in peak_df$Peak_id){
   peakCheck(i)
   readline(prompt = "Press Enter")
 }
+

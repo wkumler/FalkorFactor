@@ -2,7 +2,7 @@
 
 library(roxygen2)
 
-#' An S4 class to represent a bank account.
+#' An S4 class for holding peak information.
 #'
 #' @slot center A length-one numeric vector with the retention time  (in
 #'   seconds) of a given peak, as determined by the scan with the highest
@@ -275,7 +275,8 @@ extendROI <- function(roi_df, ext_width, eic = eic){
 #' remaining raw data points to provide a more realistic time estimate, as
 #' many points are removed each iteration early on in the function as EICs which
 #' contain data from every scan, while later iterations take much longer because
-#' the EICs are fragmented.
+#' the EICs are fragmented. Should be set to FALSE if running in parallel, and
+#' the parallel progress bar should be used instead.
 #' 
 #' @param prefilter A named length-two vector containing prefilter used to remove EICs
 #' that are either too short or fail to have a sufficient number of continuous
@@ -284,16 +285,17 @@ extendROI <- function(roi_df, ext_width, eic = eic){
 #' threshold which all contiguous scans must exceed. Judicious use of the prefilter
 #' can significantly speed up the EIC construction algorithm, but risks removing
 #' true peaks if enabled and set too aggressively. Its functionality can be
-#' disabled by setting both values to zero.
+#' disabled by setting both values to zero, as is the default.
 #' 
 #' @param peakwidth A length-two vector containing the minimum and maximum possible
 #' peak width retention times, in seconds. These values are later converted to
 #' minimum and maximum scans by multiplying by the average time between scans.
+#' Defaults to c(20, 80) for HILIC data.
 #' 
 #' @return A list of data frames, each one containing mz, int, and rt values
 #' corresponding to a given EIC.
 makeEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
-                     prefilter = c(intensity=1, contiguous=1), 
+                     prefilter = c(intensity=0, contiguous=0), 
                      peakwidth = c(20, 80)){
   if(report){print(paste("Constructing EICs from", 
                          nrow(given_data_frame), "data points"))}
@@ -323,10 +325,12 @@ makeEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
     }
     
     # If there aren't enough points above the prefilter threshold
-    runs_above_prefilter <- rle(eic$int>prefilter["intensity"])
-    max_run_length <- max(runs_above_prefilter$lengths[runs_above_prefilter$values])
-    if(max_run_length<prefilter["contiguous"]){
-      next
+    if(any(as.logical(prefilter))){
+      runs_above_prefilter <- rle(eic$int>prefilter["intensity"])
+      max_run_length <- max(runs_above_prefilter$lengths[runs_above_prefilter$values])
+      if(max_run_length<prefilter["contiguous"]){
+        next
+      }
     }
     
     # Put it all together and save

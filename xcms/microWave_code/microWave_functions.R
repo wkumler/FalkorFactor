@@ -344,3 +344,117 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
   
   return(eic_list)
 }
+
+
+
+
+
+microWavePeaks <- function(eic_list){
+  # Define variables created within loops
+  min_cwt_length <- 2^(ceiling(log2(max(peakwidth_scans)*6)))
+  scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
+  possible_peakwidths <- min(peakwidth_scans):max(peakwidth_scans)
+  perf_peak_list <- lapply(possible_peakwidths, function(x){
+    exp((-seq(-3, 3, length.out = x+1)^2))
+  })
+  names(perf_peak_list) <- as.character(possible_peakwidths)
+  
+  
+  # Loop over EICs
+  all_peak_list <- list()
+  all_peak_ids <- list()
+  pb <- txtProgressBar(min = 0, max = length(eic_list), style = 3)
+  for(i in 1:length(eic_list)){
+    setTxtProgressBar(pb, i)
+    eic <- eic_list[[i]]
+    
+    # Split EIC by missed scans to turn into ROIs
+    roi_encoding <- rle(rts%in%eic$rt)
+    peak_lengths <- roi_encoding$lengths[roi_encoding$values]
+    roi_all_list <- split(eic, rep(1:length(peak_lengths), times = peak_lengths))
+    
+    # Remove all ROIs less than a peakwidth long
+    roi_list <- roi_all_list[sapply(roi_all_list, nrow)>min(peakwidth_scans)]
+    if(!length(roi_list)){ # If there were no reasonable ROIs found
+      next
+    }
+    
+    # Loop over ROIs
+    rois_per_eic <- list()
+    for(j in 1:length(roi_list)){
+      roi <- roi_list[[j]]
+      roi_start_scan <- which(rts==roi[1, "rt"])-1
+      
+      # Extend the ROI if necessary to ensure all scales are run
+      if(nrow(roi)<min_cwt_length){ #Buffer with zeros at end
+        roi_intensity <- c(roi$int, integer(min_cwt_length-nrow(roi)))
+      } else {
+        roi_intensity <- roi$int
+      }
+      wcoef_matrix <- xcms:::MSW.cwt(roi_intensity, scales, wavelet = "mexh")
+      wcoef_matrix <- wcoef_matrix[1:nrow(roi),]
+      local_maxima <- xcms:::MSW.getLocalMaximumCWT(wcoef_matrix)
+      possible_peaks <- xcms:::MSW.getRidge(local_maxima)
+      
+      # Loop over peaks
+      peaks_per_roi <- list()
+      for(k in 1:length(possible_peaks)){
+        peak_k <- peak_object(possible_centers = possible_peaks[[k]])
+        
+        #Center
+        peak_k@center <- findPeakCenter(peak_k, roi$int)
+        
+        #Edges, fit, and SNR
+        fitting_output <- widthFinder(roi$int, peak_k@center, peakwidth_scans)
+        peak_k@gauss_fit <- fitting_output$cor
+        peak_k@scan_start <- max(1, fitting_output$edges[1])
+        peak_k@scan_end <- min(fitting_output$edges[2], nrow(roi))
+        peak_k@width <- peak_k@scan_end-peak_k@scan_start
+        peak_k@SNR <- fitting_output$SNR
+        if(peak_k@width < peakwidth_scans[1]){
+          next
+        }
+        
+        #Height and intensity
+        peak_k@ints <- roi$int[seq(peak_k@scan_start, peak_k@scan_end)]
+        peak_k@height <- max(peak_k@ints)
+        peak_k@height_top3 <-
+          mean(sort(peak_k@ints, partial=peak_k@width-2)[peak_k@width:(peak_k@width-2)])
+        peak_k@area <- findPeakArea(peak_k)
+        
+        #Ridge info
+        peak_k@ridge_length <- length(peak_k@possible_centers)
+        peak_k@ridge_drift <- length(unique(peak_k@possible_centers))/peak_k@ridge_length
+        
+        #Mz info
+        peak_mzs <- roi$mz[seq(peak_k@scan_start, peak_k@scan_end)]
+        peak_k@mz <- weighted.mean(peak_mzs, peak_k@ints)
+        
+        
+        peaks_per_roi[[k]] <- 
+          list("Peak_id"=paste(i, j, k, sep = "."),
+               "Peak_mz"=peak_k@mz,
+               "Peak_center"=rts[peak_k@center+roi_start_scan], 
+               "Peak_height"=peak_k@height, 
+               "Peak_width"=peak_k@width*mean(diff(rts)), 
+               "Peak_area"=peak_k@area, 
+               "Peak_start_time"=rts[peak_k@scan_start+roi_start_scan],
+               "Peak_end_time"=rts[peak_k@scan_end+roi_start_scan], 
+               "Peak_area_top"=peak_k@height_top3, 
+               "Peak_ridge_length"=peak_k@ridge_length, 
+               "Peak_ridge_drift"=peak_k@ridge_drift,
+               "Peak_gauss_fit"=peak_k@gauss_fit,
+               "Peak_SNR"=peak_k@SNR,
+               "EIC_ints"=eic$int,
+               "EIC_rts"=eic$rt,
+               "Peak_ints"=peak_k@ints,
+               "Peak_rts"=rts[(peak_k@scan_start:peak_k@scan_end)+roi_start_scan])
+        all_peak_ids[[length(all_peak_ids)+1]] <- paste(i, j, k, sep = ".")
+      }
+      rois_per_eic[[j]] <- peaks_per_roi
+    }
+    all_peak_list[[i]] <- rois_per_eic
+  }
+  close(pb)
+  
+}

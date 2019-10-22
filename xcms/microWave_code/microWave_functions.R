@@ -15,43 +15,45 @@ library(roxygen2)
 #'
 #' @slot width A length-one numeric vector with the width of the peak, in
 #'   seconds
-#'   
-#' @slot area A length-one numeric vector with the absolute area of the peak, as determined
-#' by the exact Riemann sum of intensities
-#' 
+#'
+#' @slot area A length-one numeric vector with the absolute area of the peak, as
+#'   determined by the exact Riemann sum of intensities
+#'
 #' @slot ints A numeric vector with the intensity values of a peak
-#' 
+#'
 #' @slot possible_centers A numeric vector with the possible centers of a peak,
-#' one of which will later become the actual center after processing with
-#' findPeakCenter
-#' 
-#' @slot scan_start A length-one numeric vector with the start scan number of the peak
-#' 
-#' @slot scan_end A length-one numeric vector with the final scan number of the peak
-#' 
-#' @slot gauss_fit A length-one numeric vector between 0 and 1 with the correlation coefficient
-#' between the peak intensities and the idealized Gaussian curve with a width
-#' equal to the width of the peak
-#' 
+#'   one of which will later become the actual center after processing with
+#'   findPeakCenter
+#'
+#' @slot scan_start A length-one numeric vector with the start scan number of
+#'   the peak
+#'
+#' @slot scan_end A length-one numeric vector with the final scan number of the
+#'   peak
+#'
+#' @slot gauss_fit A length-one numeric vector between 0 and 1 with the
+#'   correlation coefficient between the peak intensities and the idealized
+#'   Gaussian curve with a width equal to the width of the peak
+#'
 #' @slot height_top3 A length-one numeric vector with the average intensity of
-#' the three highest intensities of the peak
-#' 
+#'   the three highest intensities of the peak
+#'
 #' @slot ridge_length A length-one numeric vector with the length of the ridge
-#' corresponding to the given peak, as determined by getRidge()
-#' 
-#' @slot ridge_drift A length-one numeric vector between 0 and 1 with the "drift" of the ridge.
-#' This is calculated by dividing the number of unique ridge maxima (in scans)
-#' by the length of the ridge. Higher drifts imply disagreement between the 
-#' wavelets about the location of the ridge maximum, and lower drifts indicate
-#' that the ridge maxima all occur at the same scan.
-#' 
+#'   corresponding to the given peak, as determined by getRidge()
+#'
+#' @slot ridge_drift A length-one numeric vector between 0 and 1 with the
+#'   "drift" of the ridge. This is calculated by dividing the number of unique
+#'   ridge maxima (in scans) by the length of the ridge. Higher drifts imply
+#'   disagreement between the wavelets about the location of the ridge maximum,
+#'   and lower drifts indicate that the ridge maxima all occur at the same scan.
+#'
 #' @slot SNR A length-one numeric vector with the signal-to-noise ratio of the
-#' peak. This is calculated by dividing the maximum peak intensity minus the
-#' baseline intensity by the standard deviation of the noise within the peak.
-#' That peak noise is calculated from the residuals of the Gaussian correlation,
-#' measuring the deviation from the ideal curve. This assumes that the peak
-#' is Gaussian and that the noise within the peak is the same as the noise
-#' outside the peak after the peak signal has been subtracted.
+#'   peak. This is calculated by dividing the maximum peak intensity minus the
+#'   baseline intensity by the standard deviation of the noise within the peak.
+#'   That peak noise is calculated from the residuals of the Gaussian
+#'   correlation, measuring the deviation from the ideal curve. This assumes
+#'   that the peak is Gaussian and that the noise within the peak is the same as
+#'   the noise outside the peak after the peak signal has been subtracted.
 peak_object <- setClass("peak_object", slots = list(center="numeric",
                                                     height="numeric",
                                                     mz="numeric",
@@ -70,24 +72,23 @@ peak_object <- setClass("peak_object", slots = list(center="numeric",
 
 
 #' Finds local maxima by summing nearby intensities
-#' 
+#'
 #' \code{findPeakCenter} accepts a peak object and the intensities of the ROI
 #' containing the peak object. The peak object must have a filled "possible
-#' centers" slot containing a vector of scans, usually produced by calling
-#' the xcms:::MSW.getRidge() function on the peak object's local max matrix.
-#' The function then iterates over the possible centers, calculates the
-#' area of 5 scans around the center, and returns the scan with the highest
-#' area.
-#' 
-#' @param peak_instance The peak_instance parameter is an S4 peak object, 
-#' usually produced by the normal Thanos workflow.
-#' 
-#' @param roi_ints The roi_ints parameter is a vector of intensities 
-#' corresponding to the ROI. These intensities will be used to calculate the
-#' area around each possible peak.
-#' 
+#' centers" slot containing a vector of scans, usually produced by calling the
+#' xcms:::MSW.getRidge() function on the peak object's local max matrix. The
+#' function then iterates over the possible centers, calculates the area of 5
+#' scans around the center, and returns the scan with the highest area.
+#'
+#' @param peak_instance The peak_instance parameter is an S4 peak object,
+#'   usually produced by the normal Thanos workflow.
+#'
+#' @param roi_ints The roi_ints parameter is a vector of intensities
+#'   corresponding to the ROI. These intensities will be used to calculate the
+#'   area around each possible peak.
+#'
 #' @return The scan number corresponding to the highest area - i.e., the center
-#' of the peak.
+#'   of the peak.
 findPeakCenter <- function(peak_instance, roi_ints){
   if(!length(peak_instance@possible_centers)){ # If slot is empty
     stop("The 'possible_centers' slot of this object is empty")
@@ -99,19 +100,19 @@ findPeakCenter <- function(peak_instance, roi_ints){
 }
 
 #' Finds the best wavelet scale for a given peak object
-#' 
-#' \code{findBestScale} accepts a peak object which must have filled 
+#'
+#' \code{findBestScale} accepts a peak object which must have filled
 #' "local_maxima" and "center" slots. The function then finds the largest
 #' wavelet scale which has a local maximum in the same scan as the peak center.
 #' This function should under go serious revision, as this algorithm's utility
 #' is questionable at best.
-#' 
-#' @param peak_instance The peak_instance parameter is an S4 peak object, 
-#' usually produced by the normal Thanos workflow. Slots "local_maxima" and
-#' "center" must be filled.
-#' 
+#'
+#' @param peak_instance The peak_instance parameter is an S4 peak object,
+#'   usually produced by the normal Thanos workflow. Slots "local_maxima" and
+#'   "center" must be filled.
+#'
 #' @return The wavelet scale corresponding to the wavelet sharing a local
-#' maximum with the peak center
+#'   maximum with the peak center
 findBestScale <- function(peak_instance){
   if(!length(peak_instance@local_maxima)){ # If slot is empty
     stop("The 'local_maxima' slot of this object is empty")
@@ -124,19 +125,19 @@ findBestScale <- function(peak_instance){
 }
 
 #' Finds the edges of a given peak object
-#' 
-#' \code{findPeakEdges} accepts a peak object which must have filled 
+#'
+#' \code{findPeakEdges} accepts a peak object which must have filled
 #' "best_scale" and "center" slots. The function then finds the edges of the
-#' peak by using xcms:::descendMinTol, with center +/- best_scale as the
-#' offset parameters. This code is not currently being used by the microWave workflow,
+#' peak by using xcms:::descendMinTol, with center +/- best_scale as the offset
+#' parameters. This code is not currently being used by the microWave workflow,
 #' as it's been replaced by widthFinder instead.
-#' 
-#' @param peak_instance The peak_instance parameter is an S4 peak object, 
-#' usually produced by the normal Thanos workflow. Slots "best_scale" and
-#' "center" must be filled.
-#' 
+#'
+#' @param peak_instance The peak_instance parameter is an S4 peak object,
+#'   usually produced by the normal Thanos workflow. Slots "best_scale" and
+#'   "center" must be filled.
+#'
 #' @return A vector with two values, corresponding to the left and right edges
-#' of the peak, respectively.
+#'   of the peak, respectively.
 findPeakEdges <- function(peak_instance){
   left_shoulder_offset <- peak_instance@center-peak_instance@best_scale
   right_shoulder_offset <- peak_instance@center+peak_instance@best_scale
@@ -146,32 +147,32 @@ findPeakEdges <- function(peak_instance){
 
 
 #' Finds the edges of a peak, fits a Gaussian curve to it, and calculates SNR
-#' 
-#' \code{widthFinder} accepts peak information (intensity, peak center, 
-#' and maximum/minimum peakwidths) and uses a Gaussian fitting model to calculate
-#' the edges of the peak. In essence, the model fits a Gaussian curve corresponding
-#' to each possible peakwidth and tests which curve fits the peak best.
-#' 3 SDs to the left and right are used as peak edges, as long as they're 
-#' within a contiguous set of scans. The Gaussian fit of the best curve
-#' is reported, which appears to be a robust parameter for peak identification.
-#' Finally, the residuals of the Gaussian curve vs the actual peak are calculated
-#' and used to estimate the noise (curve - normalized peak intensity)/SD(residuals)
-#' and the three outermost scans on the left and the right are used to estimate the
-#' background intensity level.
-#' 
+#'
+#' \code{widthFinder} accepts peak information (intensity, peak center, and
+#' maximum/minimum peakwidths) and uses a Gaussian fitting model to calculate
+#' the edges of the peak. In essence, the model fits a Gaussian curve
+#' corresponding to each possible peakwidth and tests which curve fits the peak
+#' best. 3 SDs to the left and right are used as peak edges, as long as they're
+#' within a contiguous set of scans. The Gaussian fit of the best curve is
+#' reported, which appears to be a robust parameter for peak identification.
+#' Finally, the residuals of the Gaussian curve vs the actual peak are
+#' calculated and used to estimate the noise (curve - normalized peak
+#' intensity)/SD(residuals) and the three outermost scans on the left and the
+#' right are used to estimate the background intensity level.
+#'
 #' @param peak_ints A vector of intensities corresponding to a peak. These must
-#' be contiguous (no missed scans) and typically correspond to all the intensities
-#' within an ROI. 
-#' 
-#' @param peak_center A single value, obtained from the wavelet matching algorithm
-#' in XCMS.
-#' 
-#' @param peakwidth_scans The possible peak widths in scans. This value is 
-#' typically set early on in the workflow in terms of seconds and converted
-#' to scans using the average time between scans.
-#' 
+#'   be contiguous (no missed scans) and typically correspond to all the
+#'   intensities within an ROI.
+#'
+#' @param peak_center A single value, obtained from the wavelet matching
+#'   algorithm in XCMS.
+#'
+#' @param peakwidth_scans The possible peak widths in scans. This value is
+#'   typically set early on in the workflow in terms of seconds and converted to
+#'   scans using the average time between scans.
+#'
 #' @return A list containing the peak edges, the correlation coefficient of the
-#' Gaussian fit, and the signal-to-noise parameter.
+#'   Gaussian fit, and the signal-to-noise parameter.
 widthFinder <- function(peak_ints, peak_center, peakwidth){
   peak_widths_to_check <- seq(min(peakwidth), max(peakwidth), 2)
   peak_ints_buffered <- c(numeric(max(peakwidth)/2), peak_ints, numeric(max(peakwidth)/2))
@@ -202,16 +203,16 @@ widthFinder <- function(peak_ints, peak_center, peakwidth){
 }
 
 #' Find the total area underneath a curve by Riemann trapezoidal sum
-#' 
+#'
 #' \code{findPeakArea} accepts a peak object with pre-established start, end,
 #' width, and intensities. It then calculates the area underneath the peak
 #' between the scan's start and end using an exact Riemann trapezoidal sum
 #' method.
-#' 
-#' @param peak_instance The peak_instance parameter is an S4 peak object, 
-#' usually produced by the normal Thanos workflow. Slots "scan_start",
-#' "peak_width", "peak_ints", and "scan_end" must be filled.
-#' 
+#'
+#' @param peak_instance The peak_instance parameter is an S4 peak object,
+#'   usually produced by the normal Thanos workflow. Slots "scan_start",
+#'   "peak_width", "peak_ints", and "scan_end" must be filled.
+#'
 #' @return A single number, the area under the curve.
 findPeakArea <- function(peak_instance){
   given_peak_scans <- peak_instance@scan_start:peak_instance@scan_end
@@ -221,25 +222,25 @@ findPeakArea <- function(peak_instance){
 }
 
 #' Extend a Region of Interest to account for missed scans
-#' 
-#' \code{extendROI} accepts a data frame containing ROI information (mz, rt, int)
-#' and extends it \code{ext_width} number of seconds in the retention
-#' time direction. This accounts for peaks that may be split by missed scans, but
+#'
+#' \code{extendROI} accepts a data frame containing ROI information (mz, rt,
+#' int) and extends it \code{ext_width} number of seconds in the retention time
+#' direction. This accounts for peaks that may be split by missed scans, but
 #' also introduces the potential for overlapping peaks and is less likely to
-#' throw out peaks because each ROI is more likely to be long enough to 
+#' throw out peaks because each ROI is more likely to be long enough to
 #' theoretically support a peak.
-#' 
+#'
 #' @param roi_df A Region of Interest data frame, with rt, mz, and int columns.
-#' Typically produced by calling \code{split()} on a complete EIC.
-#' 
+#'   Typically produced by calling \code{split()} on a complete EIC.
+#'
 #' @param ext_width The time, in seconds, that the ROI will be extended in both
-#' directions. If close to the EIC boundaries, the ROI will not be extended
-#' beyond them.
-#' 
+#'   directions. If close to the EIC boundaries, the ROI will not be extended
+#'   beyond them.
+#'
 #' @param eic An Extracted Ion Chromatogram, typically produced by the first
-#' portion of the Thanos workflow. A dataframe, with mz, rt, and int information
-#' each in its own column.
-#' 
+#'   portion of the Thanos workflow. A dataframe, with mz, rt, and int
+#'   information each in its own column.
+#'
 #' @return The extended ROI.
 extendROI <- function(roi_df, ext_width, eic = eic){
   min_ext_rt <- max(min(eic$rt), min(roi_df$rt)-ext_width)
@@ -249,51 +250,53 @@ extendROI <- function(roi_df, ext_width, eic = eic){
 
 
 #' Construct extracted ion chromatograms from raw data values
-#' 
+#'
 #' \code{makeEICs} accepts a data frame containing MS information (mz, rt, int)
 #' and constructs extracted ion chromatograms (EICs) from the data. To do this,
 #' it identifies the highest-intensity data point and collects all data points
 #' within the user-specified ppm. All data points that fall within this window
 #' are binned into a single EIC and removed from later consideration.
-#' 
-#' The highest-intensity data point is used
-#' because accuracy is inversely proportional to mass, and thus represents the
-#' most probable EIC center value. This dynamic binning method resolves the
-#' problem of setting a single bin width because the created bin widths are
-#' a function of compound mass, with larger bins automatically being used with
-#' large mass values as proportional to the accuracy of the instrument.
-#' 
+#'
+#' The highest-intensity data point is used because accuracy is inversely
+#' proportional to mass, and thus represents the most probable EIC center value.
+#' This dynamic binning method resolves the problem of setting a single bin
+#' width because the created bin widths are a function of compound mass, with
+#' larger bins automatically being used with large mass values as proportional
+#' to the accuracy of the instrument.
+#'
 #' @param given_data_frame A raw data frame with rt, mz, and int named columns.
-#' 
-#' @param ppm The parts-per-million accuracy of the instrument on which the
-#' data was collected. Current default is 2.5 for Orbitrap data.
-#' 
+#'
+#' @param ppm The parts-per-million accuracy of the instrument on which the data
+#'   was collected. Current default is 2.5 for Orbitrap data.
+#'
 #' @param report A logical value telling the function whether or not to report
-#' the initial number of data points, the progress of the function as displayed
-#' by a text-based loading bar, and the final number of EICs constructed by 
-#' the function. The loading bar is set to report the *square root* of the number of
-#' remaining raw data points to provide a more realistic time estimate, as
-#' many points are removed each iteration early on in the function as EICs which
-#' contain data from every scan, while later iterations take much longer because
-#' the EICs are fragmented. Should be set to FALSE if running in parallel, and
-#' the parallel progress bar should be used instead.
-#' 
-#' @param prefilter A named length-two vector containing prefilter used to remove EICs
-#' that are either too short or fail to have a sufficient number of continuous
-#' data points above the user-specified intensity. The "contiguous" value is
-#' the number of consecutive scans, and the "intensity" value is the intensity
-#' threshold which all contiguous scans must exceed. Judicious use of the prefilter
-#' can significantly speed up the EIC construction algorithm, but risks removing
-#' true peaks if enabled and set too aggressively. Its functionality can be
-#' disabled by setting both values to zero, as is the default.
-#' 
-#' @param peakwidth A length-two vector containing the minimum and maximum possible
-#' peak width retention times, in seconds. These values are later converted to
-#' minimum and maximum scans by multiplying by the average time between scans.
-#' Defaults to c(20, 80) for HILIC data.
-#' 
+#'   the initial number of data points, the progress of the function as
+#'   displayed by a text-based loading bar, and the final number of EICs
+#'   constructed by the function. The loading bar is set to report the *square
+#'   root* of the number of remaining raw data points to provide a more
+#'   realistic time estimate, as many points are removed each iteration early on
+#'   in the function as EICs which contain data from every scan, while later
+#'   iterations take much longer because the EICs are fragmented. Should be set
+#'   to FALSE if running in parallel, and the parallel progress bar should be
+#'   used instead.
+#'
+#' @param prefilter A named length-two vector containing prefilter used to
+#'   remove EICs that are either too short or fail to have a sufficient number
+#'   of continuous data points above the user-specified intensity. The
+#'   "contiguous" value is the number of consecutive scans, and the "intensity"
+#'   value is the intensity threshold which all contiguous scans must exceed.
+#'   Judicious use of the prefilter can significantly speed up the EIC
+#'   construction algorithm, but risks removing true peaks if enabled and set
+#'   too aggressively. Its functionality can be disabled by setting both values
+#'   to zero, as is the default.
+#'
+#' @param peakwidth A length-two vector containing the minimum and maximum
+#'   possible peak width retention times, in seconds. These values are later
+#'   converted to minimum and maximum scans by multiplying by the average time
+#'   between scans. Defaults to c(20, 80) for HILIC data.
+#'
 #' @return A list of data frames, each one containing mz, int, and rt values
-#' corresponding to a given EIC.
+#'   corresponding to a given EIC.
 makeEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
                      prefilter = c(intensity=0, contiguous=0), 
                      peakwidth = c(20, 80)){

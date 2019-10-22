@@ -223,6 +223,7 @@ mz <- unlist(mzs, use.names = FALSE)
 int <- unlist(lapply(x, intensity), use.names = FALSE)
 rts <- unname(unlist(lapply(x, rtime)))
 rt <- rep(rts, sapply(mzs, length))
+rts <- rts[rts>60&rts<1100]
 all_data <- data.frame(mz, int, rt)
 data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
@@ -401,7 +402,7 @@ peakCheck <- function(peak_id){
   idxs <- as.numeric(strsplit(peak_id, "\\.")[[1]])
   peak_data <- all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]
   plot(peak_data$EIC_rts, peak_data$EIC_ints,
-       type="l", lwd=2, 
+       type="b", lwd=2, pch = 19,
        xlim=c(min(peak_data$EIC_rts), max(peak_data$EIC_rts)*1.5))
   lines(peak_data$Peak_rts, peak_data$Peak_ints,
         lwd=2, col="red")
@@ -411,8 +412,22 @@ peakCheck <- function(peak_id){
   legend("topleft", legend = paste0("Peak id: ", peak_id))
 }
 
+library(plotly)
+plotlyCheck <- function(peak_id){
+  idxs <- as.numeric(strsplit(peak_id, "\\.")[[1]])
+  peak_data <- all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]
+  x <- peak_data$EIC_rts
+  y <- peak_data$EIC_ints
+  plot_ly(x=x, y=y, type = "scatter", mode = "markers")
+}
+
 for(i in peak_df$Peak_id){
   peakCheck(i)
-  readline(prompt = "Press Enter")
+  if(readline(prompt = "Press Enter")=="p"){
+    #plotlyCheck(i)
+  } else {
+    next
+  }
+  readline(prompt = "Continue?")
 }
 

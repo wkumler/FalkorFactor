@@ -1,0 +1,28 @@
+#microWave heart demo!
+
+library(xcms)
+library(tidyverse)
+library(roxygen2)
+
+#source("microWave_functions.R")
+source("xcms/microWave_code/microWave_functions.R")
+
+# msfiles <- list.files(path = "mzMLs", pattern = "Blk|Smp|Full\\d", full.names = T)
+# raw_data <- readMSData(files = msfiles, msLevel. = 1, centroided. = T, mode = "onDisk")
+# save(raw_data, file = "xcms/raw_data")
+load("xcms/raw_data")
+x <- filterMsLevel(raw_data, msLevel. = 1L)
+x <- selectFeatureData(x, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
+x <- lapply(1:length(fileNames(x)), FUN=filterFile, object = x)
+x <- x[[2]]
+x <- spectra(x)
+
+all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
+                       int=unlist(lapply(x, intensity), use.names = FALSE), 
+                       rt=rep(unname(unlist(lapply(x, rtime))), sapply(lapply(x, mz), length)))
+
+
+data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
+
+eic_list <- makeEICs(data)
+

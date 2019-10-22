@@ -473,14 +473,31 @@ microWavePeaks <- function(eic_list, peakwidth = c(20, 80)){
   return(peak_df)
 }
 
-peakCheck <- function(eic_list, peak_df, peak_id){
+peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
   peak_info <- subset(peak_df, Peak_id==peak_id)
   eic_data <- eic_list[[as.numeric(strsplit(peak_id, "\\.")[[1]])[1]]]
-  plot(eic_data$rt, eic_data$int, type="l", lwd=2, #pch = 19, cex=0.3,
-       xlim=c(min(eic_data$rt), max(eic_data$rt)*1.5),
-       ylim=c(min(eic_data$int), max(eic_data$int)*1.2))
   peak_data <- subset(eic_data, rt>peak_info$Peak_start_time&rt<peak_info$Peak_end_time)
-  lines(peak_data$rt, peak_data$int, lwd=2, col="red")
+  
+  if(zoom){
+    ylimits <- c(min(peak_data$int), max(peak_data$int)*1.2)
+    xlimits <- c(min(peak_data$rt)-5, min(peak_data$rt)+peak_info$Peak_width*1.5)
+  } else {
+    xlimits <- c(min(eic_data$rt), max(eic_data$rt)*1.5)
+    ylimits <- c(min(eic_data$int), max(eic_data$int)*1.2)
+  }
+  
+  plot(eic_data$rt, eic_data$int, type="l", lwd=2, #pch = 19, cex=0.3,
+       xlim=xlimits, ylim=ylimits)
+  
+  if(pts){
+    points(eic_data$rt, eic_data$int, pch=19)
+    lines(peak_data$rt, peak_data$int, lwd=2, col="red")
+    points(peak_data$rt, peak_data$int, lwd=2, col="red", pch=21, bg="white")
+  } else {
+    lines(peak_data$rt, peak_data$int, lwd=2, col="red")
+  }
+  
+  
   reportvals <- c(peak_info$Peak_mz, suppressWarnings(sapply(as.numeric(peak_info[sapply(peak_info, length)<=1])[-c(1,2)], round, digits=2)))
   reportnames <- gsub("Peak_", "", names(peak_info[sapply(peak_info, length)<=1])[-1])
   legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)

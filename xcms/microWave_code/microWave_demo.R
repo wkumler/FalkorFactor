@@ -26,3 +26,13 @@ data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
 eic_list <- constructEICs(data)
 
+peak_df <- microWavePeaks(eic_list)
+
+peakCheck(eic_list, peak_df, "1.1.1")
+
+peak_df <- arrange(peak_df, desc(Peak_SNR*Peak_gauss_fit^4*log10(Peak_height)))
+
+for(i in peak_df$Peak_id){
+  peakCheck(eic_list, peak_df, i)
+  readline(prompt = "Press Enter")
+}

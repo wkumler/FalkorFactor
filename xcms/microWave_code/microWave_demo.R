@@ -24,5 +24,5 @@ all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
 
 data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
-eic_list <- makeEICs(data)
+eic_list <- constructEICs(data)
 

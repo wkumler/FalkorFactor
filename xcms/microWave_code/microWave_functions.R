@@ -251,18 +251,18 @@ extendROI <- function(roi_df, ext_width, eic = eic){
 
 #' Construct extracted ion chromatograms from raw data values
 #'
-#' \code{makeEICs} accepts a data frame containing MS information (mz, rt, int)
-#' and constructs extracted ion chromatograms (EICs) from the data. To do this,
-#' it identifies the highest-intensity data point and collects all data points
-#' within the user-specified ppm. All data points that fall within this window
-#' are binned into a single EIC and removed from later consideration.
+#' \code{constructEICs} accepts a data frame containing MS information (mz, rt,
+#' int) and constructs extracted ion chromatograms (EICs) from the data. To do
+#' this, it identifies the highest-intensity data point and collects all data
+#' points within the user-specified ppm. All data points that fall within this
+#' window are binned into a single EIC and removed from later consideration.
 #'
-#' The highest-intensity data point is used because accuracy is inversely
-#' proportional to mass, and thus represents the most probable EIC center value.
-#' This dynamic binning method resolves the problem of setting a single bin
-#' width because the created bin widths are a function of compound mass, with
-#' larger bins automatically being used with large mass values as proportional
-#' to the accuracy of the instrument.
+#' The highest-intensity data point is used because accuracy is proportional to
+#' mass, and thus represents the most probable EIC center value. This dynamic
+#' binning method resolves the problem of setting a single bin width because the
+#' created bin widths are a function of compound mass, with larger bins
+#' automatically being used with large mass values as proportional to the
+#' accuracy of the instrument.
 #'
 #' @param given_data_frame A raw data frame with rt, mz, and int named columns.
 #'
@@ -297,7 +297,7 @@ extendROI <- function(roi_df, ext_width, eic = eic){
 #'
 #' @return A list of data frames, each one containing mz, int, and rt values
 #'   corresponding to a given EIC.
-makeEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
+constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
                      prefilter = c(intensity=0, contiguous=0), 
                      peakwidth = c(20, 80)){
   if(report){print(paste("Constructing EICs from", 

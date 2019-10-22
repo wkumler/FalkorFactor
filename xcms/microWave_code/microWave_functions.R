@@ -347,7 +347,65 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
 
 
 
-
+#' Identify peaks within extracted ion chromatograms
+#'
+#' \code{microWavePeaks} accepts a list of EICs (columns mz, rt, and int), 
+#' typically produced by \code{constructEICs}. It then checks each EIC for
+#' potential peaks via xcms's CentWave method and scores them on various
+#' metrics, returning a data frame of peaks and their scores, as well
+#' as their intensity-weighted m/z values, the centers, widths, and absolute
+#' areas.
+#' 
+#' This function is the core of the peak-identification workflow, and may
+#' take a long time to run. Approximately 2,000 peaks were identified in 30
+#' seconds from 200 EICs composed of ~100,000 individual data points.
+#' 
+#' @param eic_list A list of EICs, typically produced by \code{constructEICs}
+#' 
+#' @param peakwidth A length-two integer vector with the minimum and maximum
+#' acceptable peak widths. Defaults to \code{c(20, 80)} for HILIC data
+#' 
+#' @return A data frame of peak information, with columns
+#' \itemize{
+#'   \item \strong{Peak_id:} A unique character string to identify each peak,
+#'   format "EIC.ROI.Peaknum"
+#'   \item \strong{Peak_mz:} The intensity-weighted m/z value of the peak, in Da.
+#'   \item \strong{Peak_cener:} The center of the peak, as determined by the 
+#'   maximum intensity +/- 5 scans
+#'   \item \strong{Peak_height:} The maximum height of the peak. Not necessarily
+#'   the intensity at the peak center, as some peak centers are local minima
+#'   \item \strong{Peak_width:} The width of the peak, in seconds
+#'   \item \strong{Peak_area:} The absolute area of the peak, as calculated
+#'   by trapezoidal Riemann sum.
+#'   \item \strong{Peak_start_time:} The start time of the peak, in seconds
+#'   \item \strong{Peak_end_time:} The end time of the peak, in seconds
+#'   \item \strong{Peak_area_top:} The average height of the highest three
+#'   values in the peak. If there's strong disagreement between this and the
+#'   peak_height value, the peak may be a single spike or otherwise poorly
+#'   shaped
+#'   \item \strong{Peak_ridge_length:} The length of the "ridge" detected for
+#'   the given peak, as determined by xcms' MSW.getRidge(). Longer ridges mean
+#'   that many wavelets have a local maxima on a given ridge. However, peaks
+#'   that are closely co-eluting may be smoothed into a single peak at high
+#'   wavelet scales, and thus only one will have a long ridge while the other
+#'   is truncated.
+#'   \item \strong{Peak_ridge_drift:} The length of the ridge divided by the
+#'   number of scans the ridge is found across. Drift values close to 1 indicate
+#'   strong disagreement about the central location of the peak, while drift
+#'   values close to zero indicate good agreement as to where the peak is 
+#'   located.
+#'   \item \strong{Peak_gauss_fit:} The correlation coefficient between the
+#'   idealized Gaussian curve used to model the peak and the peak data itself.
+#'   This has shown to be a strong predictor of peak quality, with values
+#'   close to 1 corresponding to nicely Gaussian peaks and values near zero
+#'   indicating essentially random distribution of intensity values
+#'   \item \strong{Peak_SNR:} The signal-to-noise ratio of the peak. Calculated
+#'   by subtracting the average shoulder value (the outer 3 scans on each side
+#'   of the identified peak) from the maximum peak intensity, then dividing
+#'   by the standard deviation of the residuals from the Gaussian fit. This
+#'   metric essentially produces a z-value for the likelihood that the maximum
+#'   peak intensity was drawn from a random sample of noise values.
+#' }
 microWavePeaks <- function(eic_list, peakwidth = c(20, 80)){
   # Define variables created within loops
   original_data <- do.call(rbind, eic_list)
@@ -358,7 +416,7 @@ microWavePeaks <- function(eic_list, peakwidth = c(20, 80)){
   scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
   possible_peakwidths <- min(peakwidth_scans):max(peakwidth_scans)
   perf_peak_list <- lapply(possible_peakwidths, function(x){
-    exp((-seq(-3, 3, length.out = x+1)^2))
+    exp((-seq(-2.5, 2.5, length.out = x+1)^2))
   })
   names(perf_peak_list) <- as.character(possible_peakwidths)
   rts <- unique(original_data$rt)
@@ -473,6 +531,33 @@ microWavePeaks <- function(eic_list, peakwidth = c(20, 80)){
   return(peak_df)
 }
 
+
+
+#' Plot the EIC for a given peak
+#' 
+#' \code{peakCheck} accepts the output from \code{constructEICs} and
+#' \code{microWavePeaks} as well as a specific peak ID, then plots the EIC in
+#' which the peak was found with the peak itself highlighted in red. This is
+#' often most helpful after sorting the peak data frame by some quality metric
+#' then iterating over the top choices to identify where peak quality drops
+#' below an arbitrary threshold.
+#' 
+#' @param eic_list A list of EICs, typically produced by \code{constructEICs}
+#' 
+#' @param peak_df A data frame of peaks found within the \code{eic_list}. Must
+#' include Peak_id, Peak_start_time, Peak_end_time, and Peak_width columns.
+#' Typically produced by \code{microWavePeaks}.
+#' 
+#' @param peak_id A given peak ID, as found in the peak_df data frame. Format
+#' should be "EIC.ROI.peaknum".
+#' 
+#' @param zoom An optional way to zoom in on the peak itself, setting the plot
+#' axis limits to frame the peak itself rather than the EIC as a whole. Defaults
+#' to FALSE.
+#' 
+#' @param pts An optional way to include dots at each data point, which sometimes
+#' helps to identify missed scans or especially clean peaks that may be missed
+#' by other peakfinding software. Defaults to FALSE.
 peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
   peak_info <- subset(peak_df, Peak_id==peak_id)
   eic_data <- eic_list[[as.numeric(strsplit(peak_id, "\\.")[[1]])[1]]]

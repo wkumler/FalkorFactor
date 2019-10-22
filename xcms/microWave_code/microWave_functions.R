@@ -173,16 +173,16 @@ findPeakEdges <- function(peak_instance){
 #'
 #' @return A list containing the peak edges, the correlation coefficient of the
 #'   Gaussian fit, and the signal-to-noise parameter.
-widthFinder <- function(peak_ints, peak_center, peakwidth){
+widthFinder <- function(peak_ints, peak_center, peakwidth, perf_peak_list){
   peak_widths_to_check <- seq(min(peakwidth), max(peakwidth), 2)
   peak_ints_buffered <- c(numeric(max(peakwidth)/2), peak_ints, numeric(max(peakwidth)/2))
-  peak_fits <- sapply(peak_widths_to_check, function(pred_peak_width){
+  peak_fits <- sapply(peak_widths_to_check, function(pred_peak_width, perf_peak_list){
     perf_peak <- perf_peak_list[[as.character(pred_peak_width)]]
     peak_left <- (peak_center+max(peakwidth)/2-pred_peak_width/2)
     peak_right <- (peak_center+max(peakwidth)/2+pred_peak_width/2)
     relevant_ints <- peak_ints_buffered[peak_left:peak_right]
     return(cor(relevant_ints, perf_peak))
-  })
+  }, perf_peak_list)
   best_peak_width <- peak_widths_to_check[which.max(peak_fits)]
   
   peak_left <- (peak_center+max(peakwidth)/2-best_peak_width/2)
@@ -348,9 +348,12 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
 
 
 
-
-microWavePeaks <- function(eic_list){
+microWavePeaks <- function(eic_list, peakwidth = c(20, 80)){
   # Define variables created within loops
+  original_data <- do.call(rbind, eic_list)
+  time_between_scans <- mean(diff(unique(original_data$rt)))
+  peakwidth_scans <- c(floor(peakwidth[1]/time_between_scans), 
+                       ceiling(peakwidth[2]/time_between_scans))
   min_cwt_length <- 2^(ceiling(log2(max(peakwidth_scans)*6)))
   scales <- (floor(peakwidth_scans[1]/2)):ceiling((peakwidth_scans[2]/2))
   possible_peakwidths <- min(peakwidth_scans):max(peakwidth_scans)
@@ -358,6 +361,7 @@ microWavePeaks <- function(eic_list){
     exp((-seq(-3, 3, length.out = x+1)^2))
   })
   names(perf_peak_list) <- as.character(possible_peakwidths)
+  rts <- unique(original_data$rt)
   
   
   # Loop over EICs
@@ -405,7 +409,7 @@ microWavePeaks <- function(eic_list){
         peak_k@center <- findPeakCenter(peak_k, roi$int)
         
         #Edges, fit, and SNR
-        fitting_output <- widthFinder(roi$int, peak_k@center, peakwidth_scans)
+        fitting_output <- widthFinder(roi$int, peak_k@center, peakwidth_scans, perf_peak_list)
         peak_k@gauss_fit <- fitting_output$cor
         peak_k@scan_start <- max(1, fitting_output$edges[1])
         peak_k@scan_end <- min(fitting_output$edges[2], nrow(roi))
@@ -457,4 +461,28 @@ microWavePeaks <- function(eic_list){
   }
   close(pb)
   
+  peak_df <- as.data.frame(do.call(rbind, lapply(all_peak_ids, function(x){
+    idxs <- as.numeric(strsplit(x, "\\.")[[1]])
+    unlist(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]][sapply(
+      all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]], length)<=1])
+  })))
+  for(i in 2:ncol(peak_df)){
+    peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
+  }
+  print(paste("Found", nrow(peak_df), "peaks!"))
+  return(peak_df)
+}
+
+peakCheck <- function(eic_list, peak_df, peak_id){
+  peak_info <- subset(peak_df, Peak_id==peak_id)
+  eic_data <- eic_list[[as.numeric(strsplit(peak_id, "\\.")[[1]])[1]]]
+  plot(eic_data$rt, eic_data$int, type="l", lwd=2, #pch = 19, cex=0.3,
+       xlim=c(min(eic_data$rt), max(eic_data$rt)*1.5),
+       ylim=c(min(eic_data$int), max(eic_data$int)*1.2))
+  peak_data <- subset(eic_data, rt>peak_info$Peak_start_time&rt<peak_info$Peak_end_time)
+  lines(peak_data$rt, peak_data$int, lwd=2, col="red")
+  reportvals <- c(peak_info$Peak_mz, suppressWarnings(sapply(as.numeric(peak_info[sapply(peak_info, length)<=1])[-c(1,2)], round, digits=2)))
+  reportnames <- gsub("Peak_", "", names(peak_info[sapply(peak_info, length)<=1])[-1])
+  legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
+  legend("topleft", legend = paste0("Peak id: ", peak_id))
 }

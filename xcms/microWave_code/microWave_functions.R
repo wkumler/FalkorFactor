@@ -406,7 +406,7 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
 #'   metric essentially produces a z-value for the likelihood that the maximum
 #'   peak intensity was drawn from a random sample of noise values.
 #' }
-microWavePeaks <- function(eic_list, peakwidth = c(20, 80)){
+microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
   # Define variables created within loops
   original_data <- do.call(rbind, eic_list)
   time_between_scans <- mean(diff(unique(original_data$rt)))
@@ -419,7 +419,7 @@ microWavePeaks <- function(eic_list, peakwidth = c(20, 80)){
     exp((-seq(-2.5, 2.5, length.out = x+1)^2))
   })
   names(perf_peak_list) <- as.character(possible_peakwidths)
-  rts <- unique(original_data$rt)
+  #rts <- unique(original_data$rt)
   
   
   # Loop over EICs
@@ -581,8 +581,7 @@ peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
   } else {
     lines(peak_data$rt, peak_data$int, lwd=2, col="red")
   }
-  
-  
+
   reportvals <- c(peak_info$Peak_mz, suppressWarnings(sapply(as.numeric(peak_info[sapply(peak_info, length)<=1])[-c(1,2)], round, digits=2)))
   reportnames <- gsub("Peak_", "", names(peak_info[sapply(peak_info, length)<=1])[-1])
   legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)

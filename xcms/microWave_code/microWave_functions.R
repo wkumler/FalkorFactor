@@ -587,3 +587,37 @@ peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
   legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
   legend("topleft", legend = paste0("Peak id: ", peak_id))
 }
+
+
+
+
+
+isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
+  peak_info_1 <- subset(peak_df, Peak_id==peak_id_1)
+  eic_data_1 <- eic_list[[as.numeric(strsplit(peak_id_1, "\\.")[[1]])[1]]]
+  peak_data_1 <- subset(eic_data_1, rt>peak_info_1$Peak_start_time&rt<peak_info_1$Peak_end_time)
+  
+  peak_info_2 <- subset(peak_df, Peak_id==peak_id_2)
+  eic_data_2 <- eic_list[[as.numeric(strsplit(peak_id_2, "\\.")[[1]])[1]]]
+  peak_data_2 <- subset(eic_data_2, rt>peak_info_2$Peak_start_time&rt<peak_info_2$Peak_end_time)
+  
+  xlimits <- c(min(peak_data_1$rt, peak_data_2$rt), max(peak_data_1$rt, peak_data_2$rt))
+  
+  par(mfrow=c(2,1))
+  par(mar=c(0.1, 2.6, 2.1, 0.1))
+  plot(eic_data_1$rt, eic_data_1$int, type="l", lwd=2, xlab = "", xaxt="n", 
+       xlim = xlimits, main=paste("m/z diff:", peak_info_2$Peak_mz-peak_info_1$Peak_mz,
+                                  "   area diff:", 
+                                  peak_info_1$Peak_area/peak_info_2$Peak_area))
+  lines(peak_data_1$rt, peak_data_1$int, lwd=2, col="red")
+  legend("topright", legend = c("mz"=peak_info_1$Peak_mz, 
+                                "height"=peak_info_1$Peak_height, 
+                                "area"=peak_info_1$Peak_area))
+  par(mar=c(2.6, 2.6, 0.1, 0.1))
+  plot(eic_data_2$rt, eic_data_2$int, type="l", lwd=2, xlab = "", xlim = xlimits)
+  lines(peak_data_2$rt, peak_data_2$int, lwd=2, col="red")
+  legend("topright", legend = c("mz"=peak_info_2$Peak_mz, 
+                                "height"=peak_info_2$Peak_height, 
+                                "area"=peak_info_2$Peak_area))
+  par(mar=c(4.1, 4.1, 0.1, 0.1))
+}

@@ -1,0 +1,42 @@
+
+peak_df <- read.csv("xcms/microWave_code/temp_peak_df.csv")
+
+peak_df <- mutate(peak_df, qscore=Peak_SNR*Peak_gauss_fit^4*log10(Peak_area))
+peak_df <- arrange(peak_df, desc(qscore))
+
+peakCheck(eic_list, peak_df, "1.1.1")
+for(i in peak_df$Peak_id){
+  peakCheck(eic_list, peak_df, i)
+  replot <- readline(prompt = "Press Enter") 
+  if(replot=="j"){
+    peakCheck(eic_list, peak_df, i, zoom=T)
+  } else if(replot=="k") {
+    peakCheck(eic_list, peak_df, i, pts = T, zoom = T)
+  } else if(replot=="m"){
+    v <- getMetlinMz(peak_df[peak_df$Peak_id==i,"Peak_mz"]-1.007825)
+  } else {
+    next
+  }
+  readline(prompt = "Continue?")
+}
+
+peak_df_best <- filter(peak_df, qscore>5)
+
+pdf(file = "TempPeakPlot.pdf")
+ylimits <- c(min(peak_df_best$Peak_mz), max(peak_df_best$Peak_mz))
+xlimits <- c(min(peak_df_best$Peak_start_time), max(peak_df_best$Peak_end_time))
+plot(1, ylim=ylimits, xlim=xlimits)
+factored_peakareas <- factor(round(log2(peak_df_best$Peak_area)))
+peak_shades <- gray.colors(length(unique(factored_peakareas)), start = 0, end = 1)[factored_peakareas]
+peak_shades <- hcl.colors(length(unique(factored_peakareas)))[factored_peakareas]
+for(i in seq_len(nrow(peak_df_best))){
+  segments(x0=peak_df_best[i, "Peak_start_time"], x1=peak_df_best[i, "Peak_end_time"],
+           y0=peak_df_best[i, "Peak_mz"], y1=peak_df_best[i, "Peak_mz"],
+           col = peak_shades[i])
+  text(x = mean(c(peak_df_best[i, "Peak_start_time"], peak_df_best[i, "Peak_end_time"])),
+       y = peak_df_best[i, "Peak_mz"]+0.2, labels = peak_df_best[i, "Peak_id"], 
+       cex = 0.5, col = peak_shades[i])
+  
+}
+abline(h = 100:120, lty=2, col="gray")
+dev.off()

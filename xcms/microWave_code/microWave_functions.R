@@ -608,7 +608,7 @@ isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
   plot(eic_data_1$rt, eic_data_1$int, type="l", lwd=2, xlab = "", xaxt="n", 
        xlim = xlimits, main=paste("m/z diff:", peak_info_2$Peak_mz-peak_info_1$Peak_mz,
                                   "   area diff:", 
-                                  peak_info_1$Peak_area/peak_info_2$Peak_area))
+                                  peak_info_2$Peak_area/peak_info_1$Peak_area))
   lines(peak_data_1$rt, peak_data_1$int, lwd=2, col="red")
   legend("topright", legend = c("mz"=peak_info_1$Peak_mz, 
                                 "height"=peak_info_1$Peak_height, 

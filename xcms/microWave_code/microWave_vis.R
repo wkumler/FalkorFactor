@@ -38,9 +38,10 @@ for(i in seq_len(nrow(peak_df_best))){
        y = peak_df_best[i, "Peak_mz"]+0.2, labels = peak_df_best[i, "Peak_id"], 
        cex = 0.5, col = peak_shades[i])
 }
-abline(h = 100:120, lty=2, col="gray")
+abline(h = floor(min(peak_df$Peak_mz)):ceiling(max(peak_df$Peak_mz)), lty=2, col="gray")
 dev.off()
 
+# Isotopes between 100 and 120 Da
 isoCheck(peak_df, eic_list, "1.1.1", "3.4.1")
 isoCheck(peak_df, eic_list, "12.1.4", "116.4.1")
 isoCheck(peak_df, eic_list, "17.1.1", "115.1.1")

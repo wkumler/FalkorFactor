@@ -27,4 +27,5 @@ data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 eic_list <- constructEICs(data)
 peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))
 
+save(eic_list, file = "xcms/microWave_code/temp_eic_list")
 write.csv(x = peak_df, file = "xcms/microWave_code/temp_peak_df.csv", row.names = F)

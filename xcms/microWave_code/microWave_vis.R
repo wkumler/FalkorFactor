@@ -4,11 +4,9 @@ library(dplyr)
 
 source("xcms/microWave_code/microWave_functions.R")
 load("xcms/microWave_code/temp_eic_list")
-peak_df <- read.csv("xcms/microWave_code/temp_peak_df.csv")
+peak_df <- read.csv("xcms/microWave_code/temp_peak_df.csv", stringsAsFactors = F)
 
 peak_df <- mutate(peak_df, qscore=Peak_SNR*Peak_gauss_fit^4*log10(Peak_area))
-# BUILD THIS NEXT STEP INTO PEAKFINDING STEP AND CHECK FOR BUGS
-peak_df <- mutate(peak_df, Peak_id=as.character(Peak_id))
 peak_df <- arrange(peak_df, desc(qscore))
 
 peakCheck(eic_list, peak_df, "1.1.1")

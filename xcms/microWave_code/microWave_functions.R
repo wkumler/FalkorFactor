@@ -602,22 +602,62 @@ isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
   peak_data_2 <- subset(eic_data_2, rt>peak_info_2$Peak_start_time&rt<peak_info_2$Peak_end_time)
   
   xlimits <- c(min(peak_data_1$rt, peak_data_2$rt), max(peak_data_1$rt, peak_data_2$rt))
+  ylimits <- c(min(peak_data_1$int, peak_data_2$int), max(peak_data_1$int, peak_data_2$int)*1.2)
   
   par(mfrow=c(2,1))
   par(mar=c(0.1, 2.6, 2.1, 0.1))
   plot(eic_data_1$rt, eic_data_1$int, type="l", lwd=2, xlab = "", xaxt="n", 
-       xlim = xlimits, main=paste("m/z diff:", peak_info_2$Peak_mz-peak_info_1$Peak_mz,
-                                  "   area diff:", 
-                                  peak_info_2$Peak_area/peak_info_1$Peak_area))
+       xlim = xlimits, ylim=c(min(peak_data_1$int), max(peak_data_1$int)*1.2), 
+       main=paste("m/z diff:", peak_info_2$Peak_mz-peak_info_1$Peak_mz,
+                  "   area diff:", peak_info_2$Peak_area/peak_info_1$Peak_area))
   lines(peak_data_1$rt, peak_data_1$int, lwd=2, col="red")
   legend("topright", legend = c("mz"=peak_info_1$Peak_mz, 
                                 "height"=peak_info_1$Peak_height, 
                                 "area"=peak_info_1$Peak_area))
   par(mar=c(2.6, 2.6, 0.1, 0.1))
-  plot(eic_data_2$rt, eic_data_2$int, type="l", lwd=2, xlab = "", xlim = xlimits)
+  plot(eic_data_2$rt, eic_data_2$int, type="l", lwd=2, xlab = "", 
+       xlim = xlimits, ylim = c(min(peak_data_2$int), max(peak_data_2$int)*1.2))
   lines(peak_data_2$rt, peak_data_2$int, lwd=2, col="red")
   legend("topright", legend = c("mz"=peak_info_2$Peak_mz, 
                                 "height"=peak_info_2$Peak_height, 
                                 "area"=peak_info_2$Peak_area))
   par(mar=c(4.1, 4.1, 0.1, 0.1))
+  par(mfrow=c(1,1))
+}
+
+findIsos <- function(given_peak_id, peak_df, eic_list){
+  peak_data <- subset(peak_df, Peak_id==given_peak_id)
+  peak_mz <- peak_data[["Peak_mz"]]
+  mz_range <- peak_mz*2.5/1000000
+  iso_mz_range <- c(peak_mz-mz_range, peak_mz+mz_range)+1.003355
+  
+  #Find possible isotopes based on m/z and rt windows
+  possible_isos <- subset(peak_df, Peak_mz>min(iso_mz_range)&
+                            Peak_mz<max(iso_mz_range)&
+                            Peak_center>peak_data$Peak_start_time&
+                            Peak_center<peak_data$Peak_end_time)
+  possible_isos$mz_match <- signif(abs(((possible_isos$Peak_mz-peak_data$Peak_mz)-1.003355)*
+                                     1000000/(2.5*peak_data$Peak_mz)), digits = 4)
+  possible_isos$rt_match <- signif(abs(possible_isos$Peak_center-peak_data$Peak_center), digits = 4)
+  
+  # Calculate the correlation between the original and the candidate
+  cors <- numeric(0)
+  for(i in seq_len(nrow(possible_isos))){
+    cors[i] <- isoCor(iso_data = possible_isos[i,], peak_data = peak_data, eic_list = eic_list)
+  }
+  possible_isos$cor <- round(cors, digits = 4)
+  return(possible_isos)
+}
+
+isoCor <- function(iso_data, peak_data, eic_list){
+  iso_eic_index <- as.numeric(unlist(strsplit(iso_data$Peak_id, "\\."))[1])
+  iso_eic <- subset(eic_list[[iso_eic_index]], 
+                    rt>=iso_data$Peak_start_time&rt<=iso_data$Peak_end_time)
+  
+  peak_eic_index <- as.numeric(unlist(strsplit(peak_data$Peak_id, "\\."))[1])
+  peak_eic <- subset(eic_list[[peak_eic_index]], 
+                     rt>=peak_data$Peak_start_time&rt<=peak_data$Peak_end_time)
+  
+  combo_df <- merge(iso_eic, peak_eic, by = "rt")
+  return(cor(combo_df$int.x, combo_df$int.y))
 }

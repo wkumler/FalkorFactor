@@ -661,3 +661,21 @@ isoCor <- function(iso_data, peak_data, eic_list){
   combo_df <- merge(iso_eic, peak_eic, by = "rt")
   return(cor(combo_df$int.x, combo_df$int.y))
 }
+
+renderPeakOverview <- function(peak_df_best){
+  ylimits <- c(min(peak_df_best$Peak_mz), max(peak_df_best$Peak_mz))
+  xlimits <- c(min(peak_df_best$Peak_start_time), max(peak_df_best$Peak_end_time))
+  plot(1, ylim=ylimits, xlim=xlimits)
+  factored_peakareas <- factor(round(log2(peak_df_best$Peak_area)))
+  peak_shades <- gray.colors(length(unique(factored_peakareas)), start = 0, end = 1)[factored_peakareas]
+  peak_shades <- hcl.colors(length(unique(factored_peakareas)), rev = T)[factored_peakareas]
+  for(i in seq_len(nrow(peak_df_best))){
+    segments(x0=peak_df_best[i, "Peak_start_time"], x1=peak_df_best[i, "Peak_end_time"],
+             y0=peak_df_best[i, "Peak_mz"], y1=peak_df_best[i, "Peak_mz"],
+             col = peak_shades[i], lwd=floor(log(peak_df_best[i, "qscore"])))
+    text(x = mean(c(peak_df_best[i, "Peak_start_time"], peak_df_best[i, "Peak_end_time"])),
+         y = peak_df_best[i, "Peak_mz"]+0.2, labels = peak_df_best[i, "Peak_id"], 
+         cex = 0.5, col = peak_shades[i])
+  }
+  abline(h = floor(min(peak_df_best$Peak_mz)):ceiling(max(peak_df_best$Peak_mz)), lty=2, col="gray")
+}

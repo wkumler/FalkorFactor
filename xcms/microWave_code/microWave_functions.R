@@ -608,19 +608,19 @@ isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
   par(mar=c(0.1, 2.6, 2.1, 0.1))
   plot(eic_data_1$rt, eic_data_1$int, type="l", lwd=2, xlab = "", xaxt="n", 
        xlim = xlimits, ylim=c(min(peak_data_1$int), max(peak_data_1$int)*1.2), 
-       main=paste("m/z diff:", peak_info_2$Peak_mz-peak_info_1$Peak_mz,
-                  "   area diff:", peak_info_2$Peak_area/peak_info_1$Peak_area))
+       main=paste("m/z diff:", signif(peak_info_2$Peak_mz-peak_info_1$Peak_mz, 8),
+                  "   area diff:", signif(peak_info_2$Peak_area/peak_info_1$Peak_area, 5)))
   lines(peak_data_1$rt, peak_data_1$int, lwd=2, col="red")
-  legend("topright", legend = c("mz"=peak_info_1$Peak_mz, 
-                                "height"=peak_info_1$Peak_height, 
-                                "area"=peak_info_1$Peak_area))
+  legend("topright", legend = c("mz"=signif(peak_info_1$Peak_mz, 8), 
+                                "height"=format(peak_info_1$Peak_height, scientific = T), 
+                                "area"=format(peak_info_1$Peak_area, scientific = T)))
   par(mar=c(2.6, 2.6, 0.1, 0.1))
   plot(eic_data_2$rt, eic_data_2$int, type="l", lwd=2, xlab = "", 
        xlim = xlimits, ylim = c(min(peak_data_2$int), max(peak_data_2$int)*1.2))
   lines(peak_data_2$rt, peak_data_2$int, lwd=2, col="red")
-  legend("topright", legend = c("mz"=peak_info_2$Peak_mz, 
-                                "height"=peak_info_2$Peak_height, 
-                                "area"=peak_info_2$Peak_area))
+  legend("topright", legend = c("mz"=signif(peak_info_2$Peak_mz, 8), 
+                                "height"=format(peak_info_2$Peak_height, scientific = T), 
+                                "area"=format(peak_info_2$Peak_area, scientific = T)))
   par(mar=c(4.1, 4.1, 0.1, 0.1))
   par(mfrow=c(1,1))
 }

@@ -31,5 +31,3 @@ peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))
 isotope_df <- findIsos(peak_df = peak_df, eic_list = eic_list, qscore_cutoff = 5)
 peak_df <- merge(peak_df, isotope_df, by = "Peak_id", all.x = T)
 
-save(eic_list, file = "xcms/microWave_code/temp_eic_list")
-write.csv(x = peak_df, file = "xcms/microWave_code/temp_peak_df.csv", row.names = F)

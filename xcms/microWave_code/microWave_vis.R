@@ -39,19 +39,8 @@ renderPeakOverview(peak_df_best)
 # dev.off()
 
 
-# Find isotopes
-peak_df_best$Isotopes <- "None"
-for(i in seq_len(nrow(peak_df_best))){
-  given_isos <- findIsos(given_peak_id = peak_df_best[i,"Peak_id"], 
-                         peak_df = peak_df, eic_list = eic_list)
-  if(nrow(given_isos)>0){
-    peak_df_best$Isotopes[i] <- list(split(given_isos[c("Peak_id", "mz_match", 
-                                                        "rt_match", "cor")], 
-                                           seq_len(nrow(given_isos))))
-  }
-}
-isotope_df <- peak_df_best[peak_df_best$Isotopes!="None",c("Peak_id", "Isotopes")]
-
+# Visualize the isotopes
+isotope_df <- filter(peak_df, !is.na(Isotopes)) #%>% select("Peak_id", "Isotopes")
 isoCheck(peak_df = peak_df, eic_list = eic_list, 
          peak_id_1 = isotope_df$Peak_id[1], 
          peak_id_2 = isotope_df$Isotopes[[1]]$`1`$Peak_id)
@@ -60,10 +49,3 @@ for(i in seq_len(nrow(isotope_df))){
            peak_id_1 = isotope_df$Peak_id[i],
            peak_id_2 = isotope_df$Isotopes[[i]]$`1`$Peak_id)
 }
-
-peak_df <- merge(peak_df, isotope_df, by = "Peak_id", all.x = T)
-filter(peak_df, !is.na(Isotopes)) #%>% select("Peak_id", "Isotopes")
-
-
-
-

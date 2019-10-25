@@ -22,10 +22,14 @@ all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
                        rt=rep(unname(unlist(lapply(x, rtime))), sapply(lapply(x, mz), length)))
 
 
-data <- all_data %>% filter(mz>120&mz<140) %>% filter(rt>60&rt<1100)
+data <- all_data %>% filter(mz>110&mz<130) %>% filter(rt>60&rt<1100)
 
 eic_list <- constructEICs(data)
 peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))
+
+# Find isotopes
+isotope_df <- findIsos(peak_df = peak_df, eic_list = eic_list, qscore_cutoff = 5)
+peak_df <- merge(peak_df, isotope_df, by = "Peak_id", all.x = T)
 
 save(eic_list, file = "xcms/microWave_code/temp_eic_list")
 write.csv(x = peak_df, file = "xcms/microWave_code/temp_peak_df.csv", row.names = F)

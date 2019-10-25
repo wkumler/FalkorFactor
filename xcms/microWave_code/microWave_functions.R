@@ -631,6 +631,7 @@ isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
 
 findIsos <- function(peak_df, eic_list, qscore_cutoff){
   peak_df_best <- filter(peak_df, qscore>qscore_cutoff)
+  peak_df_best$Isotopes <- "None"
   pb <- txtProgressBar(min = 0, max = nrow(peak_df_best), style = 3)
   for(i in seq_len(nrow(peak_df_best))){
     setTxtProgressBar(pb, i)

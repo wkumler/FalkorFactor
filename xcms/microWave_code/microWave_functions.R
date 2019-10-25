@@ -407,6 +407,7 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
 #'   peak intensity was drawn from a random sample of noise values.
 #' }
 microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
+  print(paste("Finding peaks in", length(eic_list), "EICs"))
   # Define variables created within loops
   original_data <- do.call(rbind, eic_list)
   time_between_scans <- mean(diff(unique(original_data$rt)))
@@ -523,10 +524,13 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
     idxs <- as.numeric(strsplit(x, "\\.")[[1]])
     unlist(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]][sapply(
       all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]], length)<=1])
-  })))
+  })), stringsAsFactors=F)
   for(i in 2:ncol(peak_df)){
     peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
   }
+  
+  peak_df <- mutate(peak_df, qscore=Peak_SNR*Peak_gauss_fit^4*log10(Peak_height))
+  
   print(paste("Found", nrow(peak_df), "peaks!"))
   return(peak_df)
 }
@@ -647,16 +651,16 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff){
     
     # Calculate the correlation between the original and the candidate
     cors <- numeric(0)
-    for(i in seq_len(nrow(possible_isos))){
-      cors[i] <- isoCor(iso_data = possible_isos[i,], peak_data = peak_data, eic_list = eic_list)
+    for(j in seq_len(nrow(possible_isos))){
+      cors[j] <- isoCor(iso_data = possible_isos[j,], peak_data = peak_data, eic_list = eic_list)
     }
     possible_isos$cor <- round(cors, digits = 4)
     
     
-    if(nrow(given_isos)>0){
-      peak_df_best$Isotopes[i] <- list(split(given_isos[c("Peak_id", "mz_match", 
+    if(nrow(possible_isos)>0){
+      peak_df_best$Isotopes[i] <- list(split(possible_isos[c("Peak_id", "mz_match", 
                                                           "rt_match", "cor")], 
-                                             seq_len(nrow(given_isos))))
+                                             seq_len(nrow(possible_isos))))
     }
   }
   close(pb)

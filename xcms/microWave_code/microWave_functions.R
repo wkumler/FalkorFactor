@@ -614,6 +614,7 @@ isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
   legend("topright", legend = c("mz"=signif(peak_info_1$Peak_mz, 8), 
                                 "height"=format(peak_info_1$Peak_height, scientific = T), 
                                 "area"=format(peak_info_1$Peak_area, scientific = T)))
+  legend("topleft", legend = peak_info_1$Peak_id)
   par(mar=c(2.6, 2.6, 0.1, 0.1))
   plot(eic_data_2$rt, eic_data_2$int, type="l", lwd=2, xlab = "", 
        xlim = xlimits, ylim = c(min(peak_data_2$int), max(peak_data_2$int)*1.2))
@@ -621,6 +622,7 @@ isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
   legend("topright", legend = c("mz"=signif(peak_info_2$Peak_mz, 8), 
                                 "height"=format(peak_info_2$Peak_height, scientific = T), 
                                 "area"=format(peak_info_2$Peak_area, scientific = T)))
+  legend("topleft", legend = peak_info_2$Peak_id)
   par(mar=c(4.1, 4.1, 0.1, 0.1))
   par(mfrow=c(1,1))
 }

@@ -27,15 +27,22 @@ peakCheck(eic_list, peak_df, "1.1.1")
 
 
 # Visualize the isotopes
-isotope_df <- filter(peak_df, !is.na(Isotopes)) #%>% select("Peak_id", "Isotopes")
+isotope_df <- filter(peak_df, !is.na(Isotopes)) %>% select("Peak_id", "Isotopes")
 isoCheck(peak_df = peak_df, eic_list = eic_list, 
          peak_id_1 = isotope_df$Peak_id[1], 
          peak_id_2 = isotope_df$Isotopes[[1]]$`1`$Peak_id)
-# for(i in seq_len(nrow(isotope_df))){
-#   isoCheck(peak_df = peak_df, eic_list = eic_list,
-#            peak_id_1 = isotope_df$Peak_id[i],
-#            peak_id_2 = isotope_df$Isotopes[[i]]$`1`$Peak_id)
-# }
+for(i in seq_len(nrow(isotope_df))){
+  isoCheck(peak_df = peak_df, eic_list = eic_list,
+           peak_id_1 = isotope_df$Peak_id[i],
+           peak_id_2 = isotope_df$Isotopes[[i]]$`1`$Peak_id)
+  readline(prompt = "Press Enter")
+}
+# Check weird isotopes against isotope standards
+stds <- read.csv(paste0("https://raw.githubusercontent.com/kheal/Example_Unta",
+                        "rgeted_Metabolomics_Workflow/master/Ingalls_Lab_Stan",
+                        "dards.csv"), stringsAsFactors = F)
+grep("D|C\\(13\\)", stds$Emperical.Formula, value = T)
+sort(as.numeric(stds[grep("D|C\\(13\\)", stds$Emperical.Formula), ]$"m.z"))
 
 
 

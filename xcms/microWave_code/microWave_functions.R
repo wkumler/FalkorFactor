@@ -562,7 +562,8 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
 #' @param pts An optional way to include dots at each data point, which sometimes
 #' helps to identify missed scans or especially clean peaks that may be missed
 #' by other peakfinding software. Defaults to FALSE.
-peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
+# peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
+peakCheck <- function(peak_id, zoom=F, pts=F){
   peak_info <- subset(peak_df, Peak_id==peak_id)
   eic_data <- eic_list[[as.numeric(strsplit(peak_id, "\\.")[[1]])[1]]]
   peak_data <- subset(eic_data, rt>peak_info$Peak_start_time&rt<peak_info$Peak_end_time)
@@ -594,7 +595,8 @@ peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
 
 
 
-isoCheck <- function(peak_df, eic_list, peak_id_1, peak_id_2){
+#isoCheck <- function(eic_list, peak_df, peak_id_1, peak_id_2){
+isoCheck <- function(peak_id_1, peak_id_2){
   peak_info_1 <- subset(peak_df, Peak_id==peak_id_1)
   eic_data_1 <- eic_list[[as.numeric(strsplit(peak_id_1, "\\.")[[1]])[1]]]
   peak_data_1 <- subset(eic_data_1, rt>peak_info_1$Peak_start_time&rt<peak_info_1$Peak_end_time)

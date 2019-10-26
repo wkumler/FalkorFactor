@@ -22,7 +22,7 @@ all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
                        rt=rep(unname(unlist(lapply(x, rtime))), sapply(lapply(x, mz), length)))
 
 
-data <- all_data %>% filter(mz>110&mz<130) %>% filter(rt>60&rt<1100)
+data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1100)
 
 eic_list <- constructEICs(data)
 peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))

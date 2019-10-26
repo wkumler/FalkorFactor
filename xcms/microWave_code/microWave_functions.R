@@ -698,6 +698,13 @@ renderPeakOverview <- function(peak_df_best){
     text(x = mean(c(peak_df_best[i, "Peak_start_time"], peak_df_best[i, "Peak_end_time"])),
          y = peak_df_best[i, "Peak_mz"]+0.2, labels = peak_df_best[i, "Peak_id"], 
          cex = 0.5, col = peak_shades[i])
+    if(!is.na(peak_df_best[i,"Isotopes"])){
+      arrows(x0=peak_df_best$Peak_center[i], x1=peak_df_best$Peak_center[i], 
+             y0=peak_df_best$Peak_mz[i],
+             y1=peak_df_best[peak_df_best[i,]$Isotopes[[1]]$`1`$Peak_id==
+                               peak_df$Peak_id, "Peak_mz"], 
+             angle = 90,lwd = 2, length = 0)
+    }
   }
   abline(h = floor(min(peak_df_best$Peak_mz)):ceiling(max(peak_df_best$Peak_mz)), lty=2, col="gray")
 }

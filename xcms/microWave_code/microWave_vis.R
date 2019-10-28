@@ -47,13 +47,15 @@ sort(as.numeric(stds[grep("D|C\\(13\\)", stds$Emperical.Formula), ]$"m.z"))
 # and which ones are worth analyzing (quality score > 5)
 peak_df_best <- filter(peak_df, qscore>5)
 
+# Ugly add isotope quality metrics
+peak_df_best$iso_quality <- sapply(peak_df_best$Isotopes, function(x){
+  if(is.na(x)){return(NA)}
+  return(1/x$`1`$mz_match*x$`1`$cor^4-x$`1`$rt_match)
+})
+
 # Visualize the highest-quality peaks
 renderPeakOverview(peak_df_best)
 # Option to export to PDF
-pdf(file = "xcms/microWave_code/TempPeakPlot.pdf")
-renderPeakOverview(peak_df_best)
-dev.off()
-
-
-
-
+# pdf(file = "xcms/microWave_code/TempPeakPlot.pdf")
+# renderPeakOverview(peak_df_best)
+# dev.off()

@@ -687,7 +687,8 @@ isoCor <- function(iso_data, peak_data, eic_list){
 renderPeakOverview <- function(peak_df_best){
   ylimits <- c(min(peak_df_best$Peak_mz), max(peak_df_best$Peak_mz))
   xlimits <- c(min(peak_df_best$Peak_start_time), max(peak_df_best$Peak_end_time))
-  plot(1, ylim=ylimits, xlim=xlimits)
+  plot(1, ylim=ylimits, xlim=xlimits, ylab="m/z", xlab="Retention time")
+  abline(h = floor(min(peak_df_best$Peak_mz)):ceiling(max(peak_df_best$Peak_mz)), lty=2, col="gray")
   factored_peakareas <- factor(round(log2(peak_df_best$Peak_area)))
   peak_shades <- gray.colors(length(unique(factored_peakareas)), start = 0, end = 1)[factored_peakareas]
   peak_shades <- hcl.colors(length(unique(factored_peakareas)), rev = T)[factored_peakareas]
@@ -699,12 +700,14 @@ renderPeakOverview <- function(peak_df_best){
          y = peak_df_best[i, "Peak_mz"]+0.2, labels = peak_df_best[i, "Peak_id"], 
          cex = 0.5, col = peak_shades[i])
     if(!is.na(peak_df_best[i,"Isotopes"])){
+      iso_info <- peak_df_best[peak_df_best[i,]$Isotopes[[1]]$`1`$Peak_id==peak_df$Peak_id,]
+      iso_intensities <- suppressWarnings(ceiling(log10(peak_df_best$iso_quality))+1)
       arrows(x0=peak_df_best$Peak_center[i], x1=peak_df_best$Peak_center[i], 
-             y0=peak_df_best$Peak_mz[i],
-             y1=peak_df_best[peak_df_best[i,]$Isotopes[[1]]$`1`$Peak_id==
-                               peak_df$Peak_id, "Peak_mz"], 
-             angle = 90,lwd = 2, length = 0)
+             y0=peak_df_best$Peak_mz[i], y1=iso_info$Peak_mz, 
+             col = gray.colors(max(iso_intensities, na.rm = T), 
+                               start = 0, end = 1)[iso_intensities[i]],
+             #col="black",
+             angle = 90, lwd = 2, length = 0)
     }
   }
-  abline(h = floor(min(peak_df_best$Peak_mz)):ceiling(max(peak_df_best$Peak_mz)), lty=2, col="gray")
 }

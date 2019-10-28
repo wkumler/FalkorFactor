@@ -7,7 +7,7 @@ source("xcms/microWave_code/microWave_functions.R")
 peak_df <- arrange(peak_df, desc(qscore))
 
 #Look at all the pretty peaks! ----
-peakCheck("1.1.1")
+peakCheck(peak_df$Peak_id[1])
 # for(i in peak_df$Peak_id){
 #   peakCheck(i)
 #   replot <- readline(prompt = "Press Enter")
@@ -26,25 +26,34 @@ peakCheck("1.1.1")
 
 
 # Visualize the isotopes
-isotope_df <- filter(peak_df, !is.na(Isotopes)) %>% select("Peak_id", "Isotopes")
-# isoCheck(peak_id_1 = isotope_df$Peak_id[1], 
-#          peak_id_2 = isotope_df$Isotopes[[1]]$`1`$Peak_id)
-# for(i in seq_len(nrow(isotope_df))){
-#   isoCheck(peak_id_1 = isotope_df$Peak_id[i],
-#            peak_id_2 = isotope_df$Isotopes[[i]]$`1`$Peak_id)
-#   readline(prompt = "Press Enter")
-# }
-# Check weird isotopes against isotope standards
+isotope_peak_df <- filter(peak_df, !is.na(Isotopes)) %>% select("Peak_id", "Isotopes")
+isoCheck(peak_id_1 = isotope_peak_df$Peak_id[1],
+         peak_id_2 = isotope_peak_df$Isotopes[[1]]$`1`$Peak_id)
+for(i in seq_len(nrow(isotope_peak_df))){
+  isoCheck(peak_id_1 = isotope_peak_df$Peak_id[i],
+           peak_id_2 = isotope_peak_df$Isotopes[[i]]$`1`$Peak_id, default_layout = F)
+  #readline(prompt = "Press Enter")
+}
+
+# Check weird isotopes against isotopically-labeled standards
 stds <- read.csv(paste0("https://raw.githubusercontent.com/kheal/Example_Unta",
                         "rgeted_Metabolomics_Workflow/master/Ingalls_Lab_Stan",
                         "dards.csv"), stringsAsFactors = F)
-grep("D|C\\(13\\)", stds$Emperical.Formula, value = T)
-sort(as.numeric(stds[grep("D|C\\(13\\)", stds$Emperical.Formula), ]$"m.z"))
+iso_stds <- subset(stds, grepl("D|C\\(13\\)", stds$Emperical.Formula)&stds$Column=="HILIC")
+iso_stds_df <- data.frame(name=iso_stds$Compound.Name, 
+                          formula=iso_stds$Emperical.Formula,
+                          mzs=as.numeric(iso_stds$m.z),
+                          rts=iso_stds$RT..min.*60)
+for(i in seq_len(nrow(iso_stds_df))){
+  std_mz <- iso_stds_df$mzs[i]
+  std_info <- filter(peak_df, Peak_mz<1.000025*std_mz&Peak_mz>0.999975*std_mz)
+  if(nrow(std_info)>0){
+    print(cbind(iso_stds_df[i,], select(std_info, c(Peak_id, qscore, Isotopes))))
+  }
+}
 
 
-
-# Decide which ones are worth keeping (quality score>1)
-# and which ones are worth analyzing (quality score > 5)
+# Decide which ones are worth keeping (quality score>5)
 peak_df_best <- filter(peak_df, qscore>5)
 
 # Ugly add isotope quality metrics

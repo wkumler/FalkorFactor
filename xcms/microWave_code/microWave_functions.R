@@ -595,8 +595,22 @@ peakCheck <- function(peak_id, zoom=F, pts=F){
 
 
 
+
+#' Visualize two isotope peaks for manual assessment
+#' 
+#' \code{isoCheck} accepts two peak IDs and plots them on top of each other
+#' alongside some metadata to allow manual verification of isotope likelihood.
+#' Currently works if eic_list and peak_df are already in memory, otherwise
+#' they'll need to be specified and the first line of code uncommented to 
+#' accept them as arguments.
+#' 
+#' @param peak_id_1 The first peak to compare, typically corresponding to the
+#' C12 isotope
+#' 
+#' @param peak_id_2 The second peak to compare, typically corresponding to the
+#' C13 isotope
 #isoCheck <- function(eic_list, peak_df, peak_id_1, peak_id_2){
-isoCheck <- function(peak_id_1, peak_id_2){
+isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
   peak_info_1 <- subset(peak_df, Peak_id==peak_id_1)
   eic_data_1 <- eic_list[[as.numeric(strsplit(peak_id_1, "\\.")[[1]])[1]]]
   peak_data_1 <- subset(eic_data_1, rt>peak_info_1$Peak_start_time&rt<peak_info_1$Peak_end_time)
@@ -608,18 +622,22 @@ isoCheck <- function(peak_id_1, peak_id_2){
   xlimits <- c(min(peak_data_1$rt, peak_data_2$rt), max(peak_data_1$rt, peak_data_2$rt))
   ylimits <- c(min(peak_data_1$int, peak_data_2$int), max(peak_data_1$int, peak_data_2$int)*1.2)
   
-  par(mfrow=c(2,1))
-  par(mar=c(0.1, 2.6, 2.1, 0.1))
+  if(default_layout){
+    par(mfrow=c(2,1))
+    par(mar=c(0.1, 2.6, 2.1, 0.1))
+  }
   plot(eic_data_1$rt, eic_data_1$int, type="l", lwd=2, xlab = "", xaxt="n", 
        xlim = xlimits, ylim=c(min(peak_data_1$int), max(peak_data_1$int)*1.2), 
-       main=paste("m/z diff:", signif(peak_info_2$Peak_mz-peak_info_1$Peak_mz, 8),
+       main=paste("score", signif(peak_info_1$Isotopes[[1]]$`1`$iso_score, 3),
                   "   area diff:", signif(peak_info_2$Peak_area/peak_info_1$Peak_area, 5)))
   lines(peak_data_1$rt, peak_data_1$int, lwd=2, col="red")
   legend("topright", legend = c("mz"=signif(peak_info_1$Peak_mz, 8), 
                                 "height"=format(peak_info_1$Peak_height, scientific = T), 
                                 "area"=format(peak_info_1$Peak_area, scientific = T)))
   legend("topleft", legend = peak_info_1$Peak_id)
-  par(mar=c(2.6, 2.6, 0.1, 0.1))
+  if(default_layout){
+    par(mar=c(2.6, 2.6, 0.1, 0.1))
+  }
   plot(eic_data_2$rt, eic_data_2$int, type="l", lwd=2, xlab = "", 
        xlim = xlimits, ylim = c(min(peak_data_2$int), max(peak_data_2$int)*1.2))
   lines(peak_data_2$rt, peak_data_2$int, lwd=2, col="red")
@@ -627,11 +645,26 @@ isoCheck <- function(peak_id_1, peak_id_2){
                                 "height"=format(peak_info_2$Peak_height, scientific = T), 
                                 "area"=format(peak_info_2$Peak_area, scientific = T)))
   legend("topleft", legend = peak_info_2$Peak_id)
-  par(mar=c(4.1, 4.1, 0.1, 0.1))
-  par(mfrow=c(1,1))
+  if(default_layout){
+    par(mar=c(4.1, 4.1, 0.1, 0.1))
+    par(mfrow=c(1,1))
+  }
 }
 
-findIsos <- function(peak_df, eic_list, qscore_cutoff){
+
+
+#' Find isotopes in a sample of peaks
+#' 
+#' \code{findIsos} will find potential isotopes within a sample based on the
+#' peaks that have already been identified by microWavePeaks. It operates by
+#' finding any peaks within the user-specified ppm of the instrument (defaults
+#' to 2.5) and assesses them based on the m/z match, the closeness in retention
+#' time between the peak centers, and the correlation between the two peaks. 
+#' This information is returned as a data frame which can then be left-joined
+#' to the original peak_df to flag the best peaks as having isotopes.
+#' 
+#' 
+findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
   peak_df_best <- filter(peak_df, qscore>qscore_cutoff)
   peak_df_best$Isotopes <- "None"
   pb <- txtProgressBar(min = 0, max = nrow(peak_df_best), style = 3)
@@ -640,7 +673,7 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff){
     given_peak_id <- peak_df_best[i, "Peak_id"]
     peak_data <- subset(peak_df, Peak_id==given_peak_id)
     peak_mz <- peak_data[["Peak_mz"]]
-    mz_range <- peak_mz*2.5/1000000
+    mz_range <- peak_mz*ppm/1000000
     iso_mz_range <- c(peak_mz-mz_range, peak_mz+mz_range)+1.003355
     
     #Find possible isotopes based on m/z and rt windows
@@ -649,7 +682,7 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff){
                               Peak_center>peak_data$Peak_start_time&
                               Peak_center<peak_data$Peak_end_time)
     possible_isos$mz_match <- signif(abs(((possible_isos$Peak_mz-peak_data$Peak_mz)-1.003355)*
-                                           1000000/(2.5*peak_data$Peak_mz)), digits = 4)
+                                           1000000/(ppm*peak_data$Peak_mz)), digits = 4)
     possible_isos$rt_match <- signif(abs(possible_isos$Peak_center-peak_data$Peak_center), digits = 4)
     
     # Calculate the correlation between the original and the candidate
@@ -659,10 +692,11 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff){
     }
     possible_isos$cor <- round(cors, digits = 4)
     
+    possible_isos$iso_score <- signif(((2.5-possible_isos$mz_match)*sqrt(1/(possible_isos$rt_match+1))*cors^4)/2.5, 4)
     
     if(nrow(possible_isos)>0){
       peak_df_best$Isotopes[i] <- list(split(possible_isos[c("Peak_id", "mz_match", 
-                                                          "rt_match", "cor")], 
+                                                          "rt_match", "cor", "iso_score")], 
                                              seq_len(nrow(possible_isos))))
     }
   }

@@ -365,6 +365,13 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
 #' @param peakwidth A length-two integer vector with the minimum and maximum
 #' acceptable peak widths. Defaults to \code{c(20, 80)} for HILIC data
 #' 
+#' @param report A logical value telling the function whether or not to report
+#'   the initial number of EICs, the progress of the function as
+#'   displayed by a text-based loading bar, and the final number of peaks
+#'   identified by the function. Should be set
+#'   to FALSE if running in parallel, and the parallel progress bar should be
+#'   used instead.
+#' 
 #' @return A data frame of peak information, with columns
 #' \itemize{
 #'   \item \strong{Peak_id:} A unique character string to identify each peak,
@@ -406,8 +413,10 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
 #'   metric essentially produces a z-value for the likelihood that the maximum
 #'   peak intensity was drawn from a random sample of noise values.
 #' }
-microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
-  print(paste("Finding peaks in", length(eic_list), "EICs"))
+microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80), report=TRUE){
+  if(report){
+    print(paste("Finding peaks in", length(eic_list), "EICs"))
+  }
   # Define variables created within loops
   original_data <- do.call(rbind, eic_list)
   time_between_scans <- mean(diff(unique(original_data$rt)))
@@ -426,9 +435,13 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
   # Loop over EICs
   all_peak_list <- list()
   all_peak_ids <- list()
-  pb <- txtProgressBar(min = 0, max = length(eic_list), style = 3)
+  if(report){
+    pb <- txtProgressBar(min = 0, max = length(eic_list), style = 3)
+  }
   for(i in 1:length(eic_list)){
-    setTxtProgressBar(pb, i)
+    if(report){
+      setTxtProgressBar(pb, i)
+    }
     eic <- eic_list[[i]]
     
     # Split EIC by missed scans to turn into ROIs
@@ -518,7 +531,9 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
     }
     all_peak_list[[i]] <- rois_per_eic
   }
-  close(pb)
+  if(report){
+    close(pb)
+  }
   
   peak_df <- as.data.frame(do.call(rbind, lapply(all_peak_ids, function(x){
     idxs <- as.numeric(strsplit(x, "\\.")[[1]])
@@ -531,7 +546,9 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80)){
   
   peak_df <- mutate(peak_df, qscore=Peak_SNR*Peak_gauss_fit^4*log10(Peak_height))
   
-  print(paste("Found", nrow(peak_df), "peaks!"))
+  if(report){
+    print(paste("Found", nrow(peak_df), "peaks!"))
+  }
   return(peak_df)
 }
 

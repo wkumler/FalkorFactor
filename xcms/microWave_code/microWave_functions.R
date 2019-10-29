@@ -661,9 +661,43 @@ isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
 #' to 2.5) and assesses them based on the m/z match, the closeness in retention
 #' time between the peak centers, and the correlation between the two peaks. 
 #' This information is returned as a data frame which can then be left-joined
-#' to the original peak_df to flag the best peaks as having isotopes.
+#' to the original peak_df to flag the best peaks as having isotopes. Note
+#' that this isotope finder, as with many, will only flag C13 peaks as they're
+#' the most abundant in the environment.
 #' 
+#' @param eic_list A list of EICs, typically produced by \code{constructEICs}
 #' 
+#' @param peak_df A data frame of peaks found within the \code{eic_list}. Must
+#' include Peak_id, Peak_start_time, Peak_end_time, and Peak_width columns.
+#' Typically produced by \code{microWavePeaks}.
+#' 
+#' @param qscore_cutoff A single number used to determine which peaks are
+#' worth finding isotopes for, as running an isotope finder on a lot of noise
+#' is likely to return a lot of false positives. Default is 1: can be disabled
+#' by setting to 0, at which point all peaks will be checked for isotopes.
+#' 
+#' @param ppm The parts-per-million error of the instrument, used to set the
+#' possible isotope windows of (initial m/z + 1.003355) +/- ppm error.
+#' 
+#' @return A data frame of isotope information, with columns
+#' \itemize{
+#'   \item \strong{Peak_id:} The inital peak ID for which an isotope connection 
+#'   has been found
+#'   \item \strong{Isotope_id:} The peak ID of the isotope, or, if the row
+#'   corresponds to the isotope itself, the peak ID of the initial peak prepended
+#'   with "Isotope of".
+#'   \item \strong{Isotope_score:} The (uncalibrated) likelihood that the
+#'   isotope is actually an isotope of the given peak, assuming both are indeed
+#'   peaks. Calculated by multiplying together the ppm error normalized to 0-1,
+#'   the retention time deviation as 1/seconds different, and the fourth power 
+#'   of the correlation between the two peak shapes.
+#'   \item \strong{Isotope_area_delta:} The area of the initial peak divided
+#'   by the area of the isotope. Can be used to approximate the number of
+#'   carbons present in the molecule, as each carbon has a chance of being C13
+#'   instead of C12 and therefore obeys a binomial distribution with n = carbons,
+#'   k = 1, and prob = 0.011. Simulated by \code{dbinom(x = 1, size = 1:10, 
+#'   prob = 0.011)} for things with 1-10 carbons.
+#' }
 findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
   peak_df_best <- filter(peak_df, qscore>qscore_cutoff)
   found_isotopes <- list()
@@ -720,6 +754,23 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
   return(isotope_df)
 }
 
+#' Calculate the correlation coefficient between two peaks
+#' 
+#' \code{isoCor} is a small internal function that calculates the correlation
+#' coefficient between two isotope peaks using R's built-in cor() function. It
+#' aligns the peaks by retention time information using a left join (merge())
+#' then returns the cor() value.
+#' 
+#' @param iso_data The information corresponding to the isotope peak, usually
+#' in the form of a row from the peak_df data frame
+#' 
+#' @param peak_data The information corresponding to the initial peak, usually
+#' in the form of a row from the peak_df data frame
+#' 
+#' @param eic_list The list of Extracted Ion Chromatograms that is used to
+#' provide find data for each peak
+#' 
+#' @return A single number between 0 and 1, the correlation coefficient.
 isoCor <- function(iso_data, peak_data, eic_list){
   iso_eic_index <- as.numeric(unlist(strsplit(iso_data$Peak_id, "\\."))[1])
   iso_eic <- subset(eic_list[[iso_eic_index]], 
@@ -733,6 +784,19 @@ isoCor <- function(iso_data, peak_data, eic_list){
   return(cor(combo_df$int.x, combo_df$int.y))
 }
 
+
+#' Create a nice overview of a peak data frame
+#' 
+#' \code{renderPeakOverview} is a visualization tool that plots all the peaks
+#' identified in the peak_df into mass-retention time space. The width of each
+#' peak corresponds to its retention time start and end, the thickness of the
+#' line corresponds to the log of its quality score, and the color corresponds
+#' to the peak area, with yellow peaks having very small areas and dark purple
+#' peaks being very large.
+#' 
+#' Isotopes are also identified as grey lines connecting the centers of two
+#' peaks: the dark
+#' 
 renderPeakOverview <- function(peak_df_best){
   ylimits <- c(min(peak_df_best$Peak_mz), max(peak_df_best$Peak_mz))
   xlimits <- c(min(peak_df_best$Peak_start_time), max(peak_df_best$Peak_end_time))
@@ -748,9 +812,9 @@ renderPeakOverview <- function(peak_df_best){
     text(x = mean(c(peak_df_best[i, "Peak_start_time"], peak_df_best[i, "Peak_end_time"])),
          y = peak_df_best[i, "Peak_mz"]+0.2, labels = peak_df_best[i, "Peak_id"], 
          cex = 0.5, col = peak_shades[i])
-    if(!is.na(peak_df_best[i,"Isotopes"])){
-      iso_info <- peak_df_best[peak_df_best[i,]$Isotopes[[1]]$`1`$Peak_id==peak_df$Peak_id,]
-      iso_intensities <- suppressWarnings(ceiling(log10(peak_df_best$iso_quality))+1)
+    if(any(startsWith(prefix = as.character(1:9), x = peak_df_best[i,"Isotope_id"]), na.rm = T)){
+      iso_info <- peak_df[peak_df_best[i,]$Isotope_id==peak_df$Peak_id,]
+      iso_intensities <- suppressWarnings(ceiling(log10(peak_df_best$Isotope_score))+1)
       arrows(x0=peak_df_best$Peak_center[i], x1=peak_df_best$Peak_center[i], 
              y0=peak_df_best$Peak_mz[i], y1=iso_info$Peak_mz, 
              col = gray.colors(max(iso_intensities, na.rm = T), 

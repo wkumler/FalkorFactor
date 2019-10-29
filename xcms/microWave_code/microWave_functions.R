@@ -587,8 +587,8 @@ peakCheck <- function(peak_id, zoom=F, pts=F){
     lines(peak_data$rt, peak_data$int, lwd=2, col="red")
   }
 
-  reportvals <- c(peak_info$Peak_mz, suppressWarnings(sapply(as.numeric(peak_info[sapply(peak_info, length)<=1])[-c(1,2)], round, digits=2)))
-  reportnames <- gsub("Peak_", "", names(peak_info[sapply(peak_info, length)<=1])[-1])
+  reportvals <- c(peak_info$Peak_mz, suppressWarnings(sapply(as.numeric(peak_info[sapply(peak_info, length)<=1])[-c(1,2,15)], round, digits=2)))
+  reportnames <- gsub("Peak_", "", names(peak_info[sapply(peak_info, length)<=1])[-c(1, 15)])
   legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
   legend("topleft", legend = paste0("Peak id: ", peak_id))
 }
@@ -695,14 +695,14 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
       
       best_iso <- which.max(scores)
       
-      best_iso_data <- list(Peak_id=possible_isos[best_iso, "Peak_id"],
-                         mz_match=mz_matches[best_iso],
-                         rt_match=rt_matches[best_iso],
-                         cor=signif(cors[best_iso], 4),
-                         iso_score=round(scores[best_iso]*10000)/10000)
-      best_iso_data <- c(Peak_id=given_peak_id,
+      best_iso_data <- data.frame(Peak_id=given_peak_id,
                             Isotope_id=possible_isos[best_iso, "Peak_id"], 
-                            Isotope_score=round(scores[best_iso]*10000)/10000)
+                            Isotope_score=round(scores[best_iso]*10000)/10000,
+                            stringsAsFactors = F)
+      best_iso_data <- rbind(best_iso_data, 
+                             data.frame(Peak_id=possible_isos[best_iso, "Peak_id"],
+                             Isotope_id=paste("Isotope of", given_peak_id),
+                             Isotope_score=round(scores[best_iso]*10000)/10000))
       found_isotopes[[i]] <- best_iso_data
     }
   }

@@ -28,9 +28,9 @@ data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1100)
 eic_list <- constructEICs(data)
 
 #Find peaks
-peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))
+raw_peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))
 
 # Find isotopes
-isotope_df <- findIsos(peak_df = peak_df, eic_list = eic_list, qscore_cutoff = 5)
-peak_df <- merge(peak_df, isotope_df, by = "Peak_id", all.x = T)
+isotope_df <- findIsos(peak_df = raw_peak_df, eic_list = eic_list, qscore_cutoff = 5)
+peak_df <- merge(raw_peak_df, isotope_df, by = "Peak_id", all.x = T)
 

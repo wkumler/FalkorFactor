@@ -54,13 +54,7 @@ for(i in seq_len(nrow(iso_stds_df))){
 
 
 # Decide which ones are worth keeping (quality score>5)
-peak_df_best <- filter(peak_df, qscore>5)
-
-# Ugly add isotope quality metrics
-peak_df_best$iso_quality <- sapply(peak_df_best$Isotopes, function(x){
-  if(is.na(x)){return(NA)}
-  return(1/x$`1`$mz_match*x$`1`$cor^4-x$`1`$rt_match)
-})
+peak_df_best <- filter(peak_df, qscore>2)
 
 # Visualize the highest-quality peaks
 renderPeakOverview(peak_df_best)

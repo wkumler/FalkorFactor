@@ -814,11 +814,11 @@ renderPeakOverview <- function(peak_df_best){
          cex = 0.5, col = peak_shades[i])
     if(any(startsWith(prefix = as.character(1:9), x = peak_df_best[i,"Isotope_id"]), na.rm = T)){
       iso_info <- peak_df[peak_df_best[i,]$Isotope_id==peak_df$Peak_id,]
-      iso_intensities <- suppressWarnings(ceiling(log10(peak_df_best$Isotope_score))+1)
+      iso_intensities <- suppressWarnings(ceiling(peak_df_best$Isotope_score*10))
       arrows(x0=peak_df_best$Peak_center[i], x1=peak_df_best$Peak_center[i], 
              y0=peak_df_best$Peak_mz[i], y1=iso_info$Peak_mz, 
              col = gray.colors(max(iso_intensities, na.rm = T), 
-                               start = 0, end = 1)[iso_intensities[i]],
+                               start = 0, end = 1, rev = T)[iso_intensities[i]],
              #col="black",
              angle = 90, lwd = 2, length = 0)
     }

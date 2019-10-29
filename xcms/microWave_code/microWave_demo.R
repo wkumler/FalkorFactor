@@ -1,8 +1,7 @@
 #microWave heart demo!
 
 library(xcms)
-library(tidyverse)
-library(roxygen2)
+library(dplyr)
 
 #source("microWave_functions.R")
 source("xcms/microWave_code/microWave_functions.R")
@@ -22,7 +21,7 @@ all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
                        rt=rep(unname(unlist(lapply(x, rtime))), sapply(lapply(x, mz), length)))
 
 
-data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1100)
+data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
 #Make EICs
 eic_list <- constructEICs(data)

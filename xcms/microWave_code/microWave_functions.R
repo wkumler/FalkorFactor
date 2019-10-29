@@ -695,14 +695,22 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
       
       best_iso <- which.max(scores)
       
+      best_iso_area <- signif(possible_isos$Peak_area/peak_data$Peak_area, 5)
+      
       best_iso_data <- data.frame(Peak_id=given_peak_id,
                             Isotope_id=possible_isos[best_iso, "Peak_id"], 
                             Isotope_score=round(scores[best_iso]*10000)/10000,
+                            Isotope_area_delta=best_iso_area,
+                            iso_qscore=peak_data$qscore+peak_data$qscore*0.1*
+                              round(scores[best_iso]*10000)/10000,
                             stringsAsFactors = F)
       best_iso_data <- rbind(best_iso_data, 
                              data.frame(Peak_id=possible_isos[best_iso, "Peak_id"],
                              Isotope_id=paste("Isotope of", given_peak_id),
-                             Isotope_score=round(scores[best_iso]*10000)/10000))
+                             Isotope_score=round(scores[best_iso]*10000)/10000,
+                             Isotope_area_delta=best_iso_area,
+                             iso_qscore=possible_isos$qscore+possible_isos$qscore*0.5*
+                               round(scores[best_iso]*10000)/10000))
       found_isotopes[[i]] <- best_iso_data
     }
   }

@@ -841,3 +841,31 @@ renderPeakOverview <- function(peak_df_best){
     }
   }
 }
+
+
+
+microWavePeaksAll <- function(MSnObject, mass_window=c(100,120), 
+                              rt_window = c(60, 1100), ppm=2.5,
+                              prefilter = c(intensity=0, contiguous=0), 
+                              peakwidth = c(20, 80), bpparam = bpparam(),
+                              report=F){
+  temp_obj <- filterMsLevel(MSnObject, msLevel. = 1L)
+  temp_obj <- selectFeatureData(temp_obj, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
+  temp_obj <- lapply(1:length(fileNames(temp_obj)), FUN=filterFile, object = temp_obj)
+  peak_output <- lapply(temp_obj, function(x){
+    all_spectra <- spectra(x)
+    all_data <- data.frame(mz=unlist(lapply(all_spectra, mz), use.names = FALSE),
+                           int=unlist(lapply(all_spectra, intensity), use.names = FALSE), 
+                           rt=rep(unname(unlist(lapply(all_spectra, rtime))), 
+                                  sapply(lapply(all_spectra, mz), length)))
+    data <- all_data %>%
+      filter(mz>min(mass_window)&mz<max(mass_window)) %>% 
+      filter(rt>min(rt_window)&rt<max(rt_window))
+    eic_list <- constructEICs(data, report = F)
+    raw_peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))), report = F)
+    isotope_df <- findIsos(peak_df = raw_peak_df, eic_list = eic_list, qscore_cutoff = 5)
+    peak_df <- merge(raw_peak_df, isotope_df, by = "Peak_id", all.x = T)
+    return(peak_df)
+  })
+  return(peak_output)
+}

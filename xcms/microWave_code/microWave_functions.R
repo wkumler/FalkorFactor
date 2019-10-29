@@ -628,7 +628,7 @@ isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
   }
   plot(eic_data_1$rt, eic_data_1$int, type="l", lwd=2, xlab = "", xaxt="n", 
        xlim = xlimits, ylim=c(min(peak_data_1$int), max(peak_data_1$int)*1.2), 
-       main=paste("score", signif(peak_info_1$Isotopes[[1]]$`1`$iso_score, 3),
+       main=paste("score", peak_info_1$Isotope_score,
                   "   area diff:", signif(peak_info_2$Peak_area/peak_info_1$Peak_area, 5)))
   lines(peak_data_1$rt, peak_data_1$int, lwd=2, col="red")
   legend("topright", legend = c("mz"=signif(peak_info_1$Peak_mz, 8), 
@@ -666,7 +666,7 @@ isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
 #' 
 findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
   peak_df_best <- filter(peak_df, qscore>qscore_cutoff)
-  peak_df_best$Isotopes <- "None"
+  found_isotopes <- list()
   pb <- txtProgressBar(min = 0, max = nrow(peak_df_best), style = 3)
   for(i in seq_len(nrow(peak_df_best))){
     setTxtProgressBar(pb, i)
@@ -681,27 +681,34 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
                               Peak_mz<max(iso_mz_range)&
                               Peak_center>peak_data$Peak_start_time&
                               Peak_center<peak_data$Peak_end_time)
-    possible_isos$mz_match <- signif(abs(((possible_isos$Peak_mz-peak_data$Peak_mz)-1.003355)*
-                                           1000000/(ppm*peak_data$Peak_mz)), digits = 4)
-    possible_isos$rt_match <- signif(abs(possible_isos$Peak_center-peak_data$Peak_center), digits = 4)
-    
-    # Calculate the correlation between the original and the candidate
-    cors <- numeric(0)
-    for(j in seq_len(nrow(possible_isos))){
-      cors[j] <- isoCor(iso_data = possible_isos[j,], peak_data = peak_data, eic_list = eic_list)
-    }
-    possible_isos$cor <- round(cors, digits = 4)
-    
-    possible_isos$iso_score <- signif(((2.5-possible_isos$mz_match)*sqrt(1/(possible_isos$rt_match+1))*cors^4)/2.5, 4)
-    
     if(nrow(possible_isos)>0){
-      peak_df_best$Isotopes[i] <- list(split(possible_isos[c("Peak_id", "mz_match", 
-                                                          "rt_match", "cor", "iso_score")], 
-                                             seq_len(nrow(possible_isos))))
+      mz_matches <- signif(abs(((possible_isos$Peak_mz-peak_data$Peak_mz)-1.003355)*
+                                             1000000/(ppm*peak_data$Peak_mz)), digits = 4)
+      rt_matches <- signif(abs(possible_isos$Peak_center-peak_data$Peak_center), digits = 4)
+      
+      # Calculate the correlation between the original and the candidate
+      cors <- sapply(seq_len(nrow(possible_isos)), function(x){
+        isoCor(iso_data = possible_isos[x,], peak_data = peak_data, eic_list = eic_list)})
+      
+      scores <- sapply(seq_len(nrow(possible_isos)), function(x){
+        ((2.5-mz_matches[x])*sqrt(1/(rt_matches[x]+1))*cors[x]^4)/2.5})
+      
+      best_iso <- which.max(scores)
+      
+      best_iso_data <- list(Peak_id=possible_isos[best_iso, "Peak_id"],
+                         mz_match=mz_matches[best_iso],
+                         rt_match=rt_matches[best_iso],
+                         cor=signif(cors[best_iso], 4),
+                         iso_score=round(scores[best_iso]*10000)/10000)
+      best_iso_data <- c(Peak_id=given_peak_id,
+                            Isotope_id=possible_isos[best_iso, "Peak_id"], 
+                            Isotope_score=round(scores[best_iso]*10000)/10000)
+      found_isotopes[[i]] <- best_iso_data
     }
   }
   close(pb)
-  isotope_df <- peak_df_best[peak_df_best$Isotopes!="None",c("Peak_id", "Isotopes")]
+  isotope_df <- as.data.frame(do.call(rbind, found_isotopes), stringsAsFactors=F)
+  isotope_df$Isotope_score <- as.numeric(isotope_df$Isotope_score)
   return(isotope_df)
 }
 

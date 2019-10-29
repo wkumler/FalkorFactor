@@ -10,10 +10,20 @@ source("xcms/microWave_code/microWave_functions.R")
 # raw_data <- readMSData(files = msfiles, msLevel. = 1, centroided. = T, mode = "onDisk")
 # save(raw_data, file = "xcms/raw_data")
 load("xcms/raw_data")
+peak_output <- microWavePeaksAll(raw_data)
+
+best_peak_output <- lapply(peak_output, filter, qscore>5)
+best_peak_output <- lapply(best_peak_output, arrange, desc(qscore))
+save(best_peak_output, file = "xcms/microWave_code/best_peak_output")
+
+
+
+
+load("xcms/raw_data")
 x <- filterMsLevel(raw_data, msLevel. = 1L)
 x <- selectFeatureData(x, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
 x <- lapply(1:length(fileNames(x)), FUN=filterFile, object = x)
-x <- x[[2]]
+x <- x[[26]]
 x <- spectra(x)
 
 all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
@@ -24,7 +34,7 @@ all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
 data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
 
 #Make EICs
-eic_list <- constructEICs(data)
+eic_list <- constructEICs(data, report = F)
 
 #Find peaks
 raw_peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))
@@ -32,4 +42,3 @@ raw_peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))))
 # Find isotopes
 isotope_df <- findIsos(peak_df = raw_peak_df, eic_list = eic_list, qscore_cutoff = 5)
 peak_df <- merge(raw_peak_df, isotope_df, by = "Peak_id", all.x = T)
-

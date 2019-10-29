@@ -715,12 +715,16 @@ isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
 #'   k = 1, and prob = 0.011. Simulated by \code{dbinom(x = 1, size = 1:10, 
 #'   prob = 0.011)} for things with 1-10 carbons.
 #' }
-findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
+findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5, report=T){
   peak_df_best <- filter(peak_df, qscore>qscore_cutoff)
   found_isotopes <- list()
-  pb <- txtProgressBar(min = 0, max = nrow(peak_df_best), style = 3)
+  if(report){
+    pb <- txtProgressBar(min = 0, max = nrow(peak_df_best), style = 3)
+  }
   for(i in seq_len(nrow(peak_df_best))){
-    setTxtProgressBar(pb, i)
+    if(report){
+      setTxtProgressBar(pb, i)
+    }
     given_peak_id <- peak_df_best[i, "Peak_id"]
     peak_data <- subset(peak_df, Peak_id==given_peak_id)
     peak_mz <- peak_data[["Peak_mz"]]
@@ -765,7 +769,9 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5){
       found_isotopes[[i]] <- best_iso_data
     }
   }
-  close(pb)
+  if(report){
+    close(pb)
+  }
   isotope_df <- as.data.frame(do.call(rbind, found_isotopes), stringsAsFactors=F)
   isotope_df$Isotope_score <- as.numeric(isotope_df$Isotope_score)
   return(isotope_df)
@@ -853,6 +859,7 @@ microWavePeaksAll <- function(MSnObject, mass_window=c(100,120),
   temp_obj <- selectFeatureData(temp_obj, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
   temp_obj <- lapply(1:length(fileNames(temp_obj)), FUN=filterFile, object = temp_obj)
   peak_output <- lapply(temp_obj, function(x){
+    print(paste("Processing", as.character(x@phenoData@data$sample_name)))
     all_spectra <- spectra(x)
     all_data <- data.frame(mz=unlist(lapply(all_spectra, mz), use.names = FALSE),
                            int=unlist(lapply(all_spectra, intensity), use.names = FALSE), 
@@ -861,8 +868,8 @@ microWavePeaksAll <- function(MSnObject, mass_window=c(100,120),
     data <- all_data %>%
       filter(mz>min(mass_window)&mz<max(mass_window)) %>% 
       filter(rt>min(rt_window)&rt<max(rt_window))
-    eic_list <- constructEICs(data, report = F)
-    raw_peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(x, rtime))), report = F)
+    eic_list <- constructEICs(data, report = report)
+    raw_peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(all_spectra, rtime))), report = report)
     isotope_df <- findIsos(peak_df = raw_peak_df, eic_list = eic_list, qscore_cutoff = 5)
     peak_df <- merge(raw_peak_df, isotope_df, by = "Peak_id", all.x = T)
     return(peak_df)

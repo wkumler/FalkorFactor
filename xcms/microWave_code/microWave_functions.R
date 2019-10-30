@@ -648,20 +648,21 @@ peakCheck <- function(peak_df, peak_id, zoom=F, pts=F){
 #' they'll need to be specified and the first line of code uncommented to 
 #' accept them as arguments.
 #' 
+#' @param peak_df A data frame of peaks found by \code{microWavePeaks}.
+#' 
 #' @param peak_id_1 The first peak to compare, typically corresponding to the
 #' C12 isotope
 #' 
 #' @param peak_id_2 The second peak to compare, typically corresponding to the
 #' C13 isotope
-#isoCheck <- function(eic_list, peak_df, peak_id_1, peak_id_2){
-isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
+isoCheck <- function(peak_df, peak_id_1, peak_id_2, default_layout=T){
   peak_info_1 <- subset(peak_df, Peak_id==peak_id_1)
-  eic_data_1 <- eic_list[[as.numeric(strsplit(peak_id_1, "\\.")[[1]])[1]]]
-  peak_data_1 <- subset(eic_data_1, rt>peak_info_1$Peak_start_time&rt<peak_info_1$Peak_end_time)
+  eic_data_1 <- peak_info_1$EIC[[1]]
+  peak_data_1 <- peak_info_1$Peak[[1]]
   
   peak_info_2 <- subset(peak_df, Peak_id==peak_id_2)
-  eic_data_2 <- eic_list[[as.numeric(strsplit(peak_id_2, "\\.")[[1]])[1]]]
-  peak_data_2 <- subset(eic_data_2, rt>peak_info_2$Peak_start_time&rt<peak_info_2$Peak_end_time)
+  eic_data_2 <- peak_info_2$EIC[[1]]
+  peak_data_2 <- peak_info_2$Peak[[1]]
   
   xlimits <- c(min(peak_data_1$rt, peak_data_2$rt), max(peak_data_1$rt, peak_data_2$rt))
   ylimits <- c(min(peak_data_1$int, peak_data_2$int), max(peak_data_1$int, peak_data_2$int)*1.2)
@@ -709,8 +710,6 @@ isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
 #' that this isotope finder, as with many, will only flag C13 peaks as they're
 #' the most abundant in the environment.
 #' 
-#' @param eic_list A list of EICs, typically produced by \code{constructEICs}
-#' 
 #' @param peak_df A data frame of peaks found within the \code{eic_list}. Must
 #' include Peak_id, Peak_start_time, Peak_end_time, and Peak_width columns.
 #' Typically produced by \code{microWavePeaks}.
@@ -742,7 +741,7 @@ isoCheck <- function(peak_id_1, peak_id_2, default_layout=T){
 #'   k = 1, and prob = 0.011. Simulated by \code{dbinom(x = 1, size = 1:10, 
 #'   prob = 0.011)} for things with 1-10 carbons.
 #' }
-findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5, report=T){
+findIsos <- function(peak_df, qscore_cutoff=1, ppm=2.5, report=T){
   peak_df_best <- filter(peak_df, qscore>qscore_cutoff)
   found_isotopes <- list()
   if(report){
@@ -770,7 +769,10 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5, report=T){
       
       # Calculate the correlation between the original and the candidate
       cors <- sapply(seq_len(nrow(possible_isos)), function(x){
-        isoCor(iso_data = possible_isos[x,], peak_data = peak_data, eic_list = eic_list)})
+        iso_data <- possible_isos[x,]
+        combo_df <- merge(iso_data$Peak[[1]], peak_data$Peak[[1]], by = "rt")
+        return(cor(combo_df$int.x, combo_df$int.y))
+        })
       
       scores <- sapply(seq_len(nrow(possible_isos)), function(x){
         ((2.5-mz_matches[x])*sqrt(1/(rt_matches[x]+1))*cors[x]^4)/2.5})
@@ -804,35 +806,6 @@ findIsos <- function(peak_df, eic_list, qscore_cutoff=1, ppm=2.5, report=T){
   return(isotope_df)
 }
 
-#' Calculate the correlation coefficient between two peaks
-#' 
-#' \code{isoCor} is a small internal function that calculates the correlation
-#' coefficient between two isotope peaks using R's built-in cor() function. It
-#' aligns the peaks by retention time information using a left join (merge())
-#' then returns the cor() value.
-#' 
-#' @param iso_data The information corresponding to the isotope peak, usually
-#' in the form of a row from the peak_df data frame
-#' 
-#' @param peak_data The information corresponding to the initial peak, usually
-#' in the form of a row from the peak_df data frame
-#' 
-#' @param eic_list The list of Extracted Ion Chromatograms that is used to
-#' provide find data for each peak
-#' 
-#' @return A single number between 0 and 1, the correlation coefficient.
-isoCor <- function(iso_data, peak_data, eic_list){
-  iso_eic_index <- as.numeric(unlist(strsplit(iso_data$Peak_id, "\\."))[1])
-  iso_eic <- subset(eic_list[[iso_eic_index]], 
-                    rt>=iso_data$Peak_start_time&rt<=iso_data$Peak_end_time)
-  
-  peak_eic_index <- as.numeric(unlist(strsplit(peak_data$Peak_id, "\\."))[1])
-  peak_eic <- subset(eic_list[[peak_eic_index]], 
-                     rt>=peak_data$Peak_start_time&rt<=peak_data$Peak_end_time)
-  
-  combo_df <- merge(iso_eic, peak_eic, by = "rt")
-  return(cor(combo_df$int.x, combo_df$int.y))
-}
 
 
 #' Create a nice overview of a peak data frame
@@ -897,7 +870,7 @@ microWavePeaksAll <- function(MSnObject, mass_window=c(100,120),
       filter(rt>min(rt_window)&rt<max(rt_window))
     eic_list <- constructEICs(data, report = report)
     raw_peak_df <- microWavePeaks(eic_list, rts=unname(unlist(lapply(all_spectra, rtime))), report = report)
-    isotope_df <- findIsos(peak_df = raw_peak_df, eic_list = eic_list, qscore_cutoff = 5)
+    isotope_df <- findIsos(peak_df = raw_peak_df, qscore_cutoff = 5)
     peak_df <- merge(raw_peak_df, isotope_df, by = "Peak_id", all.x = T)
     return(peak_df)
   })

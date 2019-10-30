@@ -301,7 +301,7 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
                      prefilter = c(intensity=0, contiguous=0), 
                      peakwidth = c(20, 80)){
   if(report){print(paste("Constructing EICs from", 
-                         nrow(given_data_frame), "data points"))}
+                         nrow(given_data_frame), "data points"), quote = F)}
   if(report){pb <- txtProgressBar(min = 0, max = 1, style = 3)}
   
   time_between_scans <- mean(diff(unique(given_data_frame$rt)))
@@ -340,7 +340,7 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
     eic_list[[length(eic_list)+1]] <- eic
   }
   if(report){close(pb)}
-  if(report){print(paste("Extracted", length(eic_list), "ion chromatograms!"))}
+  if(report){print(paste("Extracted", length(eic_list), "ion chromatograms!"), quote = F)}
   
   return(eic_list)
 }
@@ -415,7 +415,7 @@ constructEICs <- function(given_data_frame, ppm = 2.5, report = TRUE,
 #' }
 microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80), report=TRUE){
   if(report){
-    print(paste("Finding peaks in", length(eic_list), "EICs"))
+    print(paste("Finding peaks in", length(eic_list), "EICs"), quote = F)
   }
   # Define variables created within loops
   original_data <- do.call(rbind, eic_list)
@@ -521,10 +521,10 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80), report=TRUE){
                "Peak_ridge_drift"=peak_k@ridge_drift,
                "Peak_gauss_fit"=peak_k@gauss_fit,
                "Peak_SNR"=peak_k@SNR,
-               "EIC_ints"=eic$int,
-               "EIC_rts"=eic$rt,
-               "Peak_ints"=peak_k@ints,
-               "Peak_rts"=rts[(peak_k@scan_start:peak_k@scan_end)+roi_start_scan])
+               "EIC"=eic,
+               "Peak"=subset(eic, 
+                             rt>rts[peak_k@scan_start+roi_start_scan]&
+                             rt<rts[peak_k@scan_end+roi_start_scan]))
         all_peak_ids[[length(all_peak_ids)+1]] <- paste(i, j, k, sep = ".")
       }
       rois_per_eic[[j]] <- peaks_per_roi
@@ -535,19 +535,46 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80), report=TRUE){
     close(pb)
   }
   
-  peak_df <- as.data.frame(do.call(rbind, lapply(all_peak_ids, function(x){
-    idxs <- as.numeric(strsplit(x, "\\.")[[1]])
-    unlist(all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]][sapply(
-      all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]], length)<=1])
-  })), stringsAsFactors=F)
-  for(i in 2:ncol(peak_df)){
+  if(report){
+    print(paste("Found", length(all_peak_ids), "peaks!"), quote = F)
+    cat("Cleaning up...")
+  }
+  
+  peak_df <- data.frame()
+  
+  flat_list <- list()
+  for(i in all_peak_ids){
+    add_row <- length(flat_list)+1
+    idxs <- as.numeric(strsplit(i, "\\.")[[1]])
+    peak_list <- all_peak_list[[idxs[1]]][[idxs[2]]][[idxs[3]]]
+    peak_data <- data.frame("Peak_id"=i,
+                            "Peak_mz"=peak_list$Peak_mz,
+                            "Peak_center"=peak_list$Peak_center, 
+                            "Peak_height"=peak_list$Peak_height, 
+                            "Peak_width"=peak_list$Peak_width, 
+                            "Peak_area"=peak_list$Peak_area, 
+                            "Peak_start_time"=peak_list$Peak_start_time,
+                            "Peak_end_time"=peak_list$Peak_end_time, 
+                            "Peak_area_top"=peak_list$Peak_area_top, 
+                            "Peak_ridge_length"=peak_list$Peak_ridge_length, 
+                            "Peak_ridge_drift"=peak_list$Peak_ridge_drift,
+                            "Peak_gauss_fit"=peak_list$Peak_gauss_fit,
+                            "Peak_SNR"=peak_list$Peak_SNR)
+    peak_data$EIC <- list(peak_list$EIC)
+    peak_data$Peak <- list(peak_list$Peak)
+    flat_list[[add_row]] <- peak_data
+  }
+
+  peak_df <- do.call(rbind, flat_list)
+
+  for(i in 2:(ncol(peak_df)-2)){
     peak_df[,i] <- as.numeric(as.character(peak_df[,i]))
   }
   
-  peak_df <- mutate(peak_df, qscore=Peak_SNR*Peak_gauss_fit^4*log10(Peak_height))
+  peak_df$qscore <- peak_df$Peak_SNR*peak_df$Peak_gauss_fit^4*log10(peak_df$Peak_height)
   
   if(report){
-    print(paste("Found", nrow(peak_df), "peaks!"))
+    cat("\r", "Cleaning up... Done.")
   }
   return(peak_df)
 }

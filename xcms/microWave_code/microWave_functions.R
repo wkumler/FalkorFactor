@@ -590,8 +590,6 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80), report=TRUE){
 #' then iterating over the top choices to identify where peak quality drops
 #' below an arbitrary threshold.
 #' 
-#' @param eic_list A list of EICs, typically produced by \code{constructEICs}
-#' 
 #' @param peak_df A data frame of peaks found within the \code{eic_list}. Must
 #' include Peak_id, Peak_start_time, Peak_end_time, and Peak_width columns.
 #' Typically produced by \code{microWavePeaks}.
@@ -606,11 +604,10 @@ microWavePeaks <- function(eic_list, rts, peakwidth = c(20, 80), report=TRUE){
 #' @param pts An optional way to include dots at each data point, which sometimes
 #' helps to identify missed scans or especially clean peaks that may be missed
 #' by other peakfinding software. Defaults to FALSE.
-# peakCheck <- function(eic_list, peak_df, peak_id, zoom=F, pts=F){
-peakCheck <- function(peak_id, zoom=F, pts=F){
+peakCheck <- function(peak_df, peak_id, zoom=F, pts=F){
   peak_info <- subset(peak_df, Peak_id==peak_id)
-  eic_data <- eic_list[[as.numeric(strsplit(peak_id, "\\.")[[1]])[1]]]
-  peak_data <- subset(eic_data, rt>peak_info$Peak_start_time&rt<peak_info$Peak_end_time)
+  eic_data <- peak_info$EIC[[1]]
+  peak_data <- peak_info$Peak[[1]]
   
   if(zoom){
     ylimits <- c(min(peak_data$int), max(peak_data$int)*1.2)
@@ -631,8 +628,11 @@ peakCheck <- function(peak_id, zoom=F, pts=F){
     lines(peak_data$rt, peak_data$int, lwd=2, col="red")
   }
 
-  reportvals <- c(peak_info$Peak_mz, suppressWarnings(sapply(as.numeric(peak_info[sapply(peak_info, length)<=1])[-c(1,2,15)], round, digits=2)))
-  reportnames <- gsub("Peak_", "", names(peak_info[sapply(peak_info, length)<=1])[-c(1, 15)])
+  reportidxs <- seq_len(length(peak_info))[!names(peak_info)%in%c("Peak_id", "EIC", "Peak", "Peak_mz")]
+  reportvals <- c(peak_info$Peak_mz, suppressWarnings(
+    sapply(as.numeric(peak_info[sapply(peak_info, length)<=1])[reportidxs], round, digits=2)
+    ))
+  reportnames <- c("mz", gsub("Peak_", "", names(peak_info[sapply(peak_info, length)<=1])[reportidxs]))
   legend("topright", legend = paste0(reportnames, ": ", reportvals), cex = 0.8)
   legend("topleft", legend = paste0("Peak id: ", peak_id))
 }
@@ -886,7 +886,7 @@ microWavePeaksAll <- function(MSnObject, mass_window=c(100,120),
   temp_obj <- selectFeatureData(temp_obj, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
   temp_obj <- lapply(1:length(fileNames(temp_obj)), FUN=filterFile, object = temp_obj)
   peak_output <- lapply(temp_obj, function(x){
-    print(paste("Processing", as.character(x@phenoData@data$sample_name)))
+    print(paste("Processing", as.character(x@phenoData@data$sample_name)), quote = F)
     all_spectra <- spectra(x)
     all_data <- data.frame(mz=unlist(lapply(all_spectra, mz), use.names = FALSE),
                            int=unlist(lapply(all_spectra, intensity), use.names = FALSE), 

@@ -818,7 +818,7 @@ findIsos <- function(peak_df, qscore_cutoff=1, ppm=2.5, report=T){
 #' peaks being very large.
 #' 
 #' Isotopes are also identified as grey lines connecting the centers of two
-#' peaks: the dark
+#' peaks: the darker the grey, the more likely the isotope connection.
 #' 
 renderPeakOverview <- function(peak_df_best){
   ylimits <- c(min(peak_df_best$Peak_mz), max(peak_df_best$Peak_mz))

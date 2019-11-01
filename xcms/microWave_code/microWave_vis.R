@@ -62,3 +62,21 @@ renderPeakOverview(peak_df_best)
 # pdf(file = "xcms/microWave_code/TempPeakPlot.pdf")
 # renderPeakOverview(peak_df_best)
 # dev.off()
+
+library(ggplot2)
+library(ggridges)
+
+
+peak_df_best <- filter(peak_df, qscore>10)
+
+peak_list <- lapply(seq_len(nrow(peak_df_best)), function(x){
+  v <- cbind(peak_num=x, peak_df_best[x,]$Peak[[1]], qscore=log10(peak_df_best[x,"qscore"]))
+  v$norm_int <- ((v$int-min(v$int))/(max(v$int)-min(v$int)))*(max(v$int))^(1/10)
+  return(v)
+})
+peak_int_rt_df <- do.call(rbind, peak_list)
+ggplot(peak_int_rt_df, aes(x=rt, y=mz, height=norm_int, 
+                           group=peak_num, fill=qscore)) +
+  #scale_fill_viridis_c(alpha = 0.5) +
+  scale_fill_viridis_c() +
+  geom_ridgeline()

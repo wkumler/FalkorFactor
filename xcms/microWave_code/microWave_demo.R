@@ -1,11 +1,10 @@
-#microWave heart demo!
+#Demoing the full, parallelized function ----
 
 library(xcms)
 library(dplyr)
 
 #source("microWave_functions.R")
 source("xcms/microWave_code/microWave_functions.R")
-
 # msfiles <- list.files(path = "mzMLs", pattern = "Blk|Smp|Full\\d", full.names = T)
 # raw_data <- readMSData(files = msfiles, msLevel. = 1, centroided. = T, mode = "onDisk")
 # save(raw_data, file = "xcms/raw_data")
@@ -18,7 +17,9 @@ save(best_peak_output, file = "xcms/microWave_code/best_peak_output")
 
 
 
-
+# Demoing individual files ----
+library(xcms)
+library(dplyr)
 load("xcms/raw_data")
 x <- filterMsLevel(raw_data, msLevel. = 1L)
 x <- selectFeatureData(x, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))
@@ -31,7 +32,7 @@ all_data <- data.frame(mz=unlist(lapply(x, mz), use.names = FALSE),
                        rt=rep(unname(unlist(lapply(x, rtime))), sapply(lapply(x, mz), length)))
 
 
-data <- all_data %>% filter(mz>100&mz<120) %>% filter(rt>60&rt<1100)
+data <- all_data %>% filter(mz>100&mz<150) %>% filter(rt>60&rt<1100)
 
 #Make EICs
 eic_list <- constructEICs(data, report = T)

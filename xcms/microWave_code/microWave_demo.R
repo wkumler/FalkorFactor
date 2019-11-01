@@ -20,6 +20,7 @@ save(best_peak_output, file = "xcms/microWave_code/best_peak_output")
 # Demoing individual files ----
 library(xcms)
 library(dplyr)
+source("xcms/microWave_code/microWave_functions.R")
 load("xcms/raw_data")
 x <- filterMsLevel(raw_data, msLevel. = 1L)
 x <- selectFeatureData(x, fcol = c(MSnbase:::.MSnExpReqFvarLabels, "centroided"))

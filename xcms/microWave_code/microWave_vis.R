@@ -54,7 +54,7 @@ for(i in seq_len(nrow(iso_stds_df))){
 
 
 # Decide which ones are worth keeping (quality score>5)
-peak_df_best <- filter(peak_df, qscore>2)
+peak_df_best <- filter(peak_df, qscore>5)
 
 # Visualize the highest-quality peaks
 renderPeakOverview(peak_df_best)
@@ -67,7 +67,7 @@ library(ggplot2)
 library(ggridges)
 
 
-peak_df_best <- filter(peak_df, qscore>10)
+peak_df_best <- filter(peak_df, qscore>3)
 
 peak_list <- lapply(seq_len(nrow(peak_df_best)), function(x){
   v <- cbind(peak_num=x, peak_df_best[x,]$Peak[[1]], qscore=log10(peak_df_best[x,"qscore"]))

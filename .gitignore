@@ -10,5 +10,7 @@
 *.dcl
 *.aef
 *.arf2
+*.mtd2
+*.msp2
 *./raw_data_MSnExp
 mzMLs/

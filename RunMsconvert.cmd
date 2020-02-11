@@ -1,1 +1,2 @@
 msconvert Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\*.raw --mzML --filter "peakPicking true 1-" --filter "polarity positive" -z -o mzMLs/
+msconvert Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\MSMS\*.raw --mzML --filter "peakPicking true 1-" -z -o mzMLs\MSMS\

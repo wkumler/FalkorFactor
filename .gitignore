@@ -2,7 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
-apikey.txt
+*/apikey.txt
 *.raw
 *.mzML
 *.abf
@@ -10,3 +10,5 @@ apikey.txt
 *.dcl
 *.aef
 *.arf2
+*./raw_data_MSnExp
+mzMLs/

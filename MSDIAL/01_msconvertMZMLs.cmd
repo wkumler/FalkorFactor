@@ -1,0 +1,4 @@
+"C:\Program Files\ProteoWizard\ProteoWizard 3.0.19310.7520b243a\msconvert.exe" Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\*.raw --mzML --filter "peakPicking true 1-" --filter "polarity positive" -z -o .\all_samples_pos
+"C:\Program Files\ProteoWizard\ProteoWizard 3.0.19310.7520b243a\msconvert.exe" Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\MSMS\*DDApos*.raw --mzML --filter "peakPicking true 1-" --filter "polarity positive" -z -o .\all_samples_pos
+"C:\Program Files\ProteoWizard\ProteoWizard 3.0.19310.7520b243a\msconvert.exe" Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\*.raw --mzML --filter "peakPicking true 1-" --filter "polarity negative" -z -o .\all_samples_neg
+"C:\Program Files\ProteoWizard\ProteoWizard 3.0.19310.7520b243a\msconvert.exe" Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\MSMS\*DDAneg*.raw --mzML --filter "peakPicking true 1-" --filter "polarity negative" -z -o .\all_samples_neg

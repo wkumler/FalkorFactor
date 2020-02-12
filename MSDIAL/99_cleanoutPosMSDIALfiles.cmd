@@ -1,0 +1,5 @@
+del /S "G:\My Drive\FalkorFactor\MSDIAL\all_samples_pos\*.aef"
+del /S "G:\My Drive\FalkorFactor\MSDIAL\all_samples_pos\*.mtd2"
+del /S "G:\My Drive\FalkorFactor\MSDIAL\all_samples_pos\*.msp2"
+del /S "G:\My Drive\FalkorFactor\MSDIAL\all_samples_pos\*.dcl"
+del /S "G:\My Drive\FalkorFactor\MSDIAL\all_samples_pos\*.pai2"

@@ -8,6 +8,10 @@ columns.to.drop <- c('Average.Rt.min.', 'Formula', 'Ontology', 'INCHIKEY', 'SMIL
 
 runs <- grep(matching.pattern, names(.GlobalEnv), value = TRUE, ignore.case = TRUE)
 runlist <- do.call("list", mget(runs))
+runlist[grepl("Area", runs)] <- lapply(runlist[grepl("Area", runs)], function(x){
+  x$`NA.` <- NULL; x$`NA..1` <- NULL
+  return(x)
+})
 
 headers.set <- lapply(names(runlist), function(x) SetHeader(runlist[[x]]))
 names(headers.set) <- runs

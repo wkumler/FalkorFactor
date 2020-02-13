@@ -110,15 +110,15 @@ Comment or uncomment the block of variable names appropriate for your run.
 # SN.RP.Cyano   <- SN_CYANO_EddyTransect
 
 # HILIC variables: 
-Area.positive <- Area_HILICPos_Example
-Mz.positive   <- Mz_HILICPos_Example
-RT.positive   <- RT_HILICPos_Example
-SN.positive   <- SN_HILICPos_Example
+Area.positive <- Area_HILICPos
+Mz.positive   <- Mz_HILICPos
+RT.positive   <- RT_HILICPos
+SN.positive   <- SN_HILICPos
 
-Area.negative <- Area_HILICNeg_Example
-Mz.negative   <- Mz_HILICNeg_Example
-RT.negative   <- RT_HILICNeg_Example
-SN.negative   <- SN_HILICNeg_Example
+Area.negative <- Area_HILICNeg
+Mz.negative   <- Mz_HILICNeg
+RT.negative   <- RT_HILICNeg
+SN.negative   <- SN_HILICNeg
 
 print(paste(file.pattern, "variables assigned."))
 

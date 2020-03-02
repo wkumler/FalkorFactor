@@ -15,5 +15,4 @@
 *raw_data_MSnExp
 mzMLs/
 XCMS/simple_samples/
-*.rds
-*.db
+XCMS/temp_data/

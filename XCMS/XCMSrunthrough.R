@@ -2,14 +2,10 @@
 # Setup things ----
 library(xcms)
 library(dplyr)
-library(RSQLite)
 library(data.table)
 library(beepr)
-library(pbapply)
-# if(dir.exists("temp_data"))unlink("temp_data")
-# if(!dir.exists("temp_data"))dir.create("temp_data")
+library(httr)
 start_time <- Sys.time()
-register(BPPARAM = SnowParam(tasks = length(fileids), progressbar = TRUE))
 
 
 
@@ -30,7 +26,7 @@ grabSingleFileData <- function(filename){
 qscoreCalculator <- function(eic){
   #Check for bogus EICs
   if(nrow(eic)<5){
-    return(0)
+    return(data.frame(SNR=0, peak_cor=0, qscore=0))
   }
   #Create an "ideal" peak of the same width
   perf_peak <- dnorm(seq(-3, 3, length.out = nrow(eic)))
@@ -61,7 +57,6 @@ xcmsQscoreCalculator <- function(df_row, xcms_peakdf, file_data_table,
                            mz %between% c(peak_row_data$mzmin, peak_row_data$mzmax)]
   return(qscoreCalculator(eic))
 }
-library(httr)
 searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S")){
   baseurl <- "https://pubchem.cheminfo.org/mfs/em?em=%f&precision=%.2f"
   url <- sprintf(baseurl, mass, ppm)
@@ -87,6 +82,47 @@ searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S
   rm(removed_compounds)
   return(content_df)
 }
+findAdducts <- function(x, xdata_cor, grabSingleFileDataFun, checkCorFun){
+  file_data <- fileNames(xdata_cor)[unique(x$sample)] %>%
+    grabSingleFileData() %>%
+    as.data.table()
+  file_data$rt <- adjustedRtime(xdata_cor) %>%
+    split(fromFile(xdata_cor)) %>%
+    `[[`(unique(x$sample)) %>%
+    `[`(factor(file_data$rt))
+  outlist <- list()
+  for(i in seq_len(nrow(x))){
+    peak_row_data <- x[i, ]
+    init_eic <- file_data[mz %between% c(peak_row_data$mzmin, peak_row_data$mzmax)&
+                            rt %between% c(peak_row_data$rtmin, peak_row_data$rtmax)]
+    mp1 <- checkCor(mass = peak_row_data$mz+1.003355, rtmin = peak_row_data$rtmin, 
+                    rtmax = peak_row_data$rtmax, init_eic = init_eic)
+    mp2 <- checkCor(mass = peak_row_data$mz+1.003355*2, rtmin = peak_row_data$rtmin, 
+                    rtmax = peak_row_data$rtmax, init_eic = init_eic)
+    m_na <- checkCor(mass = peak_row_data$mz-1.007276+22.98922, init_eic = init_eic,
+                     rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax)
+    m_h <- checkCor(mass = peak_row_data$mz-22.98922+1.007276, init_eic = init_eic,
+                    rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax)
+    outlist[[i]] <- data.frame(M_1_q = mp1[1], M_1_simil = mp1[2],
+                               M_2_q = mp2[1], M_2_simil = mp2[2],
+                               M_Na_q = m_na[1], M_Na_simil = m_na[2],
+                               M_H_q = m_h[1], M_H_simil = m_h[2])
+  }
+  return(do.call(rbind, outlist))
+}
+checkCor <- function(mass, rtmin, rtmax, init_eic){
+  given_eic <- file_data[mz %between% pmppm(mass, ppm = 5) & rt %between% c(rtmin, rtmax)]
+  if(nrow(given_eic)<3){
+    return(c(0, 0))
+  }
+  peak_qscore <- qscoreCalculator(given_eic)$qscore
+  merged_eic <- merge(init_eic, given_eic, by="rt")
+  if(nrow(given_eic)<3){
+    return(c(0, 0))
+  }
+  peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
+  return(c(peak_qscore, peak_match))
+}
 
 
 
@@ -106,10 +142,12 @@ metadata <- data.frame(
 ) %>%
   new(Class = "NAnnotatedDataFrame")
 
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
+
 raw_data <- readMSData(files = ms_files, pdata = metadata, mode = "onDisk")
 saveRDS(raw_data, file = "XCMS/temp_data/current_raw_data.rds")
 print(Sys.time()-start_time)
-#2.23 minutes
+#2.3 minutes
 beep(2)
 
 
@@ -121,11 +159,11 @@ cwp <- CentWaveParam(ppm = 5, peakwidth = c(20, 80),
                      integrate = 1, mzCenterFun = "wMean", 
                      mzdiff = 0.0001, fitgauss = FALSE, 
                      noise = 0, firstBaselineCheck = FALSE)
-xdata <- findChromPeaks(raw_data, param = cwp)
+xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 print(xdata)
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
 print(Sys.time()-start_time)
-# 33 minutes
+# 30 minutes
 beep(2)
 
 
@@ -158,7 +196,7 @@ qscoreCalculator = qscoreCalculator)
 peakdf_qscored <- as.data.frame(do.call(rbind, files_qscores))
 write.csv(peakdf_qscored, file = "XCMS/temp_data/peakdf_qscored.csv", row.names = FALSE)
 print(Sys.time()-start_time)
-# 2 hours
+# 1.5 hours
 beep(2)
 
 
@@ -173,11 +211,11 @@ xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 
 # Adjust retention time and compare ----
 obp <- ObiwarpParam(binSize = 0.01, centerSample = 4, response = 1, distFun = "cor_opt")
-xdata_rt <- adjustRtime(xdata_cleanpeak, param = obp)
+xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
 plotAdjustedRtime(xdata_rt)
 saveRDS(xdata_rt, file = "XCMS/temp_data/current_xdata_rt.rds")
 print(Sys.time()-start_time)
-# 20 minutes
+# 1.7 hours
 beep(2)
 
 
@@ -190,7 +228,19 @@ pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth,
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 saveRDS(xdata_cor, file = "XCMS/temp_data/current_xdata_cor.rds")
 print(Sys.time()-start_time)
+# 1.8 hours
 beep(2)
+
+
+
+# Find adducts ----
+xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
+peak_df <- as.data.frame(chromPeaks(xdata_cor))
+file_peaks <- split(peak_df, peak_df$sample)
+xdata_adduct_iso <- bplapply(file_peaks, findAdducts, 
+                             grabSingleFileDataFun=grabSingleFileData,
+                             checkCorFun = checkCor)
+
 
 
 
@@ -239,7 +289,7 @@ pool_data <- as.data.table(pool_data)
 betaine_na <- 117.078979+22.989222
 betaine_h <- 117.078979+1.007276
 betaine_d <- betaine_h+1.003355
-betaine_d2 <- betaine_d+1.003355
+betaine_d2 <- betaine_h+1.003355*2
 
 betaine_na_eic <- pool_data[mz %between% pmppm(betaine_na, ppm=5)]
 betaine_h_eic <- pool_data[mz %between% pmppm(betaine_h, ppm=5)]

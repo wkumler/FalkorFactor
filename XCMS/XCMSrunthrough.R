@@ -5,6 +5,7 @@ library(dplyr)
 library(data.table)
 library(beepr)
 library(httr)
+library(future.apply)
 start_time <- Sys.time()
 
 
@@ -82,7 +83,7 @@ searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S
   rm(removed_compounds)
   return(content_df)
 }
-findAdducts <- function(x, xdata_cor, grabSingleFileDataFun, checkCorFun){
+findAdducts <- function(x){
   file_data <- fileNames(xdata_cor)[unique(x$sample)] %>%
     grabSingleFileData() %>%
     as.data.table()
@@ -96,34 +97,44 @@ findAdducts <- function(x, xdata_cor, grabSingleFileDataFun, checkCorFun){
     init_eic <- file_data[mz %between% c(peak_row_data$mzmin, peak_row_data$mzmax)&
                             rt %between% c(peak_row_data$rtmin, peak_row_data$rtmax)]
     mp1 <- checkCor(mass = peak_row_data$mz+1.003355, rtmin = peak_row_data$rtmin, 
-                    rtmax = peak_row_data$rtmax, init_eic = init_eic)
+                    rtmax = peak_row_data$rtmax, init_eic = init_eic, file_data=file_data)
     mp2 <- checkCor(mass = peak_row_data$mz+1.003355*2, rtmin = peak_row_data$rtmin, 
-                    rtmax = peak_row_data$rtmax, init_eic = init_eic)
+                    rtmax = peak_row_data$rtmax, init_eic = init_eic, file_data=file_data)
     m_na <- checkCor(mass = peak_row_data$mz-1.007276+22.98922, init_eic = init_eic,
-                     rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax)
+                     rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax, file_data=file_data)
     m_h <- checkCor(mass = peak_row_data$mz-22.98922+1.007276, init_eic = init_eic,
-                    rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax)
-    outlist[[i]] <- data.frame(M_1_q = mp1[1], M_1_simil = mp1[2],
-                               M_2_q = mp2[1], M_2_simil = mp2[2],
-                               M_Na_q = m_na[1], M_Na_simil = m_na[2],
-                               M_H_q = m_h[1], M_H_simil = m_h[2])
+                    rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax, file_data=file_data)
+    outlist[[i]] <- data.frame(M_1_area = mp1[1], M_1_q = mp1[2], M_1_simil = mp1[3],
+                               M_2_area = mp2[1], M_2_q = mp2[2], M_2_simil = mp2[3],
+                               M_Na_area = m_na[1], M_Na_q = m_na[2], M_Na_simil = m_na[3],
+                               M_H_area = m_h[1], M_H_q = m_h[2], M_H_simil = m_h[3])
   }
   return(do.call(rbind, outlist))
 }
-checkCor <- function(mass, rtmin, rtmax, init_eic){
+checkCor <- function(mass, rtmin, rtmax, init_eic, file_data){
   given_eic <- file_data[mz %between% pmppm(mass, ppm = 5) & rt %between% c(rtmin, rtmax)]
   if(nrow(given_eic)<3){
-    return(c(0, 0))
+    return(c(0L, 0L, 0L))
   }
   peak_qscore <- qscoreCalculator(given_eic)$qscore
   merged_eic <- merge(init_eic, given_eic, by="rt")
   if(nrow(given_eic)<3){
-    return(c(0, 0))
+    return(c(0L, 0L, 0L))
   }
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
-  return(c(peak_qscore, peak_match))
+  peak_area <- trapz(given_eic$rt, given_eic$int)
+  return(c(peak_area, peak_qscore, peak_match))
 }
-
+trapz <- function(x, y) {
+  m <- length(x)
+  xp <- c(x, x[m:1])
+  yp <- c(numeric(m), y[m:1])
+  n <- 2*m
+  p1 <- sum(xp[1:(n-1)]*yp[2:n]) + xp[n]*yp[1]
+  p2 <- sum(xp[2:n]*yp[1:(n-1)]) + xp[1]*yp[n]
+  
+  return(0.5*(p1-p2))
+}
 
 
 # Load MS data ----
@@ -174,7 +185,6 @@ xcms_peakdf <- as.data.frame(chromPeaks(xdata))
 
 fileids <- unique(xcms_peakdf$sample)
 split_xcms_filedata <- split(xcms_peakdf, xcms_peakdf$sample)
-start_time <- Sys.time()
 files_qscores <- bplapply(fileids, function(x, split_xcms_filedata, ms_files, 
                                             grabSingleFileData, xcmsQscoreCalculator,
                                             qscoreCalculator){
@@ -182,14 +192,14 @@ files_qscores <- bplapply(fileids, function(x, split_xcms_filedata, ms_files,
   file_peaks <- split_xcms_filedata[[x]]
   file_data <- grabSingleFileData(ms_files[x])
   file_data_table <- as.data.table(file_data)
-  file_qscores <- lapply(seq_len(nrow(file_peaks)), 
-                           FUN = xcmsQscoreCalculator, 
-                           xcms_peakdf=file_peaks, 
-                           file_data_table=file_data_table,
+  file_qscores <- lapply(seq_len(nrow(file_peaks)), FUN = xcmsQscoreCalculator, 
+                         xcms_peakdf=file_peaks, file_data_table=file_data_table,
                          qscoreCalculator=qscoreCalculator)
   file_qscores_df <- do.call(rbind, file_qscores)
   return(cbind(split_xcms_filedata[[x]], file_qscores_df))
-}, split_xcms_filedata=split_xcms_filedata, ms_files=ms_files, 
+}, 
+split_xcms_filedata=split_xcms_filedata, 
+ms_files=ms_files, 
 grabSingleFileData = grabSingleFileData,
 xcmsQscoreCalculator = xcmsQscoreCalculator,
 qscoreCalculator = qscoreCalculator)
@@ -233,13 +243,44 @@ beep(2)
 
 
 
-# Find adducts ----
-xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
-peak_df <- as.data.frame(chromPeaks(xdata_cor))
+# Fill peaks and add new quality scores ----
+xdata_filled <- fillChromPeaks(xdata_cor, param = FillChromPeaksParam())
+peak_df <- as.data.frame(chromPeaks(xdata_filled))
+peak_list <- split(peak_df, is.na(peak_df$qscore))
+unscored_rows <- peak_list[["TRUE"]] %>%
+  select(-c("SNR", "peak_cor", "qscore"))
+split_unscored <- split(unscored_rows, unscored_rows$sample)
+files_newscores <- bplapply(fileids, function(x, split_xcms_filedata, ms_files, 
+                                            grabSingleFileData, xcmsQscoreCalculator,
+                                            qscoreCalculator){
+  library(data.table)
+  file_peaks <- split_xcms_filedata[[x]]
+  file_data <- grabSingleFileData(ms_files[x])
+  file_data_table <- as.data.table(file_data)
+  file_qscores <- lapply(seq_len(nrow(file_peaks)), FUN = xcmsQscoreCalculator, 
+                         xcms_peakdf=file_peaks, file_data_table=file_data_table,
+                         qscoreCalculator=qscoreCalculator)
+  file_qscores_df <- do.call(rbind, file_qscores)
+  return(cbind(split_xcms_filedata[[x]], file_qscores_df))
+}, 
+split_xcms_filedata=split_unscored, 
+ms_files=ms_files, 
+grabSingleFileData = grabSingleFileData,
+xcmsQscoreCalculator = xcmsQscoreCalculator,
+qscoreCalculator = qscoreCalculator)
+peak_list[["TRUE"]] <- do.call(rbind, files_newscores)
+chromPeaks(xdata_filled) <- `rownames<-`(as.matrix(do.call(rbind, peak_list)), rownames(peak_df))
+saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
+
+
+# Find adducts and isotopes ----
+xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
+peak_df <- as.data.frame(chromPeaks(xdata_filled))
 file_peaks <- split(peak_df, peak_df$sample)
-xdata_adduct_iso <- bplapply(file_peaks, findAdducts, 
-                             grabSingleFileDataFun=grabSingleFileData,
-                             checkCorFun = checkCor)
+plan(multiprocess)
+xdata_adduct_iso <- future_lapply(X = file_peaks, FUN = findAdducts)
+xdata_adduct_iso <- do.call(rbind, xdata_adduct_iso)
+xdata_adduct_iso <- cbind(peak_df, xdata_adduct_iso)
 
 
 
@@ -301,3 +342,5 @@ plot(betaine_h_eic$rt, betaine_h_eic$int, type="l", xlim=c(300, 400))
 plot(betaine_d_eic$rt, betaine_d_eic$int, type="l", xlim=c(300, 400))
 plot(betaine_d2_eic$rt, betaine_d2_eic$int, type="l", xlim=c(300, 400))
 
+v <- featureDefinitions(xdata_filled)
+bet_found <- v[betaine_h>v$mzmin&v$h<v$mzmax]

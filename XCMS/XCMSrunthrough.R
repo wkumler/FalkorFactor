@@ -1,7 +1,7 @@
 
 # Setup things ----
 library(xcms)
-library(dplyr)
+library(tidyverse)
 library(data.table)
 library(beepr)
 library(httr)
@@ -216,8 +216,8 @@ peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv")
 threshold <- 20
 cleandf_qscored <- peakdf_qscored[peakdf_qscored[, "qscore"]>threshold,]
 xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
-
-
+# sample_df <- peakdf_qscored[sample(1:nrow(peakdf_qscored), size = 10000),]
+# plot(log10(sample_df[,"sn"]), log10(sample_df[,"qscore"]))
 
 # Adjust retention time and compare ----
 obp <- ObiwarpParam(binSize = 0.01, centerSample = 4, response = 1, distFun = "cor_opt")
@@ -244,12 +244,14 @@ beep(2)
 
 
 # Fill peaks and add new quality scores ----
-xdata_filled <- fillChromPeaks(xdata_cor, param = FillChromPeaksParam())
+xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
+xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = FillChromPeaksParam()))
 peak_df <- as.data.frame(chromPeaks(xdata_filled))
 peak_list <- split(peak_df, is.na(peak_df$qscore))
 unscored_rows <- peak_list[["TRUE"]] %>%
   select(-c("SNR", "peak_cor", "qscore"))
 split_unscored <- split(unscored_rows, unscored_rows$sample)
+fileids <- unique(peak_df$sample)
 files_newscores <- bplapply(fileids, function(x, split_xcms_filedata, ms_files, 
                                             grabSingleFileData, xcmsQscoreCalculator,
                                             qscoreCalculator){
@@ -270,12 +272,43 @@ xcmsQscoreCalculator = xcmsQscoreCalculator,
 qscoreCalculator = qscoreCalculator)
 peak_list[["TRUE"]] <- do.call(rbind, files_newscores)
 chromPeaks(xdata_filled) <- `rownames<-`(as.matrix(do.call(rbind, peak_list)), rownames(peak_df))
+pdp <- PeakDensityParam(sampleGroups = xdata_filled$depth, 
+                        bw = 5, minFraction = 0.5, 
+                        binSize = 0.002)
+xdata_filled <- groupChromPeaks(xdata_filled, param = pdp)
 saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
 
 
 # Find adducts and isotopes ----
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
+
 peak_df <- as.data.frame(chromPeaks(xdata_filled))
+group_df <- featureDefinitions(xdata_filled) %>%
+  cbind(featureValues(xdata_filled)) %>%
+  as.data.frame() %>%
+  mutate(feature_name = rownames(.)) %>%
+  pivot_longer(cols = starts_with("X190715"), names_to = "file_name", values_to = "peak_area")
+
+unduped_peak_idxs <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), function(i){
+  peak_idxs <- unlist(featureDefinitions(xdata_filled)[i,"peakidx"])
+  if(length(peak_idxs==1)){
+    return(peak_idxs)
+  }
+  subs <- as.data.frame(chromPeaks(xdata_filled)[peak_idxs, ]) %>% 
+    mutate(peakidx=peak_idxs) %>%
+    group_by(sample) %>% 
+    slice(which.max(qscore)) %>%
+    pull(peakidx)
+  return(subs)
+})
+
+
+# Conundrum: 
+group_df %>% group_by(feature_name) %>% summarize(sum(!is.na(peak_area))) %>% head()
+head(sapply(featureDefinitions(xdata_filled)$peakidx, length))
+
+
+
 file_peaks <- split(peak_df, peak_df$sample)
 plan(multiprocess)
 xdata_adduct_iso <- future_lapply(X = file_peaks, FUN = findAdducts)

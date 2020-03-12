@@ -267,7 +267,8 @@ feature_peaks <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), functio
   as.data.frame(stringsAsFactors=FALSE) %>% 
   mutate(peak_id=as.numeric(peak_id)) %>%
   cbind(chromPeaks(xdata_filled)[.$peak_id, ]) %>%
-  mutate(file_name=basename(fileNames(xdata_filled))[sample])
+  mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
+  select(-c(SNR, peak_cor, qscore))
 
 split_groups <- split(feature_peaks, factor(feature_peaks$file_name))
 files_newscores <- bplapply(seq_along(split_groups), 
@@ -290,11 +291,13 @@ grabSingleFileData = grabSingleFileData,
 xcmsQscoreCalculator = xcmsQscoreCalculator,
 qscoreCalculator = qscoreCalculator)
 feature_peaks_rescored <- do.call(rbind, files_newscores) %>% 
-  as.data.frame() %>% arrange(feature_name)
-saveRDS()
-
+  as.data.frame() %>% arrange(feature)
+saveRDS(feature_peaks_rescored, file = "XCMS/temp_data/feature_peaks_rescored.rds")
+print(Sys.time()-start_time)
+beep(2)
 
 # Find adducts and isotopes ----
+feature_peaks_rescored <- readRDS("XCMS/temp_data/feature_peaks_rescored.rds")
 file_peaks <- split(feature_peaks_rescored, factor(feature_peaks_rescored$file_name))
 plan(multiprocess)
 xdata_adduct_iso <- future_lapply(X = file_peaks, FUN = findAdducts)
@@ -302,66 +305,43 @@ xdata_adduct_iso <- do.call(rbind, xdata_adduct_iso)
 
 
 
-# Investigate some peaks! ----
-xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
-peak_idx_df <- chromPeaks(xdata_cor)
-cor_peaklist <- featureDefinitions(xdata_cor) %>%
-  cbind(featureValues(xdata_cor)) %>%
-  as.data.frame() %>%
-  filter(rtmax>60&rtmin<1100) %>%
-  mutate(coll_min_rt=sapply(peakidx, function(x)min(peak_idx_df[x, "rtmin"]))) %>%
-  mutate(coll_max_rt=sapply(peakidx, function(x)max(peak_idx_df[x, "rtmax"]))) %>%
-  mutate(coll_min_mz=sapply(peakidx, function(x)min(peak_idx_df[x, "mzmin"]))) %>%
-  mutate(coll_max_mz=sapply(peakidx, function(x)max(peak_idx_df[x, "mzmax"])))
+# Check peak quality (sorry laptop memory)
+dt_list <- pblapply(seq_along(ms_files), function(x){
+  v <- grabSingleFileData(ms_files[x]) %>%
+    cbind(file_name=basename(ms_files[x]), .)
+  cor_rt <- unname(split(adjustedRtime(xdata_filled), fromFile(xdata_filled))[[x]])
+  v$rt <- factor(v$rt)
+  v$cor_rt <- cor_rt[v$rt]
+  return(v)
+})
+dt <- do.call(rbind, dt_list) %>% as.data.table()
 
-
-rt_cors <- split(unname(adjustedRtime(xdata_cor)), fromFile(xdata_cor))
-names(rt_cors) <- basename(fileNames(xdata_cor))
-
-blank_data <- grabSingleFileData(filename = fileNames(xdata_cor)[1])
-blank_data$cor_rt <- rt_cors[[1]][factor(blank_data$rt)]
-blank_data <- as.data.table(blank_data)
-
-blank_peaks <- cor_peaklist %>%
-  filter(cor_peaklist$Blank==1&npeaks==1) %>%
-  select(Blank, starts_with("coll"), X190715_Blk_KM1906U14.Blk_C.mzML)
-for(i in seq_len(nrow(blank_peaks))){
-  peak_row_data <- blank_peaks[i,]
-  eic <- blank_data[cor_rt %between% c(peak_row_data$coll_min_rt, peak_row_data$coll_max_rt)&
-                    mz %between% c(peak_row_data$coll_min_mz, peak_row_data$coll_max_mz)]
-  plot(eic$cor_rt, eic$int, type = "l")
+while(T){
+  ft <- sprintf("FT%03d", i)
+  peak_data <- feature_peaks_rescored %>%
+    filter(feature==ft) %>%
+    summarise(mzmin=min(mzmin), mzmax=max(mzmax), 
+              rtmin=min(rtmin), rtmax=max(rtmax),
+              m_qscore=mean(qscore), med_qscore=median(qscore))
+  eic <- dt[cor_rt%between%c(peak_data$rtmin, peak_data$rtmax)&
+              mz%between%c(peak_data$mzmin, peak_data$mzmax)] %>%
+    mutate(file_name=as.character(file_name))
+  mdframe <- metadata@data %>% 
+    mutate(filenames=paste0("190715_", as.character(filenames)))
+  eic_df <- left_join(eic, mdframe, by=c("file_name"="filenames"))
+  gp <- ggplot(eic_df) + 
+    geom_line(aes(x=cor_rt, y=int, group=file_name, color=depth)) +
+    scale_color_manual(values = c(Blank="red", Pooled="black", `25m`="blue", 
+                                  DCM="green", Std="gray")) +
+    ggtitle(paste("Mean quality:", round(peak_data$m_qscore), 
+                  "\nMed quality:", round(peak_data$med_qscore)))
+    
+  print(gp)
   readline(prompt = "Press Enter")
+  i <- i+1
 }
-masses <- (blank_peaks$coll_min_mz+blank_peaks$coll_max_mz)/2-1.007276
-pubchemresults <- lapply(masses, searchPubchem, ppm = 5)
-blank_peaks$pubchem <- pubchemresults
-head(blank_peaks)
 
-
-
-
-pool_data <- grabSingleFileData(filename = fileNames(xdata_cor)[3])
-pool_data$cor_rt <- rt_cors[[3]][factor(pool_data$rt)]
-pool_data <- as.data.table(pool_data)
-
-betaine_na <- 117.078979+22.989222
-betaine_h <- 117.078979+1.007276
-betaine_d <- betaine_h+1.003355
-betaine_d2 <- betaine_h+1.003355*2
-
-betaine_na_eic <- pool_data[mz %between% pmppm(betaine_na, ppm=5)]
-betaine_h_eic <- pool_data[mz %between% pmppm(betaine_h, ppm=5)]
-betaine_d_eic <- pool_data[mz %between% pmppm(betaine_d, ppm=5)]
-betaine_d2_eic <- pool_data[mz %between% pmppm(betaine_d2, ppm=5)]
-
-plot(betaine_na_eic$rt, betaine_na_eic$int, type="l", xlim=c(300, 400))
-plot(betaine_h_eic$rt, betaine_h_eic$int, type="l", xlim=c(300, 400))
-plot(betaine_d_eic$rt, betaine_d_eic$int, type="l", xlim=c(300, 400))
-plot(betaine_d2_eic$rt, betaine_d2_eic$int, type="l", xlim=c(300, 400))
-
-v <- featureDefinitions(xdata_filled)
-bet_found <- v[betaine_h>v$mzmin&v$h<v$mzmax]
-# Spacer ----
-
-
-
+peak_data <- feature_peaks_rescored %>%
+  group_by(feature) %>%
+  summarise(m_qscore=mean(qscore), med_qscore=median(qscore))
+summary(peak_data)

@@ -7,6 +7,7 @@ library(beepr)
 library(httr)
 library(future.apply)
 start_time <- Sys.time()
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 
 
@@ -83,12 +84,12 @@ searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S
   rm(removed_compounds)
   return(content_df)
 }
-findAdducts <- function(x){
-  file_data <- fileNames(xdata_cor)[unique(x$sample)] %>%
+findAdducts <- function(x, xdata){
+  file_data <- fileNames(xdata)[unique(x$sample)] %>%
     grabSingleFileData() %>%
     as.data.table()
-  file_data$rt <- adjustedRtime(xdata_cor) %>%
-    split(fromFile(xdata_cor)) %>%
+  file_data$rt <- adjustedRtime(xdata) %>%
+    split(fromFile(xdata)) %>%
     `[[`(unique(x$sample)) %>%
     `[`(factor(file_data$rt))
   outlist <- list()
@@ -104,7 +105,8 @@ findAdducts <- function(x){
                      rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax, file_data=file_data)
     m_h <- checkCor(mass = peak_row_data$mz-22.98922+1.007276, init_eic = init_eic,
                     rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax, file_data=file_data)
-    outlist[[i]] <- data.frame(M_1_area = mp1[1], M_1_q = mp1[2], M_1_simil = mp1[3],
+    outlist[[i]] <- data.frame(peak_id=peak_row_data$peak_id, 
+                               M_1_area = mp1[1], M_1_q = mp1[2], M_1_simil = mp1[3],
                                M_2_area = mp2[1], M_2_q = mp2[2], M_2_simil = mp2[3],
                                M_Na_area = m_na[1], M_Na_q = m_na[2], M_Na_simil = m_na[3],
                                M_H_area = m_h[1], M_H_q = m_h[2], M_H_simil = m_h[3])
@@ -135,7 +137,6 @@ trapz <- function(x, y) {
   
   return(0.5*(p1-p2))
 }
-
 ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
@@ -156,12 +157,10 @@ metadata <- data.frame(
   depth=c("Blank", "Pooled", "DCM", "25m", "Std")[c(1, rep(2, 6), rep(c(rep(3, 3), rep(4, 3)), 4), rep(5, 10))],
   spindir=c("Blank", "Pooled", "Cyclone", "Anticyclone", "Std")[c(1, rep(2, 6), rep(3, 12), rep(4, 12), rep(5, 10))],
   time=c("Blank", "Pooled", "Morning", "Afternoon", "Std")[c(1, rep(2, 6), rep(c(rep(3, 6), rep(4, 6)), 2), rep(5, 10))]
-) %>%
-  new(Class = "NAnnotatedDataFrame")
+) %>% new(Class = "NAnnotatedDataFrame")
 
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
-
-raw_data <- readMSData(files = ms_files, pdata = metadata, mode = "onDisk")
+raw_data <- readMSData(files = ms_files, pdata = metadata, 
+                       mode = "onDisk", verbose = TRUE)
 saveRDS(raw_data, file = "XCMS/temp_data/current_raw_data.rds")
 print(Sys.time()-start_time)
 #2.3 minutes
@@ -218,8 +217,9 @@ beep(2)
 
 
 # Decide on quality threshold and reassign peaklist ----
+xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv"))
-threshold <- 20
+threshold <- 100
 cleandf_qscored <- peakdf_qscored[peakdf_qscored[, "qscore"]>threshold,]
 xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 # sample_df <- peakdf_qscored[sample(1:nrow(peakdf_qscored), size = 10000),]
@@ -228,17 +228,19 @@ xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 
 
 # Adjust retention time and compare ----
+start_time <- Sys.time()
 obp <- ObiwarpParam(binSize = 0.01, centerSample = 4, response = 1, distFun = "cor_opt")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
 plotAdjustedRtime(xdata_rt)
 saveRDS(xdata_rt, file = "XCMS/temp_data/current_xdata_rt.rds")
 print(Sys.time()-start_time)
-# 1.7 hours
+# 16 minutes
 beep(2)
 
 
 
 # Correspondence ----
+start_time <- Sys.time()
 xdata_rt <- readRDS(file = "XCMS/temp_data/current_xdata_rt.rds")
 pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
                         bw = 2, minFraction = 0.5, 
@@ -246,19 +248,22 @@ pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth,
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 saveRDS(xdata_cor, file = "XCMS/temp_data/current_xdata_cor.rds")
 print(Sys.time()-start_time)
-# 1.8 hours
+# 5 seconds
 beep(2)
 
 
 
 # Fill peaks ----
+start_time <- Sys.time()
 xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
 xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = FillChromPeaksParam()))
 saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
-
+# 1 minute
+print(Sys.time()-start_time)
 
 
 # Add new quality scores ----
+start_time <- Sys.time()
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
 feature_peaks <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), function(i){
   cbind(feature=sprintf("FT%03d", i), 
@@ -294,30 +299,69 @@ feature_peaks_rescored <- do.call(rbind, files_newscores) %>%
   as.data.frame() %>% arrange(feature)
 saveRDS(feature_peaks_rescored, file = "XCMS/temp_data/feature_peaks_rescored.rds")
 print(Sys.time()-start_time)
+# 1 minute
 beep(2)
 
 # Find adducts and isotopes ----
+start_time <- Sys.time()
 feature_peaks_rescored <- readRDS("XCMS/temp_data/feature_peaks_rescored.rds")
+xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
 file_peaks <- split(feature_peaks_rescored, factor(feature_peaks_rescored$file_name))
 plan(multiprocess)
-xdata_adduct_iso <- future_lapply(X = file_peaks, FUN = findAdducts)
-xdata_adduct_iso <- do.call(rbind, xdata_adduct_iso)
+feature_adduct_iso <- future_lapply(X = file_peaks, FUN = findAdducts, xdata=xdata_filled)
+feature_adduct_iso <- do.call(rbind, feature_adduct_iso)
+feature_peaks_added <- feature_peaks_rescored %>% 
+  left_join(feature_adduct_iso, by="peak_id") %>%
+  split(.$feature) %>%
+  lapply(FUN = merge, 
+         y=data.frame(file_name=basename(ms_files)), 
+         by=c("file_name"), all.y=TRUE) %>%
+  do.call(what = rbind) %>%
+  mutate(feature=rep(unique(feature_peaks_rescored$feature), each=length(ms_files)))
+print(Sys.time()-start_time)
+# 2.5 minutes
+beep(2)
+
+
+zscore <- function(blank, samples){
+  sig <- sd(samples, na.rm = TRUE)/sqrt(sum(!is.na(samples)))
+  zscore <- (mean(samples, na.rm=TRUE)-blank)/sig
+  return(zscore)
+}
+feature_summaries <- feature_peaks_added %>%
+  `[<-`(is.na(.), value=0) %>%
+  group_by(feature) %>%
+  summarise(mz=weighted.mean(mz, qscore), rt=weighted.mean(rt, qscore),
+            M1_iso=weighted.mean(M_1_area/into, M_1_q*M_1_simil^4, na.rm = TRUE),
+            M2_iso=weighted.mean(M_2_area/into, M_2_q*M_2_simil^4, na.rm = TRUE),
+            blank_area=into[which(metadata@data$depth=="Blank")], 
+            X25m_area=mean(into[which(metadata@data$depth=="25m")]),
+            X25m_diff=zscore(blank = into[which(metadata@data$depth=="Blank")], 
+                             samples=into[which(metadata@data$depth=="25m")]),
+            DCM_area=mean(into[which(metadata@data$depth=="DCM")]),
+            DCM_diff=zscore(blank = into[which(metadata@data$depth=="Blank")], 
+                             samples=into[which(metadata@data$depth=="DCM")]),
+            DCM_25m_diff=t.test(into[which(metadata@data$depth=="DCM")],
+                                into[which(metadata@data$depth=="25m")])$statistic,
+            std_area=mean(into[which(metadata@data$depth=="Std")])) %>%
+  arrange(DCM_25m_diff) %>%
+  as.data.frame()
 
 
 
-# Check peak quality (sorry laptop memory)
-dt_list <- pblapply(seq_along(ms_files), function(x){
+# Check peak quality (sorry laptop memory) ----
+xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
+dt <- pblapply(seq_along(ms_files), function(x){
   v <- grabSingleFileData(ms_files[x]) %>%
     cbind(file_name=basename(ms_files[x]), .)
   cor_rt <- unname(split(adjustedRtime(xdata_filled), fromFile(xdata_filled))[[x]])
   v$rt <- factor(v$rt)
   v$cor_rt <- cor_rt[v$rt]
   return(v)
-})
-dt <- do.call(rbind, dt_list) %>% as.data.table()
+}) %>% do.call(what = rbind) %>% as.data.table()
 
-while(T){
-  ft <- sprintf("FT%03d", i)
+getMoreData <- function(feature_num){
+  ft <- sprintf("FT%03d", feature_num)
   peak_data <- feature_peaks_rescored %>%
     filter(feature==ft) %>%
     summarise(mzmin=min(mzmin), mzmax=max(mzmax), 
@@ -334,14 +378,13 @@ while(T){
     scale_color_manual(values = c(Blank="red", Pooled="black", `25m`="blue", 
                                   DCM="green", Std="gray")) +
     ggtitle(paste("Mean quality:", round(peak_data$m_qscore), 
+                  "     m/z range:", round(peak_data$mzmin, 4), 
+                  "-", round(peak_data$mzmax, 4),
                   "\nMed quality:", round(peak_data$med_qscore)))
-    
   print(gp)
-  readline(prompt = "Press Enter")
-  i <- i+1
+  feature_data <- feature_summaries[feature_summaries$feature==ft,]
+  print(Rdisop::decomposeIsotopes(masses = c(feature_data$mz, feature_data$mz+1.0033),
+                            intensities = c(1, feature_data$M1_iso), ppm = 5))
+  print(searchPubchem(mass = feature_data$mz, ppm = 5))
 }
-
-peak_data <- feature_peaks_rescored %>%
-  group_by(feature) %>%
-  summarise(m_qscore=mean(qscore), med_qscore=median(qscore))
-summary(peak_data)
+getMoreData(1)

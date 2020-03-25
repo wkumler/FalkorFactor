@@ -318,11 +318,12 @@ feature_peaks_added <- feature_peaks_rescored %>%
          by=c("file_name"), all.y=TRUE) %>%
   do.call(what = rbind) %>%
   mutate(feature=rep(unique(feature_peaks_rescored$feature), each=length(ms_files)))
+saveRDS(feature_peaks_added, file = "feature_peaks_added.rds")
 print(Sys.time()-start_time)
 # 2.5 minutes
 beep(2)
 
-
+feature_peaks_added <- readRDS("feature_peaks_added.rds")
 zscore <- function(blank, samples){
   sig <- sd(samples, na.rm = TRUE)/sqrt(sum(!is.na(samples)))
   zscore <- (mean(samples, na.rm=TRUE)-blank)/sig
@@ -383,8 +384,18 @@ getMoreData <- function(feature_num){
                   "\nMed quality:", round(peak_data$med_qscore)))
   print(gp)
   feature_data <- feature_summaries[feature_summaries$feature==ft,]
-  print(Rdisop::decomposeIsotopes(masses = c(feature_data$mz, feature_data$mz+1.0033),
-                            intensities = c(1, feature_data$M1_iso), ppm = 5))
-  print(searchPubchem(mass = feature_data$mz, ppm = 5))
+  print(feature_data)
+  rdp <- Rdisop::decomposeIsotopes(masses = c(feature_data$mz, feature_data$mz+1.0033),
+                                   intensities = c(1, feature_data$M1_iso), 
+                                   ppm = 5, maxisotopes = 3)
+  print(as.data.frame(rdp))
+  print(searchPubchem(mass = feature_data$mz-1.00727, ppm = 20))
 }
 getMoreData(1)
+
+
+
+eic <- dt[cor_rt%between%c(300, 340)&
+            mz%between%pmppm(76.07636, ppm=5)&
+            file_name=="190715_Poo_TruePooFK180310_Half1.mzML"]
+ggplot(eic) + geom_line(aes(x=cor_rt, y=int))

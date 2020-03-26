@@ -7,7 +7,6 @@ library(beepr)
 library(httr)
 library(future.apply)
 start_time <- Sys.time()
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 
 
@@ -149,6 +148,8 @@ ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
+
+register(BPPARAM = SnowParam(tasks = 41, progressbar = TRUE))
 
 metadata <- data.frame(
   fileid=1:41, 

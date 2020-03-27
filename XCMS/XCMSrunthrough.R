@@ -6,7 +6,22 @@ library(data.table)
 library(beepr)
 library(httr)
 library(future.apply)
+library(pbapply)
 start_time <- Sys.time()
+
+ms_files <- "mzMLs" %>%
+  list.files(pattern = ".mzML", full.names = TRUE) %>%
+  normalizePath() %>%
+  `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
+
+metadata <- data.frame(
+  fileid=seq_along(ms_files), 
+  filenames=gsub("190715_", "", basename(ms_files)),
+  sample_group=c("Blank", "Pooled", "Sample", "Std")[c(1, rep(2, 6), rep(3, 24), rep(4, 10))],
+  depth=c("Blank", "Pooled", "DCM", "25m", "Std")[c(1, rep(2, 6), rep(c(rep(3, 3), rep(4, 3)), 4), rep(5, 10))],
+  spindir=c("Blank", "Pooled", "Cyclone", "Anticyclone", "Std")[c(1, rep(2, 6), rep(3, 12), rep(4, 12), rep(5, 10))],
+  time=c("Blank", "Pooled", "Morning", "Afternoon", "Std")[c(1, rep(2, 6), rep(c(rep(3, 6), rep(4, 6)), 2), rep(5, 10))]
+) %>% new(Class = "NAnnotatedDataFrame")
 
 
 
@@ -47,7 +62,7 @@ qscoreCalculator <- function(eic){
   #Calculate SNR
   SNR <- (max(eic$int)-min(eic$int))/sd(norm_residuals*max(eic$int))
   #Return the quality score
-  output <- data.frame(SNR, peak_cor, qscore=SNR*peak_cor^4*log10(max(eic$int)))
+  output <- data.frame(SNR, peak_cor, qscore=SNR*peak_cor^2*log10(max(eic$int)))
   return(output)
 }
 xcmsQscoreCalculator <- function(df_row, xcms_peakdf, file_data_table, 
@@ -144,22 +159,6 @@ ms_files <- "mzMLs" %>%
 
 
 # Load MS data ----
-ms_files <- "mzMLs" %>%
-  list.files(pattern = ".mzML", full.names = TRUE) %>%
-  normalizePath() %>%
-  `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
-
-register(BPPARAM = SnowParam(tasks = 41, progressbar = TRUE))
-
-metadata <- data.frame(
-  fileid=1:41, 
-  filenames=gsub("190715_", "", basename(ms_files)),
-  sample_group=c("Blank", "Pooled", "Sample", "Std")[c(1, rep(2, 6), rep(3, 24), rep(4, 10))],
-  depth=c("Blank", "Pooled", "DCM", "25m", "Std")[c(1, rep(2, 6), rep(c(rep(3, 3), rep(4, 3)), 4), rep(5, 10))],
-  spindir=c("Blank", "Pooled", "Cyclone", "Anticyclone", "Std")[c(1, rep(2, 6), rep(3, 12), rep(4, 12), rep(5, 10))],
-  time=c("Blank", "Pooled", "Morning", "Afternoon", "Std")[c(1, rep(2, 6), rep(c(rep(3, 6), rep(4, 6)), 2), rep(5, 10))]
-) %>% new(Class = "NAnnotatedDataFrame")
-
 raw_data <- readMSData(files = ms_files, pdata = metadata, 
                        mode = "onDisk", verbose = TRUE)
 saveRDS(raw_data, file = "XCMS/temp_data/current_raw_data.rds")
@@ -170,7 +169,9 @@ beep(2)
 
 
 # Perform peakpicking ----
+start_time <- Sys.time()
 raw_data <- readRDS(file = "XCMS/temp_data/current_raw_data.rds")
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 cwp <- CentWaveParam(ppm = 5, peakwidth = c(20, 80), 
                      snthresh = 0, prefilter = c(0, 0), 
                      integrate = 1, mzCenterFun = "wMean", 
@@ -186,6 +187,7 @@ beep(2)
 
 
 # Re-assign quality scores to confirm good peaks ----
+start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 xcms_peakdf <- as.data.frame(chromPeaks(xdata))
 
@@ -198,7 +200,7 @@ files_qscores <- bplapply(fileids, function(x, split_xcms_filedata, ms_files,
   file_peaks <- split_xcms_filedata[[x]]
   file_data <- grabSingleFileData(ms_files[x])
   file_data_table <- as.data.table(file_data)
-  file_qscores <- lapply(seq_len(nrow(file_peaks)), FUN = xcmsQscoreCalculator, 
+  file_qscores <- pblapply(seq_len(nrow(file_peaks)), FUN = xcmsQscoreCalculator, 
                          xcms_peakdf=file_peaks, file_data_table=file_data_table,
                          qscoreCalculator=qscoreCalculator)
   file_qscores_df <- do.call(rbind, file_qscores)
@@ -218,6 +220,7 @@ beep(2)
 
 
 # Decide on quality threshold and reassign peaklist ----
+start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv"))
 threshold <- 100
@@ -269,7 +272,8 @@ xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
 feature_peaks <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), function(i){
   cbind(feature=sprintf("FT%03d", i), 
         peak_id=unlist(featureDefinitions(xdata_filled)$peakidx[i]))
-}) %>% do.call(what=rbind) %>% 
+}) %>% 
+  do.call(what=rbind) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>% 
   mutate(peak_id=as.numeric(peak_id)) %>%
   cbind(chromPeaks(xdata_filled)[.$peak_id, ]) %>%
@@ -278,13 +282,15 @@ feature_peaks <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), functio
 
 split_groups <- split(feature_peaks, factor(feature_peaks$file_name))
 files_newscores <- bplapply(seq_along(split_groups), 
-                            function(x, split_xcms_filedata, ms_files, 
+                            function(x, split_xcms_filedata, ms_files, xdata,
                                      grabSingleFileData, xcmsQscoreCalculator,
                                      qscoreCalculator){
   library(data.table)
   file_peaks <- split_xcms_filedata[[x]]
   file_data <- grabSingleFileData(ms_files[x])
+  file_data$rt <- xcms::adjustedRtime(xdata)[MSnbase::fromFile(xdata)==x][factor(file_data$rt)]
   file_data_table <- as.data.table(file_data)
+  
   file_qscores <- lapply(seq_len(nrow(file_peaks)), FUN = xcmsQscoreCalculator, 
                          xcms_peakdf=file_peaks, file_data_table=file_data_table,
                          qscoreCalculator=qscoreCalculator)
@@ -293,6 +299,7 @@ files_newscores <- bplapply(seq_along(split_groups),
 }, 
 split_xcms_filedata=split_groups, 
 ms_files=ms_files, 
+xdata=xdata_filled,
 grabSingleFileData = grabSingleFileData,
 xcmsQscoreCalculator = xcmsQscoreCalculator,
 qscoreCalculator = qscoreCalculator)
@@ -319,12 +326,12 @@ feature_peaks_added <- feature_peaks_rescored %>%
          by=c("file_name"), all.y=TRUE) %>%
   do.call(what = rbind) %>%
   mutate(feature=rep(unique(feature_peaks_rescored$feature), each=length(ms_files)))
-saveRDS(feature_peaks_added, file = "feature_peaks_added.rds")
+saveRDS(feature_peaks_added, file = "XCMS/temp_data/feature_peaks_added.rds")
 print(Sys.time()-start_time)
 # 2.5 minutes
 beep(2)
 
-feature_peaks_added <- readRDS("feature_peaks_added.rds")
+feature_peaks_added <- readRDS("XCMS/temp_data/feature_peaks_added.rds")
 zscore <- function(blank, samples){
   sig <- sd(samples, na.rm = TRUE)/sqrt(sum(!is.na(samples)))
   zscore <- (mean(samples, na.rm=TRUE)-blank)/sig
@@ -334,69 +341,48 @@ feature_summaries <- feature_peaks_added %>%
   `[<-`(is.na(.), value=0) %>%
   group_by(feature) %>%
   summarise(mz=weighted.mean(mz, qscore), rt=weighted.mean(rt, qscore),
-            M1_iso=weighted.mean(M_1_area/into, M_1_q*M_1_simil^4, na.rm = TRUE),
-            M2_iso=weighted.mean(M_2_area/into, M_2_q*M_2_simil^4, na.rm = TRUE),
-            blank_area=into[which(metadata@data$depth=="Blank")], 
-            X25m_area=mean(into[which(metadata@data$depth=="25m")]),
-            X25m_diff=zscore(blank = into[which(metadata@data$depth=="Blank")], 
-                             samples=into[which(metadata@data$depth=="25m")]),
-            DCM_area=mean(into[which(metadata@data$depth=="DCM")]),
-            DCM_diff=zscore(blank = into[which(metadata@data$depth=="Blank")], 
-                             samples=into[which(metadata@data$depth=="DCM")]),
-            DCM_25m_diff=t.test(into[which(metadata@data$depth=="DCM")],
-                                into[which(metadata@data$depth=="25m")])$statistic,
-            std_area=mean(into[which(metadata@data$depth=="Std")])) %>%
-  arrange(DCM_25m_diff) %>%
+            M1_iso=weighted.mean(M_1_area/into, M_1_q*M_1_simil^2, na.rm = TRUE),
+            M2_iso=weighted.mean(M_2_area/into, M_2_q*M_2_simil^2, na.rm = TRUE)) %>%
   as.data.frame()
 
-
-
-# Check peak quality (sorry laptop memory) ----
-xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
-dt <- pblapply(seq_along(ms_files), function(x){
-  v <- grabSingleFileData(ms_files[x]) %>%
-    cbind(file_name=basename(ms_files[x]), .)
-  cor_rt <- unname(split(adjustedRtime(xdata_filled), fromFile(xdata_filled))[[x]])
-  v$rt <- factor(v$rt)
-  v$cor_rt <- cor_rt[v$rt]
-  return(v)
-}) %>% do.call(what = rbind) %>% as.data.table()
-
-getMoreData <- function(feature_num){
-  ft <- sprintf("FT%03d", feature_num)
-  peak_data <- feature_peaks_rescored %>%
-    filter(feature==ft) %>%
-    summarise(mzmin=min(mzmin), mzmax=max(mzmax), 
-              rtmin=min(rtmin), rtmax=max(rtmax),
-              m_qscore=mean(qscore), med_qscore=median(qscore))
-  eic <- dt[cor_rt%between%c(peak_data$rtmin, peak_data$rtmax)&
-              mz%between%c(peak_data$mzmin, peak_data$mzmax)] %>%
-    mutate(file_name=as.character(file_name))
-  mdframe <- metadata@data %>% 
-    mutate(filenames=paste0("190715_", as.character(filenames)))
-  eic_df <- left_join(eic, mdframe, by=c("file_name"="filenames"))
-  gp <- ggplot(eic_df) + 
-    geom_line(aes(x=cor_rt, y=int, group=file_name, color=depth)) +
-    scale_color_manual(values = c(Blank="red", Pooled="black", `25m`="blue", 
-                                  DCM="green", Std="gray")) +
-    ggtitle(paste("Mean quality:", round(peak_data$m_qscore), 
-                  "     m/z range:", round(peak_data$mzmin, 4), 
-                  "-", round(peak_data$mzmax, 4),
-                  "\nMed quality:", round(peak_data$med_qscore)))
-  print(gp)
-  feature_data <- feature_summaries[feature_summaries$feature==ft,]
-  print(feature_data)
-  rdp <- Rdisop::decomposeIsotopes(masses = c(feature_data$mz, feature_data$mz+1.0033),
-                                   intensities = c(1, feature_data$M1_iso), 
-                                   ppm = 5, maxisotopes = 3)
-  print(as.data.frame(rdp))
-  print(searchPubchem(mass = feature_data$mz-1.00727, ppm = 20))
+plotPeak <- function(peakdf_row){
+  v <- ms_files[feature_peaks_added[peakdf_row,"sample"]] %>%
+    grabSingleFileData() %>%
+    mutate(rt = xcms::adjustedRtime(xdata_filled)[
+      MSnbase::fromFile(xdata_filled)==feature_peaks_added[peakdf_row,"sample"]
+      ][factor(rt)]) %>%
+    filter(rt>feature_peaks_added[peakdf_row,"rtmin"]&
+             rt<feature_peaks_added[peakdf_row,"rtmax"]&
+             mz>feature_peaks_added[peakdf_row,"mzmin"]&
+             mz<feature_peaks_added[peakdf_row,"mzmax"])
+  plot(v$rt, v$int, type="l", 
+       main=paste(feature_peaks_added[peakdf_row,"mzmin"], "-", 
+                  feature_peaks_added[peakdf_row,"mzmax"]))
+  legend("topright", legend=feature_peaks_added[peakdf_row,"qscore"])
 }
-getMoreData(1)
+sorted_feature_peaks <- feature_peaks_added[order(feature_peaks_added$qscore),]
+sorted_feature_peaks <- subset(sorted_feature_peaks, qscore>0.1)
+for(i in seq_len(nrow(sorted_feature_peaks))){
+  plotPeak(rownames(sorted_feature_peaks)[i])
+  readline(prompt = "press")
+}
 
 
-
-eic <- dt[cor_rt%between%c(300, 340)&
-            mz%between%pmppm(76.07636, ppm=5)&
-            file_name=="190715_Poo_TruePooFK180310_Half1.mzML"]
-ggplot(eic) + geom_line(aes(x=cor_rt, y=int))
+# Add MS2 info ----
+msms_files <- list.files("mzMLs/MSMS", pattern = "pos", full.names = TRUE)
+raw_msmsdata <- lapply(msms_files, grabSingleFileMS2)
+nrgs <- as.numeric(gsub(".*neg|.*pos|\\.mzML", "", msms_files))
+raw_msmsdata <- lapply(seq_along(raw_msmsdata), function(x){
+  cbind(nrg=nrgs[x], raw_msmsdata[[x]])
+})
+raw_msmsdata <- as.data.table(do.call(rbind, raw_msmsdata))
+findMSMSdata <- function(mzr, rtr, ppm=5, rtwindow=10, msmsdata=raw_msmsdata){
+  given_msms <- msmsdata[rt%between%c(rtr-rtwindow, rtr+rtwindow)&
+                           premz%between%pmppm(mzr, ppm)]
+  msms_list <- split(given_msms, given_msms$nrg)
+  lapply(msms_list, function(nrg_frags){
+    as.data.frame(select(nrg_frags, c("fragmz", "int")))
+  })
+}
+feature_msms <- mapply(FUN = findMSMSdata, mzr=feature_summaries$mz,
+                       rtr=feature_summaries$rt, SIMPLIFY = FALSE)

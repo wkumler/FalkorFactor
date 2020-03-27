@@ -39,6 +39,20 @@ grabSingleFileData <- function(filename){
                         c("rt", "mz", "int"))
   return(all_data)
 }
+grabSingleFileMS2 <- function(filename){
+  msdata <- mzR::openMSfile(filename)
+  fullhd <- mzR::header(msdata)
+  ms2rows <- seq_len(nrow(fullhd))[fullhd$msLevel>1]
+  spectra_list <- lapply(ms2rows, function(x){
+    rtime <- fullhd[x, "retentionTime"]
+    premz <- fullhd[x, "precursorMZ"]
+    fragments <- mzR::peaks(msdata, x)
+    return(cbind(rtime, premz, fragments))
+  })
+  all_data <- `names<-`(as.data.frame(do.call(rbind, spectra_list)), 
+                        c("rt", "premz", "fragmz", "int"))
+  return(all_data)
+}
 qscoreCalculator <- function(eic){
   #Check for bogus EICs
   if(nrow(eic)<5){

@@ -133,14 +133,19 @@ findAdducts <- function(file_peaks, xdata, grabSingleFileData, checkForPeak,
                               init_eic = init_eic, 
                               file_data=file_data_table,
                               pmppm=pmppm, qscoreCalculator = qscoreCalculator)
+    names(is_M1_iso) <- c("is_M1", "peak_match")
     is_sodium <- checkForPeak(mass = peak_row_data$mz-21.98249, 
                               rtmin = peak_row_data$rtmin, 
                               rtmax = peak_row_data$rtmax, 
                               init_eic = init_eic, 
                               file_data=file_data_table,
                               pmppm=pmppm, qscoreCalculator = qscoreCalculator)
+    names(is_sodium) <- c("is_sodium", "peak_match")
     outlist[[i]] <- data.frame(peak_id=peak_row_data$peak_id, 
-                               is_M1_iso, is_sodium)
+                               is_M1_iso=is_M1_iso[1], 
+                               is_M1_cert=is_M1_iso[2],
+                               is_sodium=is_sodium[1],
+                               is_sod_cert=is_sodium[2])
   }
   return(do.call(rbind, outlist))
 }
@@ -149,20 +154,20 @@ checkForPeak <- function(mass, rtmin, rtmax, init_eic, file_data,
                          quality_cutoff = 1, similarity_cutoff=0.8){
   given_eic <- file_data[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
   if(nrow(given_eic)<3){
-    return(FALSE)
+    return(c(0, 1))
   }
   peak_qscore <- qscoreCalculator(given_eic)$qscore
   
   merged_eic <- merge(init_eic, given_eic, by="rt")
   if(nrow(merged_eic)<3){
-    return(FALSE)
+    return(c(0, 1))
   }
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
   
   if(peak_qscore>quality_cutoff & peak_match>similarity_cutoff){
-    return(TRUE)
+    return(c(1, peak_match))
   } else {
-    return(FALSE)
+    return(c(0, peak_match))
   }
 }
 trapz <- function(x, y) {
@@ -361,19 +366,38 @@ feature_peaks_added <- feature_peaks_rescored %>%
                      each=length(unique(feature_peaks_rescored$file_name))))
 saveRDS(feature_peaks_added, file = "XCMS/temp_data/feature_peaks_added.rds")
 print(Sys.time()-start_time)
-# 2 minutes
+# 1.5 minutes
 beep(2)
 
-feature_peaks_added %>%
+feature_peaks_iso_summary <- feature_peaks_added %>%
   group_by(feature) %>%
   summarize(mean_mz=mean(mz, na.rm=TRUE), 
             med_rt=median(rt, na.rm = TRUE),
-            prob_iso=mean(is_M1_iso, na.rm = TRUE)) %>%
+            prob_iso=weighted.mean(x = is_M1_iso, 
+                                   w = is_M1_cert,
+                                   na.rm = TRUE),
+            prob_sodium=weighted.mean(x = is_sodium, 
+                                      w = is_sod_cert,
+                                      na.rm = TRUE)) %>%
   as.data.frame()
+adduct_features <- feature_peaks_iso_summary %>%
+  filter(prob_sodium>0.5) %>% pull(feature)
+iso_features <- feature_peaks_iso_summary %>%
+  filter(prob_iso>0.5) %>%
+  pull(feature)
+features_clean <- feature_peaks_added %>%
+  filter(!feature%in%c(adduct_features, iso_features)) %>%
+  select(-c("is_M1_iso", "is_M1_cert", "is_sodium", "is_sod_cert"))
+write.csv(features_clean, file = "XCMS/temp_data/features_clean.csv", row.names = FALSE)
+
 
 
 ### Calculate M+1 and M+2 peaks ----
-
+all_file_peaks <- split(feature_peaks_rescored, feature_peaks_rescored$file_name)
+feature_adduct_iso <- bplapply(all_file_peaks, FUN = findAdducts, xdata=xdata_filled,
+                               grabSingleFileData=grabSingleFileData,
+                               checkForPeak=checkForPeak, pmppm=pmppm,
+                               qscoreCalculator=qscoreCalculator)
 
 
 

@@ -261,7 +261,7 @@ raw_data <- readMSData(files = ms_files, pdata = metadata,
                        mode = "onDisk", verbose = TRUE)
 saveRDS(raw_data, file = "XCMS/temp_data/current_raw_data.rds")
 print(Sys.time()-start_time)
-#2.3 minutes
+#2.2 minutes
 beep(2)
 
 
@@ -279,7 +279,7 @@ xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 print(xdata)
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
 print(Sys.time()-start_time)
-# 30 minutes
+# 28 minutes
 beep(2)
 
 
@@ -312,7 +312,7 @@ qscoreCalculator = qscoreCalculator)
 peakdf_qscored <- as.data.frame(do.call(rbind, files_qscores))
 write.csv(peakdf_qscored, file = "XCMS/temp_data/peakdf_qscored.csv", row.names = FALSE)
 print(Sys.time()-start_time)
-# 1.5 hours
+# 1.4 hours
 beep(2)
 
 
@@ -336,7 +336,7 @@ xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
 plotAdjustedRtime(xdata_rt)
 saveRDS(xdata_rt, file = "XCMS/temp_data/current_xdata_rt.rds")
 print(Sys.time()-start_time)
-# 16 minutes
+# 15 minutes
 beep(2)
 
 
@@ -408,6 +408,8 @@ print(Sys.time()-start_time)
 # 1 minute
 beep(2)
 
+
+
 ### Identify and remove adduct (and isotope) features ----
 start_time <- Sys.time()
 feature_peaks_rescored <- readRDS("XCMS/temp_data/feature_peaks_rescored.rds")
@@ -456,6 +458,7 @@ features_clean$peak_id[is.na(features_clean$peak_id)] <-
   1:n_to_fill+max(features_clean$peak_id, na.rm = TRUE)
 write.csv(features_clean, file = "XCMS/temp_data/features_clean.csv", row.names = FALSE)
 print(Sys.time()-start_time)
+# 1.5 minutes
 beep(2)
 
 
@@ -483,12 +486,15 @@ features_final <- features_clean %>%
   do.call(what = rbind) %>%
   mutate(feature=rep(unique(features_clean$feature), 
                      each=length(unique(features_clean$file_name))))
+write.csv(features_final, file = "XCMS/temp_data/features_final.csv", row.names = FALSE)
 print(Sys.time()-start_time)
+# 4 minutes
 beep(2)
 
 
 
 ### Summarize and plot data, if necessary ----
+features_final <- read.csv(file = "XCMS/temp_data/features_final.csv", stringsAsFactors = FALSE)
 final_summary <- features_final %>% 
   group_by(feature) %>%
   summarize(mean_mz=weighted.mean(mz, qscore, na.rm = TRUE),
@@ -499,7 +505,8 @@ final_summary <- features_final %>%
 final_summary %>% ggplot() + geom_point(aes(x=mean_rt, y=mean_mz))
 
 
-molecule_guesses <- sapply(final_summary$mean_mz-1.007276, Rdisop::decomposeMass)
+molecule_guesses <- sapply(final_summary$mean_mz-1.007276, Rdisop::decomposeMass,
+                           maxisotopes=2)
 
 
 ### Add MS2 info ----
@@ -510,5 +517,20 @@ raw_msmsdata <- lapply(seq_along(raw_msmsdata), function(x){
   cbind(nrg=nrgs[x], raw_msmsdata[[x]])
 })
 raw_msmsdata <- as.data.table(do.call(rbind, raw_msmsdata))
-feature_msms <- mapply(FUN = findMSMSdata, mzr=feature_summaries$mz,
-                       rtr=feature_summaries$rt, SIMPLIFY = FALSE)
+feature_msms <- mapply(FUN = findMSMSdata, mzr=final_summary$mean_mz,
+                       rtr=final_summary$mean_rt, SIMPLIFY = FALSE)
+
+
+
+#Recover or validate betaine formula with MS2 fragments
+
+feature_msms[[5]]
+
+formulas_to_check <- molecule_guesses[[5]]$formula
+for(formula in formulas_to_check){
+  frag_forms <- sapply(feature_msms[[5]]$`35`$fragmz-1.007276, 
+                       Rdisop::decomposeMass, maxElements = formula, maxisotopes=1,
+                       elements=gsub(pattern = "[[:digit:]]", replacement = "", formula),
+                       ppm=5)
+  print(frag_forms)
+}

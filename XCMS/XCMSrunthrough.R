@@ -1,5 +1,5 @@
 
-# Setup things ----
+### Setup things ----
 library(xcms)
 library(tidyverse)
 library(data.table)
@@ -24,7 +24,7 @@ metadata <- data.frame(
 
 
 
-# Functions ----
+### Functions ----
 pmppm <- function(mass, ppm=4){c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))}
 grabSingleFileData <- function(filename){
   msdata <- mzR:::openMSfile(filename)
@@ -111,12 +111,14 @@ searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S
   rm(removed_compounds)
   return(content_df)
 }
-findAdducts <- function(file_peaks, xdata){
+findAdducts <- function(file_peaks, xdata, grabSingleFileData, checkForPeak, 
+                        pmppm, qscoreCalculator){
   file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
   file_data <- grabSingleFileData(file_path)
   file_data$rt <- xcms::adjustedRtime(xdata)[
     MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
       factor(file_data$rt)]
+  library(data.table)
   file_data_table <- as.data.table(file_data)
   
   outlist <- list()
@@ -129,18 +131,21 @@ findAdducts <- function(file_peaks, xdata){
                               rtmin = peak_row_data$rtmin, 
                               rtmax = peak_row_data$rtmax, 
                               init_eic = init_eic, 
-                              file_data=file_data_table)
+                              file_data=file_data_table,
+                              pmppm=pmppm, qscoreCalculator = qscoreCalculator)
     is_sodium <- checkForPeak(mass = peak_row_data$mz-21.98249, 
                               rtmin = peak_row_data$rtmin, 
                               rtmax = peak_row_data$rtmax, 
                               init_eic = init_eic, 
-                              file_data=file_data_table)
+                              file_data=file_data_table,
+                              pmppm=pmppm, qscoreCalculator = qscoreCalculator)
     outlist[[i]] <- data.frame(peak_id=peak_row_data$peak_id, 
                                is_M1_iso, is_sodium)
   }
   return(do.call(rbind, outlist))
 }
 checkForPeak <- function(mass, rtmin, rtmax, init_eic, file_data,
+                         pmppm, qscoreCalculator,
                          quality_cutoff = 1, similarity_cutoff=0.8){
   given_eic <- file_data[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
   if(nrow(given_eic)<3){
@@ -178,7 +183,7 @@ ms_files <- "mzMLs" %>%
 
 
 
-# Load MS data ----
+### Load MS data ----
 ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
@@ -193,7 +198,7 @@ beep(2)
 
 
 
-# Perform peakpicking ----
+### Perform peakpicking ----
 start_time <- Sys.time()
 raw_data <- readRDS(file = "XCMS/temp_data/current_raw_data.rds")
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
@@ -211,7 +216,7 @@ beep(2)
 
 
 
-# Re-assign quality scores to confirm good peaks ----
+### Re-assign quality scores to confirm good peaks ----
 start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 xcms_peakdf <- as.data.frame(chromPeaks(xdata))
@@ -244,7 +249,7 @@ beep(2)
 
 
 
-# Decide on quality threshold and reassign peaklist ----
+### Decide on quality threshold and reassign peaklist ----
 start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv"))
@@ -256,7 +261,7 @@ xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 
 
 
-# Adjust retention time and compare ----
+### Adjust retention time and compare ----
 start_time <- Sys.time()
 obp <- ObiwarpParam(binSize = 0.01, centerSample = 4, response = 1, distFun = "cor_opt")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
@@ -268,7 +273,7 @@ beep(2)
 
 
 
-# Correspondence ----
+### Correspondence ----
 start_time <- Sys.time()
 xdata_rt <- readRDS(file = "XCMS/temp_data/current_xdata_rt.rds")
 pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
@@ -282,7 +287,7 @@ beep(2)
 
 
 
-# Fill peaks ----
+### Fill peaks ----
 start_time <- Sys.time()
 xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
 xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = FillChromPeaksParam()))
@@ -291,7 +296,7 @@ saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
 print(Sys.time()-start_time)
 
 
-# Add new quality scores ----
+### Add new quality scores ----
 start_time <- Sys.time()
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
 feature_peaks <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), function(i){
@@ -335,27 +340,44 @@ print(Sys.time()-start_time)
 # 1 minute
 beep(2)
 
-# Identify and remove adducts and isotope features ----
+### Identify and remove adducts and isotope features ----
 start_time <- Sys.time()
 feature_peaks_rescored <- readRDS("XCMS/temp_data/feature_peaks_rescored.rds")
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
 all_file_peaks <- split(feature_peaks_rescored, feature_peaks_rescored$file_name)
-feature_adduct_iso <- pblapply(all_file_peaks, FUN = findAdducts, xdata=xdata_filled)
-# Takes ~3 minutes
+feature_adduct_iso <- bplapply(all_file_peaks, FUN = findAdducts, xdata=xdata_filled,
+                               grabSingleFileData=grabSingleFileData,
+                               checkForPeak=checkForPeak, pmppm=pmppm,
+                               qscoreCalculator=qscoreCalculator)
 feature_adduct_iso <- do.call(rbind, feature_adduct_iso)
 feature_peaks_added <- feature_peaks_rescored %>% 
   left_join(feature_adduct_iso, by="peak_id") %>%
   split(.$feature) %>%
   lapply(FUN = merge, 
-         y=data.frame(file_name=basename(ms_files)), 
+         y=data.frame(file_name=unique(feature_peaks_rescored$file_name)), 
          by=c("file_name"), all.y=TRUE) %>%
   do.call(what = rbind) %>%
-  mutate(feature=rep(unique(feature_peaks_rescored$feature), each=length(ms_files)))
+  mutate(feature=rep(unique(feature_peaks_rescored$feature), 
+                     each=length(unique(feature_peaks_rescored$file_name))))
 saveRDS(feature_peaks_added, file = "XCMS/temp_data/feature_peaks_added.rds")
 print(Sys.time()-start_time)
-# 2.5 minutes
+# 2 minutes
 beep(2)
 
+feature_peaks_added %>%
+  group_by(feature) %>%
+  summarize(mean_mz=mean(mz, na.rm=TRUE), 
+            med_rt=median(rt, na.rm = TRUE),
+            prob_iso=mean(is_M1_iso, na.rm = TRUE)) %>%
+  as.data.frame()
+
+
+### Calculate M+1 and M+2 peaks ----
+
+
+
+
+### Summarize and plot data, if necessary ----
 feature_peaks_added <- readRDS("XCMS/temp_data/feature_peaks_added.rds")
 zscore <- function(blank, samples){
   sig <- sd(samples, na.rm = TRUE)/sqrt(sum(!is.na(samples)))
@@ -393,7 +415,7 @@ for(i in seq_len(nrow(sorted_feature_peaks))){
 }
 
 
-# Add MS2 info ----
+### Add MS2 info ----
 msms_files <- list.files("mzMLs/MSMS", pattern = "pos", full.names = TRUE)
 raw_msmsdata <- lapply(msms_files, grabSingleFileMS2)
 nrgs <- as.numeric(gsub(".*neg|.*pos|\\.mzML", "", msms_files))

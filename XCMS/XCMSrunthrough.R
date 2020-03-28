@@ -5,7 +5,6 @@ library(tidyverse)
 library(data.table)
 library(beepr)
 library(httr)
-library(future.apply)
 library(pbapply)
 start_time <- Sys.time()
 
@@ -112,48 +111,53 @@ searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S
   rm(removed_compounds)
   return(content_df)
 }
-findAdducts <- function(x, xdata){
-  file_data <- fileNames(xdata)[unique(x$sample)] %>%
-    grabSingleFileData() %>%
-    as.data.table()
-  file_data$rt <- adjustedRtime(xdata) %>%
-    split(fromFile(xdata)) %>%
-    `[[`(unique(x$sample)) %>%
-    `[`(factor(file_data$rt))
+findAdducts <- function(file_peaks, xdata){
+  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_data <- grabSingleFileData(file_path)
+  file_data$rt <- xcms::adjustedRtime(xdata)[
+    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
+      factor(file_data$rt)]
+  file_data_table <- as.data.table(file_data)
+  
   outlist <- list()
-  for(i in seq_len(nrow(x))){
-    peak_row_data <- x[i, ]
-    init_eic <- file_data[mz %between% c(peak_row_data$mzmin, peak_row_data$mzmax)&
-                            rt %between% c(peak_row_data$rtmin, peak_row_data$rtmax)]
-    mp1 <- checkCor(mass = peak_row_data$mz+1.003355, rtmin = peak_row_data$rtmin, 
-                    rtmax = peak_row_data$rtmax, init_eic = init_eic, file_data=file_data)
-    mp2 <- checkCor(mass = peak_row_data$mz+1.003355*2, rtmin = peak_row_data$rtmin, 
-                    rtmax = peak_row_data$rtmax, init_eic = init_eic, file_data=file_data)
-    m_na <- checkCor(mass = peak_row_data$mz-1.007276+22.98922, init_eic = init_eic,
-                     rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax, file_data=file_data)
-    m_h <- checkCor(mass = peak_row_data$mz-22.98922+1.007276, init_eic = init_eic,
-                    rtmin = peak_row_data$rtmin, rtmax = peak_row_data$rtmax, file_data=file_data)
-    outlist[[i]] <- data.frame(peak_id=peak_row_data$peak_id, 
-                               M_1_area = mp1[1], M_1_q = mp1[2], M_1_simil = mp1[3],
-                               M_2_area = mp2[1], M_2_q = mp2[2], M_2_simil = mp2[3],
-                               M_Na_area = m_na[1], M_Na_q = m_na[2], M_Na_simil = m_na[3],
-                               M_H_area = m_h[1], M_H_q = m_h[2], M_H_simil = m_h[3])
+  for(i in seq_len(nrow(file_peaks))){
+    peak_row_data <- file_peaks[i, ]
+    mzrange <- c(peak_row_data$mzmin, peak_row_data$mzmax)
+    rtrange <- c(peak_row_data$rtmin, peak_row_data$rtmax)
+    init_eic <- file_data_table[mz%between%mzrange & rt%between%rtrange]
+    is_M1_iso <- checkForPeak(mass = peak_row_data$mz-1.003355, 
+                              rtmin = peak_row_data$rtmin, 
+                              rtmax = peak_row_data$rtmax, 
+                              init_eic = init_eic, 
+                              file_data=file_data_table)
+    is_sodium <- checkForPeak(mass = peak_row_data$mz-21.98249, 
+                              rtmin = peak_row_data$rtmin, 
+                              rtmax = peak_row_data$rtmax, 
+                              init_eic = init_eic, 
+                              file_data=file_data_table)
+    outlist[[i]] <- data.frame(is_M1_iso, is_sodium)
   }
   return(do.call(rbind, outlist))
 }
-checkCor <- function(mass, rtmin, rtmax, init_eic, file_data){
-  given_eic <- file_data[mz %between% pmppm(mass, ppm = 5) & rt %between% c(rtmin, rtmax)]
+checkForPeak <- function(mass, rtmin, rtmax, init_eic, file_data,
+                         quality_cutoff = 1, similarity_cutoff=0.8){
+  given_eic <- file_data[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
   if(nrow(given_eic)<3){
-    return(c(0L, 0L, 0L))
+    return(FALSE)
   }
   peak_qscore <- qscoreCalculator(given_eic)$qscore
+  
   merged_eic <- merge(init_eic, given_eic, by="rt")
-  if(nrow(given_eic)<3){
-    return(c(0L, 0L, 0L))
+  if(nrow(merged_eic)<3){
+    return(FALSE)
   }
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
-  peak_area <- trapz(given_eic$rt, given_eic$int)
-  return(c(peak_area, peak_qscore, peak_match))
+  
+  if(peak_qscore>quality_cutoff & peak_match>similarity_cutoff){
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
 }
 trapz <- function(x, y) {
   m <- length(x)
@@ -165,6 +169,7 @@ trapz <- function(x, y) {
   
   return(0.5*(p1-p2))
 }
+# Load ms_files here for debug purposes
 ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
@@ -173,6 +178,11 @@ ms_files <- "mzMLs" %>%
 
 
 # Load MS data ----
+ms_files <- "mzMLs" %>%
+  list.files(pattern = ".mzML", full.names = TRUE) %>%
+  normalizePath() %>%
+  `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
+
 raw_data <- readMSData(files = ms_files, pdata = metadata, 
                        mode = "onDisk", verbose = TRUE)
 saveRDS(raw_data, file = "XCMS/temp_data/current_raw_data.rds")
@@ -214,7 +224,7 @@ files_qscores <- bplapply(fileids, function(x, split_xcms_filedata, ms_files,
   file_peaks <- split_xcms_filedata[[x]]
   file_data <- grabSingleFileData(ms_files[x])
   file_data_table <- as.data.table(file_data)
-  file_qscores <- pblapply(seq_len(nrow(file_peaks)), FUN = xcmsQscoreCalculator, 
+  file_qscores <- lapply(seq_len(nrow(file_peaks)), FUN = xcmsQscoreCalculator, 
                          xcms_peakdf=file_peaks, file_data_table=file_data_table,
                          qscoreCalculator=qscoreCalculator)
   file_qscores_df <- do.call(rbind, file_qscores)
@@ -324,13 +334,13 @@ print(Sys.time()-start_time)
 # 1 minute
 beep(2)
 
-# Find adducts and isotopes ----
+# Identify and remove adducts and isotope features ----
 start_time <- Sys.time()
 feature_peaks_rescored <- readRDS("XCMS/temp_data/feature_peaks_rescored.rds")
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
-file_peaks <- split(feature_peaks_rescored, factor(feature_peaks_rescored$file_name))
-plan(multiprocess)
-feature_adduct_iso <- future_lapply(X = file_peaks, FUN = findAdducts, xdata=xdata_filled)
+all_file_peaks <- split(feature_peaks_rescored, feature_peaks_rescored$file_name)
+feature_adduct_iso <- pblapply(all_file_peaks, FUN = findAdducts, xdata=xdata_filled)
+# Takes ~3 minutes
 feature_adduct_iso <- do.call(rbind, feature_adduct_iso)
 feature_peaks_added <- feature_peaks_rescored %>% 
   left_join(feature_adduct_iso, by="peak_id") %>%

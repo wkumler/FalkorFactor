@@ -135,7 +135,8 @@ findAdducts <- function(file_peaks, xdata){
                               rtmax = peak_row_data$rtmax, 
                               init_eic = init_eic, 
                               file_data=file_data_table)
-    outlist[[i]] <- data.frame(is_M1_iso, is_sodium)
+    outlist[[i]] <- data.frame(peak_id=peak_row_data$peak_id, 
+                               is_M1_iso, is_sodium)
   }
   return(do.call(rbind, outlist))
 }

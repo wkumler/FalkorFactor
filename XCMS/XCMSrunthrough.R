@@ -151,13 +151,13 @@ checkForPeak <- function(mass, rtmin, rtmax, init_eic, file_data,
                          pmppm, qscoreCalculator,
                          quality_cutoff = 1, similarity_cutoff=0.8){
   given_eic <- file_data[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
-  if(nrow(given_eic)<3){
+  if(nrow(given_eic)<5){
     return(c(0, 1))
   }
   peak_qscore <- qscoreCalculator(given_eic)$qscore
   
   merged_eic <- merge(init_eic, given_eic, by="rt")
-  if(nrow(merged_eic)<3){
+  if(nrow(merged_eic)<5){
     return(c(0, 1))
   }
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
@@ -211,13 +211,13 @@ findIsos <- function(file_peaks, xdata, grabSingleFileData, isoInfo,
 isoInfo <- function(mass, rtmin, rtmax, init_eic, file_data,
                     pmppm, qscoreCalculator){
   given_eic <- file_data[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
-  if(nrow(given_eic)<3){
+  if(nrow(given_eic)<5){
     return(data.frame(area=0, quality=0))
   }
   peak_qscore <- qscoreCalculator(given_eic)$qscore
   
   merged_eic <- merge(init_eic, given_eic, by="rt")
-  if(nrow(merged_eic)<3){
+  if(nrow(merged_eic)<5){
     return(data.frame(area=0, quality=0))
   }
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
@@ -527,6 +527,7 @@ final_summary <- features_final %>%
             mean_rt=weighted.mean(rt, qscore, na.rm = TRUE),
             mean_M1=weighted.mean(M1_area, M1_match, na.rm = TRUE),
             mean_M2=weighted.mean(M2_area, M2_match, na.rm = TRUE)) %>%
+  filter(mean_rt<1100 & mean_rt>60) %>%
   as.data.frame()
 final_summary %>% ggplot() + geom_point(aes(x=mean_rt, y=mean_mz))
 
@@ -537,6 +538,7 @@ molecule_guesses <- lapply(split(final_summary, final_summary$feature), function
   if(is.null(rdout)){
     rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=2, ppm=10)
     print(paste("Note: expanded ppm range for m/z:", mz))
+    if(is.null(rdout))return(cbind(x, formula=NA, exactmass=NA))
   }
   rdout$isotopes <- NULL
   rdformat <- do.call(cbind, rdout) %>% 

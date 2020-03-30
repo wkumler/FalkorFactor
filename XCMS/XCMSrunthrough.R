@@ -223,6 +223,32 @@ isoInfo <- function(mass, rtmin, rtmax, init_eic, file_data,
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
   return(data.frame(area=trapz(given_eic$rt, given_eic$int), quality=peak_match))
 }
+goldenRules <- function(formula){
+  elem_data <- "[[:upper:]][[:lower:]]*[[:digit:]]*" %>%
+    gregexpr(text = formula) %>%
+    regmatches(x = formula) %>%
+    unlist()
+  single_elems <- regexpr("[[:digit:]]$", elem_data) == -1
+  elem_data[single_elems] <- paste0(elem_data[single_elems], 1)
+  
+  elem_names <- regmatches(elem_data, regexpr("[[:alpha:]]+", elem_data))
+  elem_counts <- regmatches(elem_data, regexpr("[[:digit:]]+", elem_data)) %>%
+    as.numeric() %>% `names<-`(elem_names)
+  #Basic SENIOR check (Rule 2, S_i only)
+  senior_i <- sum(elem_counts[c("H", "N", "P")], na.rm = TRUE)%%2==0
+  
+  #Element ratios (Rules 4 and 5)
+  mins <- elem_counts[c("H", "O", "N", "P", "S")]/elem_counts["C"]>c(0.2, numeric(4))
+  maxs <- elem_counts[c("H", "O", "N", "P", "S")]/elem_counts["C"]<c(3.1, 1.2, 1.3, 0.3, 0.8)
+  rule_4_check <- all(mins, maxs, na.rm = TRUE)
+  
+  #Element balance (Rule 6)
+  # if(all(elem_counts[c("N", "O", "P", "S")])>1){
+  #   rule_6_check <- all(elem_counts[c("N", "O", "P", "S")]<c(10, 20, 4, 3), na.rm=TRUE)
+  # } #Nope, idk how to program this one.
+  
+  return(all(senior_i, rule_4_check))
+}
 findMSMSdata <- function(mzr, rtr, ppm=5, rtwindow=10, msmsdata=raw_msmsdata){
   given_msms <- msmsdata[rt%between%c(rtr-rtwindow, rtr+rtwindow)&
                            premz%between%pmppm(mzr, ppm)]
@@ -321,7 +347,7 @@ beep(2)
 start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv"))
-threshold <- 100
+threshold <- 50
 cleandf_qscored <- peakdf_qscored[peakdf_qscored[, "qscore"]>threshold,]
 xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 # sample_df <- peakdf_qscored[sample(1:nrow(peakdf_qscored), size = 10000),]
@@ -505,8 +531,25 @@ final_summary <- features_final %>%
 final_summary %>% ggplot() + geom_point(aes(x=mean_rt, y=mean_mz))
 
 
-molecule_guesses <- sapply(final_summary$mean_mz-1.007276, Rdisop::decomposeMass,
-                           maxisotopes=2)
+molecule_guesses <- lapply(split(final_summary, final_summary$feature), function(x){
+  mz <- x$mean_mz
+  rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=2, ppm=5)
+  if(is.null(rdout)){
+    rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=2, ppm=10)
+    print(paste("Note: expanded ppm range for m/z:", mz))
+  }
+  rdout$isotopes <- NULL
+  rdformat <- do.call(cbind, rdout) %>% 
+    as.data.frame() %>%
+    filter(sapply(.$formula, goldenRules)) %>%
+    select(formula, exactmass)
+  if(nrow(rdformat)==0){
+    return(cbind(x, formula=NA, exactmass=NA))
+  }
+  return(cbind(x, rdformat))
+  }) %>% do.call(what = rbind)
+
+
 
 
 ### Add MS2 info ----

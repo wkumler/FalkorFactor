@@ -78,7 +78,7 @@ qscoreCalculator <- function(eic){
   #Calculate SNR
   SNR <- (max(eic$int)-min(eic$int))/sd(norm_residuals*max(eic$int))
   #Return the quality score
-  output <- data.frame(SNR, peak_cor, qscore=SNR*peak_cor^2*log10(max(eic$int)))
+  output <- data.frame(SNR, peak_cor, qscore=SNR*peak_cor^4*log10(max(eic$int)))
   return(output)
 }
 xcmsQscoreCalculator <- function(df_row, xcms_peakdf, file_data_table, 

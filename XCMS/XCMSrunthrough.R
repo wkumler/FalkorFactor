@@ -57,8 +57,11 @@ qscoreCalculator <- function(eic){
   if(nrow(eic)<5){
     return(data.frame(SNR=0, peak_cor=0, qscore=0))
   }
-  #Create an "ideal" peak of the same width
-  perf_peak <- dnorm(seq(-3, 3, length.out = nrow(eic)))
+  #Calculate where each rt would fall on a Gaussian shape (accounts for missed scans)
+  #Scale to normal curve
+  scaled_rts <- ((eic$rt-min(eic$rt))*6)/(max(eic$rt)-min(eic$rt))-3
+  perf_peak <- dnorm(scaled_rts)
+  
   #Calculate the correlation between the perfect peak and the observed values
   peak_cor <- cor(perf_peak, eic$int)
   #Calculate the normalized residuals

@@ -7,6 +7,7 @@ library(beepr)
 library(httr)
 library(pbapply)
 start_time <- Sys.time()
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
@@ -89,6 +90,81 @@ xcmsQscoreCalculator <- function(df_row, xcms_peakdf, file_data_table,
                            mz %between% c(peak_row_data$mzmin, peak_row_data$mzmax)]
   return(qscoreCalculator(eic))
 }
+isIso <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
+  #Is the feature an isotope? I.e., is there a reasonable peak 1.003355 daltons less?
+  #Load the file and apply retention time correction
+  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_data <- grabSingleFileData(file_path)
+  file_data$rt <- xcms::adjustedRtime(xdata)[
+    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
+      factor(file_data$rt)]
+  library(data.table)
+  file_dt <- as.data.table(file_data)
+  
+  iso_matches <- t(apply(file_peaks[,c("mz","rtmin","rtmax")], 1, function(peak_row_data){
+    init_eic <- file_dt[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                          rt%between%c(peak_row_data["rtmin"], 
+                                       peak_row_data["rtmax"])]
+    is_M1 <- checkPeakCor(mass = peak_row_data["mz"]-1.003355,
+                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                          init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    is_M2 <- checkPeakCor(mass = peak_row_data["mz"]-2*1.003355,
+                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                          init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    is_M3 <- checkPeakCor(mass = peak_row_data["mz"]-3*1.003355,
+                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                          init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    
+    return(cbind(is_M1, is_M2, is_M3))
+  }))
+  colnames(iso_matches) <- c("M1_match", "M2_match", "M3_match")
+  return(cbind(file_peaks, iso_matches))
+}
+isAdduct <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
+  #Is the feature an adduct? I.e., is there a reasonable peak at the [M+H] mass too?
+  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_data <- grabSingleFileData(file_path)
+  file_data$rt <- xcms::adjustedRtime(xdata)[
+    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
+      factor(file_data$rt)]
+  library(data.table)
+  file_dt <- as.data.table(file_data)
+  
+  adduct_matches <- t(apply(file_peaks[,c("mz","rtmin","rtmax")], 1, function(peak_row_data){
+    init_eic <- file_dt[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                          rt%between%c(peak_row_data["rtmin"], 
+                                       peak_row_data["rtmax"])]
+    is_Na <- checkPeakCor(mass = peak_row_data["mz"]-22.98922+1.007276,
+                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                          init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    is_NH4 <- checkPeakCor(mass = peak_row_data["mz"]-18.0338+1.007276,
+                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                          init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    is_H2O_H <- checkPeakCor(mass = peak_row_data["mz"]+18.0106,
+                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                             init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    is_2H <- checkPeakCor(mass = peak_row_data["mz"]*2-1.007276,
+                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                          init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    
+    return(cbind(is_Na, is_NH4, is_H2O_H, is_2H))
+  }))
+  colnames(adduct_matches) <- c("Na_match", "NH4_match", "H2O_H_match", "2H_match")
+  return(cbind(file_peaks, adduct_matches))
+}
+checkPeakCor <- function(mass, rtmin, rtmax, init_eic, file_dt, pmppm){
+  given_eic <- file_dt[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
+  if(nrow(given_eic)<5){
+    return(0)
+  }
+  merged_eic <- merge(init_eic, given_eic, by="rt")
+  if(nrow(merged_eic)<5){
+    return(0)
+  }
+  peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
+  return(peak_match)
+}
+
 searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S")){
   baseurl <- "https://pubchem.cheminfo.org/mfs/em?em=%f&precision=%.2f"
   url <- sprintf(baseurl, mass, ppm)
@@ -113,118 +189,6 @@ searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S
   if(removed_compounds)print(paste("Removed", removed_compounds, "with weird atoms"))
   rm(removed_compounds)
   return(content_df)
-}
-findAdducts <- function(file_peaks, xdata, grabSingleFileData, checkForPeak, 
-                        pmppm, qscoreCalculator){
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
-  file_data <- grabSingleFileData(file_path)
-  file_data$rt <- xcms::adjustedRtime(xdata)[
-    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
-      factor(file_data$rt)]
-  library(data.table)
-  file_data_table <- as.data.table(file_data)
-  
-  outlist <- list()
-  for(i in seq_len(nrow(file_peaks))){
-    peak_row_data <- file_peaks[i, ]
-    mzrange <- c(peak_row_data$mzmin, peak_row_data$mzmax)
-    rtrange <- c(peak_row_data$rtmin, peak_row_data$rtmax)
-    init_eic <- file_data_table[mz%between%mzrange & rt%between%rtrange]
-    is_M1_iso <- checkForPeak(mass = peak_row_data$mz-1.003355, 
-                              rtmin = peak_row_data$rtmin, 
-                              rtmax = peak_row_data$rtmax, 
-                              init_eic = init_eic, 
-                              file_data=file_data_table,
-                              pmppm=pmppm, qscoreCalculator = qscoreCalculator)
-    is_sodium <- checkForPeak(mass = peak_row_data$mz-21.98249, 
-                              rtmin = peak_row_data$rtmin, 
-                              rtmax = peak_row_data$rtmax, 
-                              init_eic = init_eic, 
-                              file_data=file_data_table,
-                              pmppm=pmppm, qscoreCalculator = qscoreCalculator)
-    outlist[[i]] <- data.frame(peak_id=peak_row_data$peak_id, 
-                               is_M1_iso=is_M1_iso[1], 
-                               is_M1_cert=is_M1_iso[2],
-                               is_sodium=is_sodium[1],
-                               is_sod_cert=is_sodium[2])
-  }
-  return(do.call(rbind, outlist))
-}
-checkForPeak <- function(mass, rtmin, rtmax, init_eic, file_data,
-                         pmppm, qscoreCalculator,
-                         quality_cutoff = 1, similarity_cutoff=0.8){
-  given_eic <- file_data[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
-  if(nrow(given_eic)<5){
-    return(c(0, 1))
-  }
-  peak_qscore <- qscoreCalculator(given_eic)$qscore
-  
-  merged_eic <- merge(init_eic, given_eic, by="rt")
-  if(nrow(merged_eic)<5){
-    return(c(0, 1))
-  }
-  peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
-  
-  if(peak_qscore>quality_cutoff & peak_match>similarity_cutoff){
-    return(c(1, peak_match))
-  } else {
-    return(c(0, peak_match))
-  }
-}
-findIsos <- function(file_peaks, xdata, grabSingleFileData, isoInfo, 
-                     pmppm, qscoreCalculator){
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
-  file_data <- grabSingleFileData(file_path)
-  file_data$rt <- xcms::adjustedRtime(xdata)[
-    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
-      factor(file_data$rt)]
-  library(data.table)
-  file_data_table <- as.data.table(file_data)
-  
-  outlist <- list()
-  for(i in seq_len(nrow(file_peaks))){
-    peak_row_data <- file_peaks[i, ]
-    if(is.na(peak_row_data$mz)){
-      outlist[[i]] <- data.frame(peak_id=peak_row_data$peak_id, M1_area=NA,
-                                 M1_match=NA, M2_area=NA, M2_match=NA)
-      next
-    }
-    mzrange <- c(peak_row_data$mzmin, peak_row_data$mzmax)
-    rtrange <- c(peak_row_data$rtmin, peak_row_data$rtmax)
-    init_eic <- file_data_table[mz%between%mzrange & rt%between%rtrange]
-    M1_info <- isoInfo(mass = peak_row_data$mz+1.003355, 
-                       rtmin = peak_row_data$rtmin, 
-                       rtmax = peak_row_data$rtmax, 
-                       init_eic = init_eic, 
-                       file_data=file_data_table,
-                       pmppm=pmppm, qscoreCalculator = qscoreCalculator)
-    M1_info[1] <- M1_info[1]/peak_row_data$into
-    M2_info <- isoInfo(mass = peak_row_data$mz+2*1.003355, 
-                       rtmin = peak_row_data$rtmin, 
-                       rtmax = peak_row_data$rtmax, 
-                       init_eic = init_eic, 
-                       file_data=file_data_table,
-                       pmppm=pmppm, qscoreCalculator = qscoreCalculator)
-    M2_info[1] <- M2_info[1]/peak_row_data$into
-    outlist[[i]] <- as.data.frame(cbind(peak_row_data$peak_id, M1_info, M2_info))
-    names(outlist[[i]]) <- c("peak_id", "M1_area", "M1_match", "M2_area", "M2_match")
-  }
-  return(do.call(rbind, outlist))
-}
-isoInfo <- function(mass, rtmin, rtmax, init_eic, file_data,
-                    pmppm, qscoreCalculator){
-  given_eic <- file_data[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
-  if(nrow(given_eic)<5){
-    return(data.frame(area=0, quality=0))
-  }
-  peak_qscore <- qscoreCalculator(given_eic)$qscore
-  
-  merged_eic <- merge(init_eic, given_eic, by="rt")
-  if(nrow(merged_eic)<5){
-    return(data.frame(area=0, quality=0))
-  }
-  peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
-  return(data.frame(area=trapz(given_eic$rt, given_eic$int), quality=peak_match))
 }
 goldenRules <- function(formula){
   elem_data <- "[[:upper:]][[:lower:]]*[[:digit:]]*" %>%
@@ -393,7 +357,7 @@ saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
 print(Sys.time()-start_time)
 
 
-### Add new quality scores ----
+### Add new quality scores and set retention time limits ----
 start_time <- Sys.time()
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
 feature_peaks <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), function(i){
@@ -430,72 +394,71 @@ xdata=xdata_filled,
 grabSingleFileData = grabSingleFileData,
 xcmsQscoreCalculator = xcmsQscoreCalculator,
 qscoreCalculator = qscoreCalculator)
-feature_peaks_rescored <- do.call(rbind, files_newscores) %>% 
-  as.data.frame() %>% arrange(feature)
-saveRDS(feature_peaks_rescored, file = "XCMS/temp_data/feature_peaks_rescored.rds")
+peaks_by_feature <- do.call(rbind, files_newscores) %>% 
+  as.data.frame() %>% 
+  filter(rt>60 & rt < 1100)
+  arrange(feature)
+saveRDS(peaks_by_feature, file = "XCMS/temp_data/peaks_by_feature.rds")
 print(Sys.time()-start_time)
 # 1 minute
 beep(2)
 
 
 
-### Identify and remove adduct (and isotope) features ----
+### Remove isotope and adduct features ----
 start_time <- Sys.time()
-feature_peaks_rescored <- readRDS("XCMS/temp_data/feature_peaks_rescored.rds")
-xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
-all_file_peaks <- split(feature_peaks_rescored, feature_peaks_rescored$file_name)
-feature_adduct_iso <- bplapply(all_file_peaks, FUN = findAdducts, xdata=xdata_filled,
-                               grabSingleFileData=grabSingleFileData,
-                               checkForPeak=checkForPeak, pmppm=pmppm,
-                               qscoreCalculator=qscoreCalculator)
-feature_adduct_iso <- do.call(rbind, feature_adduct_iso)
-feature_peaks_added <- feature_peaks_rescored %>% 
-  left_join(feature_adduct_iso, by="peak_id") %>%
-  split(.$feature) %>%
-  lapply(FUN = merge, 
-         y=data.frame(file_name=unique(feature_peaks_rescored$file_name)), 
-         by=c("file_name"), all.y=TRUE) %>%
-  do.call(what = rbind) %>%
-  mutate(feature=rep(unique(feature_peaks_rescored$feature), 
-                     each=length(unique(feature_peaks_rescored$file_name))))
-saveRDS(feature_peaks_added, file = "XCMS/temp_data/feature_peaks_added.rds")
-print(Sys.time()-start_time)
-# 1.5 minutes
-beep(2)
-
-feature_peaks_iso_summary <- feature_peaks_added %>%
+is_feature_iso <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+                           FUN = isIso, xdata=xdata_filled,
+                           grabSingleFileData=grabSingleFileData,
+                           checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
+  do.call(what = rbind) %>% 
+  as.data.frame() %>%
   group_by(feature) %>%
-  summarize(mean_mz=mean(mz, na.rm=TRUE), 
-            med_rt=median(rt, na.rm = TRUE),
-            prob_iso=weighted.mean(x = is_M1_iso, 
-                                   w = is_M1_cert,
-                                   na.rm = TRUE),
-            prob_sodium=weighted.mean(x = is_sodium, 
-                                      w = is_sod_cert,
-                                      na.rm = TRUE)) %>%
-  as.data.frame()
-adduct_features <- feature_peaks_iso_summary %>%
-  filter(prob_sodium>0.5) %>% pull(feature)
-iso_features <- feature_peaks_iso_summary %>%
-  filter(prob_iso>0.5) %>%
-  pull(feature)
-features_clean <- feature_peaks_added %>%
-  filter(!feature%in%c(adduct_features, iso_features)) %>%
-  select(-c("is_M1_iso", "is_M1_cert", "is_sodium", "is_sod_cert"))
-n_to_fill <- sum(is.na(features_clean$peak_id))
-features_clean$peak_id[is.na(features_clean$peak_id)] <- 
-  1:n_to_fill+max(features_clean$peak_id, na.rm = TRUE)
-write.csv(features_clean, file = "XCMS/temp_data/features_clean.csv", row.names = FALSE)
+  summarise(prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match))
+is_feature_adduct <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+                              FUN = isAdduct, xdata=xdata_filled,
+                              grabSingleFileData=grabSingleFileData,
+                              checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
+  do.call(what = rbind) %>% 
+  as.data.frame() %>%
+  group_by(feature) %>%
+  summarise(prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
+            prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`))
+
+cleaned_features <- peaks_by_feature %>%
+  group_by(feature) %>%
+  summarise(mean_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
+  filter(!rowSums(as.matrix(is_feature_adduct[,-1]))>0.8 &
+           !rowSums(as.matrix(is_feature_iso[,-1]))>0.9)
+removed_features <- peaks_by_feature %>%
+  group_by(feature) %>%
+  summarise(mean_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
+  filter(rowSums(as.matrix(is_feature_adduct[,-1]))>0.8 |
+           rowSums(as.matrix(is_feature_iso[,-1]))>0.9) %>%
+  left_join(is_feature_iso, by="feature") %>%
+  left_join(is_feature_adduct, by="feature")
+removed_features[,4:11] <- round(removed_features[,4:11], digits = 3)
+removed_features[,4:11][removed_features[,4:11]<0.5] <- "-------"
+print(removed_features, n="all")
+
+saveRDS(feature_adduct_iso, file = "XCMS/temp_data/cleaned_features.rds")
 print(Sys.time()-start_time)
 # 1.5 minutes
 beep(2)
 
 
 
-### Calculate M+1 and M+2 peak areas ----
+### Calculate isotopes and adducts for remaining features ----
 start_time <- Sys.time()
-features_clean <- read.csv("XCMS/temp_data/features_clean.csv", stringsAsFactors = FALSE)
+cleaned_features <- readRDS("XCMS/temp_data/cleaned_features.csv", stringsAsFactors = FALSE)
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
+
+
+
+
+
+
+
 all_file_peaks <- split(features_clean, features_clean$file_name)
 findIsos(file_peaks = all_file_peaks[[1]], xdata = xdata_filled, 
          grabSingleFileData = grabSingleFileData, isoInfo = isoInfo, 
@@ -535,13 +498,11 @@ final_summary <- features_final %>%
 final_summary %>% ggplot() + geom_point(aes(x=mean_rt, y=mean_mz))
 
 
-molecule_guesses <- lapply(split(final_summary, final_summary$feature), function(x){
+molecule_guesses <- pblapply(split(final_summary, final_summary$feature), function(x){
   mz <- x$mean_mz
   rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=2, ppm=5)
   if(is.null(rdout)){
-    rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=2, ppm=10)
-    print(paste("Note: expanded ppm range for m/z:", mz))
-    if(is.null(rdout))return(cbind(x, formula=NA, exactmass=NA))
+    return(cbind(x, formula=NA, exactmass=NA))
   }
   rdout$isotopes <- NULL
   rdformat <- do.call(cbind, rdout) %>% 
@@ -552,14 +513,14 @@ molecule_guesses <- lapply(split(final_summary, final_summary$feature), function
     return(cbind(x, formula=NA, exactmass=NA))
   }
   return(cbind(x, rdformat))
-  }) %>% do.call(what = rbind)
+  }) %>% do.call(what = rbind) %>% as.data.frame()
 
 
 
 
 ### Add MS2 info ----
 msms_files <- list.files("mzMLs/MSMS", pattern = "pos", full.names = TRUE)
-raw_msmsdata <- lapply(msms_files, grabSingleFileMS2)
+raw_msmsdata <- pblapply(msms_files, grabSingleFileMS2)
 nrgs <- as.numeric(gsub(".*neg|.*pos|\\.mzML", "", msms_files))
 raw_msmsdata <- lapply(seq_along(raw_msmsdata), function(x){
   cbind(nrg=nrgs[x], raw_msmsdata[[x]])
@@ -571,7 +532,6 @@ feature_msms <- mapply(FUN = findMSMSdata, mzr=final_summary$mean_mz,
 
 
 #Recover or validate betaine formula with MS2 fragments
-
 feature_msms[[5]]
 
 formulas_to_check <- molecule_guesses[[5]]$formula

@@ -278,7 +278,7 @@ raw_data <- readMSData(files = ms_files, pdata = metadata,
                        mode = "onDisk", verbose = TRUE)
 saveRDS(raw_data, file = "XCMS/temp_data/current_raw_data.rds")
 print(Sys.time()-start_time)
-#2.2 minutes
+#2.3 minutes
 beep(2)
 
 
@@ -293,10 +293,9 @@ cwp <- CentWaveParam(ppm = 5, peakwidth = c(20, 80),
                      mzdiff = 0.0001, fitgauss = FALSE, 
                      noise = 0, firstBaselineCheck = FALSE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
-print(xdata)
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
 print(Sys.time()-start_time)
-# 28 minutes
+# 30 minutes
 beep(2)
 
 
@@ -329,7 +328,7 @@ qscoreCalculator = qscoreCalculator)
 peakdf_qscored <- as.data.frame(do.call(rbind, files_qscores))
 write.csv(peakdf_qscored, file = "XCMS/temp_data/peakdf_qscored.csv", row.names = FALSE)
 print(Sys.time()-start_time)
-# 1.4 hours
+# 1.5 hours
 beep(2)
 
 
@@ -353,7 +352,7 @@ xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
 plotAdjustedRtime(xdata_rt)
 saveRDS(xdata_rt, file = "XCMS/temp_data/current_xdata_rt.rds")
 print(Sys.time()-start_time)
-# 16 minutes
+# 17 minutes
 beep(2)
 
 
@@ -377,8 +376,9 @@ start_time <- Sys.time()
 xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
 xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = FillChromPeaksParam()))
 saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
-# 1.5 minutes
 print(Sys.time()-start_time)
+# 1.5 minutes
+beep(2)
 
 
 ### Add new quality scores and set retention time limits ----
@@ -424,7 +424,7 @@ peaks_by_feature <- do.call(rbind, files_newscores) %>%
   arrange(feature)
 saveRDS(peaks_by_feature, file = "XCMS/temp_data/peaks_by_feature.rds")
 print(Sys.time()-start_time)
-# 1 minute
+# 2.5 minutes
 beep(2)
 
 
@@ -434,55 +434,43 @@ start_time <- Sys.time()
 peaks_by_feature <- readRDS(file = "XCMS/temp_data/peaks_by_feature.rds")
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
 
-is_feature_iso <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
-                           FUN = isIso, xdata=xdata_filled,
+is_peak_iso <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+                        FUN = isIso, xdata=xdata_filled,
+                        grabSingleFileData=grabSingleFileData,
+                        checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
+  do.call(what = rbind) %>% as.data.frame()
+is_peak_adduct <- pblapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+                           FUN = isAdduct, xdata=xdata_filled,
                            grabSingleFileData=grabSingleFileData,
                            checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
   do.call(what = rbind) %>% as.data.frame()
-is_feature_adduct <- pblapply(split(peaks_by_feature, peaks_by_feature$file_name), 
-                              FUN = isAdduct, xdata=xdata_filled,
-                              grabSingleFileData=grabSingleFileData,
-                              checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
-  do.call(what = rbind) %>% as.data.frame()
 
 addisod_peaks_by_feature <- peaks_by_feature %>%
-  left_join(is_feature_iso, by="feature") %>%
-  left_join(is_feature_adduct, by="feature") %>%
-  group_by(feature) %>%
-  summarise(mean_mz=mean(mz), mean_rt=mean(rt), mean_q=mean(qscore),
-            prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match),
-            prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
-            prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`))
+  left_join(is_peak_iso) %>%
+  left_join(is_peak_adduct)
 
-addiso_features <- unique(addisod_peaks_by_feature$feature)[which(as.logical(rowSums(addisod_peaks_by_feature[,-1]>0.8)))]
+addiso_features <- addisod_peaks_by_feature %>%
+  group_by(feature) %>%
+  summarise(prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match),
+            prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
+            prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`)) %>%
+  `[`(,-1) %>% `>`(0.8) %>% rowSums() %>% as.logical() %>% which() %>%
+  `[`(unique(addisod_peaks_by_feature$feature), .)
 
 cleaned_peaks_by_feature <- peaks_by_feature %>%
   filter(!feature%in%addiso_features)
 
 removed_features <- addisod_peaks_by_feature %>%
-  cbind(peaks_by_feature)
   filter(feature%in%addiso_features) %>%
   group_by(feature) %>%
-  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore))
+  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore),
+            prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match),
+            prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
+            prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`))
+removed_features[,-1] <- round(removed_features[,-1], digits = 4)
+removed_features[removed_features<0.8] <- "-------"
 
-clean_features <- peaks_by_feature %>%
-  group_by(feature) %>%
-  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
-  filter(!rowSums(as.matrix(is_feature_adduct[,-1]))>0.8 &
-           !rowSums(as.matrix(is_feature_iso[,-1]))>0.9)
-
-removed_features <- peaks_by_feature %>%
-  group_by(feature) %>%
-  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
-  filter(rowSums(as.matrix(is_feature_adduct[,-1]))>0.8 |
-           rowSums(as.matrix(is_feature_iso[,-1]))>0.9) %>%
-  left_join(is_feature_iso, by="feature") %>%
-  left_join(is_feature_adduct, by="feature")
-removed_features[,4:11] <- round(removed_features[,4:11], digits = 3)
-removed_features[,4:11][removed_features[,4:11]<0.5] <- "-------"
-print(removed_features, n="all")
-
-saveRDS(feature_adduct_iso, file = "XCMS/temp_data/cleaned_features.rds")
+saveRDS(feature_adduct_iso, file = "XCMS/temp_data/cleaned_peaks_by_feature.rds")
 print(Sys.time()-start_time)
 # 10 minutes
 beep(2)
@@ -492,18 +480,12 @@ beep(2)
 ### Calculate isotopes and adducts for remaining features ----
 start_time <- Sys.time()
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
-cleaned_features <- readRDS("XCMS/temp_data/cleaned_features.rds")
-peaks_by_feature <- readRDS(file = "XCMS/temp_data/peaks_by_feature.rds")
-cleaned_peaks_by_feature <- peaks_by_feature %>%
-  filter(feature%in%unique(cleaned_features$feature))
+cleaned_peaks_by_feature <- readRDS("XCMS/temp_data/cleaned_peaks_by_feature.rds")
 
 all_file_peaks <- split(cleaned_peaks_by_feature, cleaned_peaks_by_feature$file_name)
-findIsoAdds(all_file_peaks[[2]], xdata = xdata_filled,
-            grabSingleFileData=grabSingleFileData, 
-            checkPeakCor=checkPeakCor, pmppm=pmppm)
 peaks_isoadded <- bplapply(all_file_peaks, FUN = findIsoAdds, xdata=xdata_filled,
-                               grabSingleFileData=grabSingleFileData, 
-                              checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
+                           grabSingleFileData=grabSingleFileData, 
+                           checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
   do.call(what = rbind) %>% as.data.frame()
 
 features_isoadded <- peaks_isoadded %>%

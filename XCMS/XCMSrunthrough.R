@@ -7,12 +7,12 @@ library(beepr)
 library(httr)
 library(pbapply)
 start_time <- Sys.time()
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 metadata <- data.frame(
   fileid=seq_along(ms_files), 
@@ -164,7 +164,31 @@ checkPeakCor <- function(mass, rtmin, rtmax, init_eic, file_dt, pmppm){
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
   return(peak_match)
 }
-
+findIsoAdds <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
+  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_data <- grabSingleFileData(file_path)
+  file_data$rt <- xcms::adjustedRtime(xdata)[
+    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
+      factor(file_data$rt)]
+  library(data.table)
+  file_dt <- as.data.table(file_data)
+  
+  adduct_matches <- t(apply(file_peaks[,c("mz","rtmin","rtmax")], 1, function(peak_row_data){
+    init_eic <- file_dt[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                          rt%between%c(peak_row_data["rtmin"], 
+                                       peak_row_data["rtmax"])]
+    isoadd_masses <- as.numeric(peak_row_data["mz"])+
+      c(M_1=1.003355, M_2=2*1.003355, M_3=3*1.003355,
+        Na=22.98922-1.007276, NH4=18.0338-1.007276,
+        H2O_H=-18.0106, X2H=as.numeric(peak_row_data["mz"])-1.007276)
+    isoadd_matches <- lapply(isoadd_masses, checkPeakCor, 
+                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                             init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    return(do.call(cbind, isoadd_matches))
+  }))
+  colnames(adduct_matches) <- c("M_1", "M_2", "M_3", "Na", "NH4", "H2O_H", "X2H")
+  return(cbind(file_peaks, adduct_matches))
+}
 searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S")){
   baseurl <- "https://pubchem.cheminfo.org/mfs/em?em=%f&precision=%.2f"
   url <- sprintf(baseurl, mass, ppm)
@@ -329,7 +353,7 @@ xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
 plotAdjustedRtime(xdata_rt)
 saveRDS(xdata_rt, file = "XCMS/temp_data/current_xdata_rt.rds")
 print(Sys.time()-start_time)
-# 15 minutes
+# 16 minutes
 beep(2)
 
 
@@ -353,7 +377,7 @@ start_time <- Sys.time()
 xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
 xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = FillChromPeaksParam()))
 saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
-# 1 minute
+# 1.5 minutes
 print(Sys.time()-start_time)
 
 
@@ -396,7 +420,7 @@ xcmsQscoreCalculator = xcmsQscoreCalculator,
 qscoreCalculator = qscoreCalculator)
 peaks_by_feature <- do.call(rbind, files_newscores) %>% 
   as.data.frame() %>% 
-  filter(rt>60 & rt < 1100)
+  filter(rt>60 & rt < 1100) %>%
   arrange(feature)
 saveRDS(peaks_by_feature, file = "XCMS/temp_data/peaks_by_feature.rds")
 print(Sys.time()-start_time)
@@ -407,32 +431,49 @@ beep(2)
 
 ### Remove isotope and adduct features ----
 start_time <- Sys.time()
+peaks_by_feature <- readRDS(file = "XCMS/temp_data/peaks_by_feature.rds")
+xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
+
 is_feature_iso <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
                            FUN = isIso, xdata=xdata_filled,
                            grabSingleFileData=grabSingleFileData,
                            checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
-  do.call(what = rbind) %>% 
-  as.data.frame() %>%
-  group_by(feature) %>%
-  summarise(prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match))
-is_feature_adduct <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+  do.call(what = rbind) %>% as.data.frame()
+is_feature_adduct <- pblapply(split(peaks_by_feature, peaks_by_feature$file_name), 
                               FUN = isAdduct, xdata=xdata_filled,
                               grabSingleFileData=grabSingleFileData,
                               checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
-  do.call(what = rbind) %>% 
-  as.data.frame() %>%
+  do.call(what = rbind) %>% as.data.frame()
+
+addisod_peaks_by_feature <- peaks_by_feature %>%
+  left_join(is_feature_iso, by="feature") %>%
+  left_join(is_feature_adduct, by="feature") %>%
   group_by(feature) %>%
-  summarise(prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
+  summarise(mean_mz=mean(mz), mean_rt=mean(rt), mean_q=mean(qscore),
+            prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match),
+            prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
             prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`))
 
-cleaned_features <- peaks_by_feature %>%
+addiso_features <- unique(addisod_peaks_by_feature$feature)[which(as.logical(rowSums(addisod_peaks_by_feature[,-1]>0.8)))]
+
+cleaned_peaks_by_feature <- peaks_by_feature %>%
+  filter(!feature%in%addiso_features)
+
+removed_features <- addisod_peaks_by_feature %>%
+  cbind(peaks_by_feature)
+  filter(feature%in%addiso_features) %>%
   group_by(feature) %>%
-  summarise(mean_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
+  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore))
+
+clean_features <- peaks_by_feature %>%
+  group_by(feature) %>%
+  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
   filter(!rowSums(as.matrix(is_feature_adduct[,-1]))>0.8 &
            !rowSums(as.matrix(is_feature_iso[,-1]))>0.9)
+
 removed_features <- peaks_by_feature %>%
   group_by(feature) %>%
-  summarise(mean_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
+  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore)) %>%
   filter(rowSums(as.matrix(is_feature_adduct[,-1]))>0.8 |
            rowSums(as.matrix(is_feature_iso[,-1]))>0.9) %>%
   left_join(is_feature_iso, by="feature") %>%
@@ -443,41 +484,37 @@ print(removed_features, n="all")
 
 saveRDS(feature_adduct_iso, file = "XCMS/temp_data/cleaned_features.rds")
 print(Sys.time()-start_time)
-# 1.5 minutes
+# 10 minutes
 beep(2)
 
 
 
 ### Calculate isotopes and adducts for remaining features ----
 start_time <- Sys.time()
-cleaned_features <- readRDS("XCMS/temp_data/cleaned_features.csv", stringsAsFactors = FALSE)
 xdata_filled <- readRDS(file = "XCMS/temp_data/current_xdata_filled.rds")
+cleaned_features <- readRDS("XCMS/temp_data/cleaned_features.rds")
+peaks_by_feature <- readRDS(file = "XCMS/temp_data/peaks_by_feature.rds")
+cleaned_peaks_by_feature <- peaks_by_feature %>%
+  filter(feature%in%unique(cleaned_features$feature))
 
+all_file_peaks <- split(cleaned_peaks_by_feature, cleaned_peaks_by_feature$file_name)
+findIsoAdds(all_file_peaks[[2]], xdata = xdata_filled,
+            grabSingleFileData=grabSingleFileData, 
+            checkPeakCor=checkPeakCor, pmppm=pmppm)
+peaks_isoadded <- bplapply(all_file_peaks, FUN = findIsoAdds, xdata=xdata_filled,
+                               grabSingleFileData=grabSingleFileData, 
+                              checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
+  do.call(what = rbind) %>% as.data.frame()
 
+features_isoadded <- peaks_isoadded %>%
+  group_by(feature) %>%
+  summarise(prob_M1=mean(M_1), prob_M2=mean(M_2), prob_M3=mean(M_3),
+            prob_Na=mean(Na), prob_NH4=mean(NH4), prob_H2O_H=mean(H2O_H),
+            prob_2H=mean(X2H)) %>%
+  left_join(cleaned_features, ., by="feature")
 
+features_isoadded[order(rowSums(as.matrix(features_isoadded[,4:10])), decreasing = TRUE),] %>% as.data.frame()
 
-
-
-
-all_file_peaks <- split(features_clean, features_clean$file_name)
-findIsos(file_peaks = all_file_peaks[[1]], xdata = xdata_filled, 
-         grabSingleFileData = grabSingleFileData, isoInfo = isoInfo, 
-         pmppm = pmppm, qscoreCalculator = qscoreCalculator)
-
-features_isotoped <- pblapply(all_file_peaks, FUN = findIsos, xdata=xdata_filled,
-                               grabSingleFileData=grabSingleFileData,
-                               isoInfo=isoInfo, pmppm=pmppm,
-                               qscoreCalculator=qscoreCalculator)
-features_isotoped <- do.call(rbind, features_isotoped)
-features_final <- features_clean %>% 
-  left_join(features_isotoped, by="peak_id") %>%
-  split(.$feature) %>%
-  lapply(FUN = merge, 
-         y=data.frame(file_name=unique(features_clean$file_name)), 
-         by=c("file_name"), all.y=TRUE) %>%
-  do.call(what = rbind) %>%
-  mutate(feature=rep(unique(features_clean$feature), 
-                     each=length(unique(features_clean$file_name))))
 write.csv(features_final, file = "XCMS/temp_data/features_final.csv", row.names = FALSE)
 print(Sys.time()-start_time)
 # 4 minutes
@@ -489,17 +526,17 @@ beep(2)
 features_final <- read.csv(file = "XCMS/temp_data/features_final.csv", stringsAsFactors = FALSE)
 final_summary <- features_final %>% 
   group_by(feature) %>%
-  summarize(mean_mz=weighted.mean(mz, qscore, na.rm = TRUE),
+  summarize(mean_m_H_mz=weighted.mean(mz, qscore, na.rm = TRUE),
             mean_rt=weighted.mean(rt, qscore, na.rm = TRUE),
             mean_M1=weighted.mean(M1_area, M1_match, na.rm = TRUE),
             mean_M2=weighted.mean(M2_area, M2_match, na.rm = TRUE)) %>%
   filter(mean_rt<1100 & mean_rt>60) %>%
   as.data.frame()
-final_summary %>% ggplot() + geom_point(aes(x=mean_rt, y=mean_mz))
+final_summary %>% ggplot() + geom_point(aes(x=mean_rt, y=mean_m_H_mz))
 
 
 molecule_guesses <- pblapply(split(final_summary, final_summary$feature), function(x){
-  mz <- x$mean_mz
+  mz <- x$mean_m_H_mz
   rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=2, ppm=5)
   if(is.null(rdout)){
     return(cbind(x, formula=NA, exactmass=NA))
@@ -526,7 +563,7 @@ raw_msmsdata <- lapply(seq_along(raw_msmsdata), function(x){
   cbind(nrg=nrgs[x], raw_msmsdata[[x]])
 })
 raw_msmsdata <- as.data.table(do.call(rbind, raw_msmsdata))
-feature_msms <- mapply(FUN = findMSMSdata, mzr=final_summary$mean_mz,
+feature_msms <- mapply(FUN = findMSMSdata, mzr=final_summary$mean_m_H_mz,
                        rtr=final_summary$mean_rt, SIMPLIFY = FALSE)
 
 

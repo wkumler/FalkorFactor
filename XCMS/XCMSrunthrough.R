@@ -6,6 +6,7 @@ library(data.table)
 library(beepr)
 library(httr)
 library(pbapply)
+library(Rdisop)
 start_time <- Sys.time()
 
 ms_files <- "mzMLs" %>%
@@ -164,7 +165,8 @@ checkPeakCor <- function(mass, rtmin, rtmax, init_eic, file_dt, pmppm){
   peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
   return(peak_match)
 }
-findIsoAdds <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
+findIsoAdds <- function(file_peaks, xdata, grabSingleFileData, 
+                        getPeakArea, pmppm, trapz){
   file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
   file_data <- grabSingleFileData(file_path)
   file_data$rt <- xcms::adjustedRtime(xdata)[
@@ -181,13 +183,33 @@ findIsoAdds <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmp
       c(M_1=1.003355, M_2=2*1.003355, M_3=3*1.003355,
         Na=22.98922-1.007276, NH4=18.0338-1.007276,
         H2O_H=-18.0106, X2H=as.numeric(peak_row_data["mz"])-1.007276)
-    isoadd_matches <- lapply(isoadd_masses, checkPeakCor, 
+    isoadd_matches <- lapply(isoadd_masses, getPeakArea, 
                              rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                             init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
-    return(do.call(cbind, isoadd_matches))
+                             init_eic = init_eic, file_dt = file_dt, 
+                             pmppm = pmppm, trapz = trapz)
+    return(unlist(isoadd_matches))
   }))
-  colnames(adduct_matches) <- c("M_1", "M_2", "M_3", "Na", "NH4", "H2O_H", "X2H")
+  colnames(adduct_matches) <- c("M_1_match", "M_1_area", 
+                                "M_2_match", "M_2_area",
+                                "M_3_match", "M_3_area", 
+                                "Na_match", "Na_area",
+                                "NH4_match", "NH4_area", 
+                                "H2O_H_match", "H2O_H_area",
+                                "X2H_match", "X2H_area")
   return(cbind(file_peaks, adduct_matches))
+}
+getPeakArea <- function(mass, rtmin, rtmax, init_eic, file_dt, pmppm, trapz){
+  given_eic <- file_dt[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
+  if(nrow(given_eic)<5){
+    return(c(match=0, area=0))
+  }
+  merged_eic <- merge(init_eic, given_eic, by="rt")
+  if(nrow(merged_eic)<5){
+    return(c(match=0, area=0))
+  }
+  peak_match <- cor(merged_eic$int.x, merged_eic$int.y)
+  peak_area <- trapz(merged_eic$rt, merged_eic$int.y)
+  return(c(match=peak_match, area=peak_area))
 }
 searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S")){
   baseurl <- "https://pubchem.cheminfo.org/mfs/em?em=%f&precision=%.2f"
@@ -248,8 +270,6 @@ findMSMSdata <- function(mzr, rtr, ppm=5, rtwindow=10, msmsdata=raw_msmsdata){
     as.data.frame(select(nrg_frags, c("fragmz", "int")))
   })
 }
-
-
 trapz <- function(x, y) {
   m <- length(x)
   xp <- c(x, x[m:1])
@@ -337,7 +357,7 @@ beep(2)
 start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv"))
-threshold <- 50
+threshold <- 20
 cleandf_qscored <- peakdf_qscored[peakdf_qscored[, "qscore"]>threshold,]
 xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 # sample_df <- peakdf_qscored[sample(1:nrow(peakdf_qscored), size = 10000),]
@@ -349,7 +369,9 @@ xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 start_time <- Sys.time()
 obp <- ObiwarpParam(binSize = 0.01, centerSample = 4, response = 1, distFun = "cor_opt")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
-plotAdjustedRtime(xdata_rt)
+plotAdjustedRtime(xdata_rt, col = c("green", "red", "blue", "black", "black")[
+  factor(factor(metadata@data$depth))
+])
 saveRDS(xdata_rt, file = "XCMS/temp_data/current_xdata_rt.rds")
 print(Sys.time()-start_time)
 # 17 minutes
@@ -439,7 +461,7 @@ is_peak_iso <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name),
                         grabSingleFileData=grabSingleFileData,
                         checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
   do.call(what = rbind) %>% as.data.frame()
-is_peak_adduct <- pblapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+is_peak_adduct <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
                            FUN = isAdduct, xdata=xdata_filled,
                            grabSingleFileData=grabSingleFileData,
                            checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
@@ -469,12 +491,47 @@ removed_features <- addisod_peaks_by_feature %>%
             prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`))
 removed_features[,-1] <- round(removed_features[,-1], digits = 4)
 removed_features[removed_features<0.8] <- "-------"
+print(removed_features)
 
-saveRDS(feature_adduct_iso, file = "XCMS/temp_data/cleaned_peaks_by_feature.rds")
+saveRDS(cleaned_peaks_by_feature, file = "XCMS/temp_data/cleaned_peaks_by_feature.rds")
 print(Sys.time()-start_time)
 # 10 minutes
 beep(2)
 
+
+
+### Pause to plot all the "real" features! ----
+library(plotly)
+gp <- cleaned_peaks_by_feature %>%
+  group_by(feature) %>%
+  summarise(mean_mz=mean(mz), mean_rt=mean(rt),
+            mean_rt_min=mean(rtmin), mean_rt_max=mean(rtmax),
+            logmean_area=log10(mean(into))) %>%
+  ggplot() + 
+  geom_segment(aes(x=mean_rt_min, y = mean_mz, 
+                   xend=mean_rt_max, yend=mean_mz,
+                   color=logmean_area)) +
+  scale_color_viridis_c()
+ggplotly(gp)
+
+#Run some preliminary ANOVA/Tukey (needs revision!)
+# v <- cleaned_peaks_by_feature %>%
+#   mutate(filenames = gsub("190715_", "", file_name)) %>%
+#   left_join(metadata@data, by="filenames") %>%
+#   filter(!depth%in%c("Pooled", "Std")) %>%
+#   split(.$feature) %>%
+#   lapply(FUN = function(x){
+#     if(length(unique(x$depth))==1){
+#       
+#     }
+#     TukeyHSD(aov(x$into~x$depth))$`x$depth`[,"p adj", drop=FALSE] %>%
+#       cbind("depth.depth"=rownames(.)) %>%
+#       merge(data.frame("p adj"=NA, `depth.depth`=c("Blank-DCM", "DCM=25m", "DCM-Blank")), 
+#             by="depth.depth", all.y=TRUE)
+#     return(tukeyout)
+#   }) %>%
+#   lapply(t)
+  
 
 
 ### Calculate isotopes and adducts for remaining features ----
@@ -485,54 +542,54 @@ cleaned_peaks_by_feature <- readRDS("XCMS/temp_data/cleaned_peaks_by_feature.rds
 all_file_peaks <- split(cleaned_peaks_by_feature, cleaned_peaks_by_feature$file_name)
 peaks_isoadded <- bplapply(all_file_peaks, FUN = findIsoAdds, xdata=xdata_filled,
                            grabSingleFileData=grabSingleFileData, 
-                           checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
+                           getPeakArea=getPeakArea, pmppm=pmppm, trapz=trapz) %>%
   do.call(what = rbind) %>% as.data.frame()
 
 features_isoadded <- peaks_isoadded %>%
   group_by(feature) %>%
-  summarise(prob_M1=mean(M_1), prob_M2=mean(M_2), prob_M3=mean(M_3),
-            prob_Na=mean(Na), prob_NH4=mean(NH4), prob_H2O_H=mean(H2O_H),
-            prob_2H=mean(X2H)) %>%
-  left_join(cleaned_features, ., by="feature")
+  summarise(mean_mz=mean(mz), mean_rt=mean(rt), area=mean(into), mean_q=mean(qscore),
+            M1_area=mean(M_1_area)/area, prob_M1=mean(M_1_match), 
+            M2_area=mean(M_2_area)/area, prob_M2=mean(M_2_match), 
+            M3_area=mean(M_3_area)/area, prob_M3=mean(M_3_match), 
+            Na_area=mean(Na_area), prob_Na=mean(Na_match), 
+            NH4_area=mean(NH4_area), prob_NH4=mean(NH4_match), 
+            H2O_H_area=mean(H2O_H_area), prob_H2O_H=mean(H2O_H_match),
+            X2H_area=mean(X2H_area), prob_2H=mean(X2H_match)) %>%
+  #arrange(desc(rowSums(select(., starts_with("prob"))))) %>% 
+  arrange(mean_mz) %>%
+  as.data.frame()
 
-features_isoadded[order(rowSums(as.matrix(features_isoadded[,4:10])), decreasing = TRUE),] %>% as.data.frame()
-
-write.csv(features_final, file = "XCMS/temp_data/features_final.csv", row.names = FALSE)
+write.csv(peaks_isoadded, file = "XCMS/temp_data/peaks_isoadded.csv", row.names = FALSE)
+write.csv(features_isoadded, file = "XCMS/temp_data/features_isoadded.csv", row.names = FALSE)
 print(Sys.time()-start_time)
-# 4 minutes
+# 10 minutes
 beep(2)
 
 
 
-### Summarize and plot data, if necessary ----
-features_final <- read.csv(file = "XCMS/temp_data/features_final.csv", stringsAsFactors = FALSE)
-final_summary <- features_final %>% 
-  group_by(feature) %>%
-  summarize(mean_m_H_mz=weighted.mean(mz, qscore, na.rm = TRUE),
-            mean_rt=weighted.mean(rt, qscore, na.rm = TRUE),
-            mean_M1=weighted.mean(M1_area, M1_match, na.rm = TRUE),
-            mean_M2=weighted.mean(M2_area, M2_match, na.rm = TRUE)) %>%
-  filter(mean_rt<1100 & mean_rt>60) %>%
-  as.data.frame()
-final_summary %>% ggplot() + geom_point(aes(x=mean_rt, y=mean_m_H_mz))
-
-
-molecule_guesses <- pblapply(split(final_summary, final_summary$feature), function(x){
-  mz <- x$mean_m_H_mz
-  rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=2, ppm=5)
+### Assign molecular formulae ----
+peak_df <- read.csv(file = "XCMS/temp_data/peaks_isoadded.csv", stringsAsFactors = FALSE)
+feature_df <- read.csv(file = "XCMS/temp_data/features_isoadded.csv", stringsAsFactors = FALSE)
+molecule_guesses <- pblapply(split(feature_df, feature_df$feature), function(x){
+  mz <- x$mean_mz
+  rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=3, ppm=5)
   if(is.null(rdout)){
     return(cbind(x, formula=NA, exactmass=NA))
   }
   rdout$isotopes <- NULL
   rdformat <- do.call(cbind, rdout) %>% 
-    as.data.frame() %>%
+    as.data.frame(stringsAsFactors=FALSE) %>%
+    filter(valid=="Valid") %>%
+    filter(DBE>=0) %>%
     filter(sapply(.$formula, goldenRules)) %>%
     select(formula, exactmass)
   if(nrow(rdformat)==0){
     return(cbind(x, formula=NA, exactmass=NA))
   }
   return(cbind(x, rdformat))
-  }) %>% do.call(what = rbind) %>% as.data.frame()
+  }) %>% 
+  do.call(what = rbind) %>% as.data.frame() %>%
+  select(feature, mean_mz, mean_rt, area, formula, exactmass)
 
 
 
@@ -551,8 +608,6 @@ feature_msms <- mapply(FUN = findMSMSdata, mzr=final_summary$mean_m_H_mz,
 
 
 #Recover or validate betaine formula with MS2 fragments
-feature_msms[[5]]
-
 formulas_to_check <- molecule_guesses[[5]]$formula
 for(formula in formulas_to_check){
   frag_forms <- sapply(feature_msms[[5]]$`35`$fragmz-1.007276, 

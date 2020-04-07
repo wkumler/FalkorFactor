@@ -7,6 +7,7 @@ library(beepr)
 library(httr)
 library(pbapply)
 library(Rdisop)
+library(fastmatch)
 start_time <- Sys.time()
 
 ms_files <- "mzMLs" %>%
@@ -211,31 +212,6 @@ getPeakArea <- function(mass, rtmin, rtmax, init_eic, file_dt, pmppm, trapz){
   peak_area <- trapz(merged_eic$rt, merged_eic$int.y)
   return(c(match=peak_match, area=peak_area))
 }
-searchPubchem <- function(mass, ppm, allowed_atoms=c("C", "H", "N", "O", "P", "S")){
-  baseurl <- "https://pubchem.cheminfo.org/mfs/em?em=%f&precision=%.2f"
-  url <- sprintf(baseurl, mass, ppm)
-  response <- GET(url)
-  if(!response$status_code==200){
-    stop(paste0("Trouble accessing PubChem, error code:", response$status_code))
-  }
-  raw_content <- content(response)
-  removed_compounds <- 0
-  clean_content <- lapply(raw_content$result, function(x, allowed_atoms){
-    atoms <- as.data.frame(x$atom)
-    if(any(!names(atoms)%in%allowed_atoms)){
-      removed_compounds <<- removed_compounds+1
-      return(NULL)
-    }
-    x$atom <- NULL
-    x$unsaturation <- NULL
-    as.data.frame(x, stringsAsFactors=FALSE)
-  }, allowed_atoms=allowed_atoms)
-  content_df <- do.call(rbind, clean_content)
-  print(paste("Found", nrow(content_df), "reasonable formula"))
-  if(removed_compounds)print(paste("Removed", removed_compounds, "with weird atoms"))
-  rm(removed_compounds)
-  return(content_df)
-}
 goldenRules <- function(formula){
   elem_data <- "[[:upper:]][[:lower:]]*[[:digit:]]*" %>%
     gregexpr(text = formula) %>%
@@ -262,14 +238,6 @@ goldenRules <- function(formula){
   
   return(all(senior_i, rule_4_check))
 }
-findMSMSdata <- function(mzr, rtr, ppm=5, rtwindow=10, msmsdata=raw_msmsdata){
-  given_msms <- msmsdata[rt%between%c(rtr-rtwindow, rtr+rtwindow)&
-                           premz%between%pmppm(mzr, ppm)]
-  msms_list <- split(given_msms, given_msms$nrg)
-  lapply(msms_list, function(nrg_frags){
-    as.data.frame(select(nrg_frags, c("fragmz", "int")))
-  })
-}
 trapz <- function(x, y) {
   m <- length(x)
   xp <- c(x, x[m:1])
@@ -280,11 +248,14 @@ trapz <- function(x, y) {
   
   return(0.5*(p1-p2))
 }
-# Load ms_files here for debug purposes
-ms_files <- "mzMLs" %>%
-  list.files(pattern = ".mzML", full.names = TRUE) %>%
-  normalizePath() %>%
-  `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
+findMSMSdata <- function(mzr, rtr, ppm=5, rtwindow=10, msmsdata=raw_msmsdata){
+  given_msms <- msmsdata[rt%between%c(rtr-rtwindow, rtr+rtwindow)&
+                           premz%between%pmppm(mzr, ppm)]
+  msms_list <- split(given_msms, given_msms$nrg)
+  lapply(msms_list, function(nrg_frags){
+    as.data.frame(select(nrg_frags, c("fragmz", "int")))
+  })
+}
 
 
 
@@ -570,6 +541,7 @@ beep(2)
 ### Assign molecular formulae ----
 peak_df <- read.csv(file = "XCMS/temp_data/peaks_isoadded.csv", stringsAsFactors = FALSE)
 feature_df <- read.csv(file = "XCMS/temp_data/features_isoadded.csv", stringsAsFactors = FALSE)
+pubchem_formulas <- readRDS(file = "XCMS/unique_formulae.rds")
 molecule_guesses <- pblapply(split(feature_df, feature_df$feature), function(x){
   mz <- x$mean_mz
   rdout <- Rdisop::decomposeMass(mz-1.007276, maxisotopes=3, ppm=5)
@@ -577,19 +549,25 @@ molecule_guesses <- pblapply(split(feature_df, feature_df$feature), function(x){
     return(cbind(x, formula=NA, exactmass=NA))
   }
   rdout$isotopes <- NULL
-  rdformat <- do.call(cbind, rdout) %>% 
-    as.data.frame(stringsAsFactors=FALSE) %>%
-    filter(valid=="Valid") %>%
-    filter(DBE>=0) %>%
-    filter(sapply(.$formula, goldenRules)) %>%
-    select(formula, exactmass)
-  if(nrow(rdformat)==0){
+  rdformat <- do.call(cbind, rdout) %>%
+    as.data.frame() %>%
+    # filter(valid=="Valid") %>%
+    # filter(DBE>=0) %>%
+    # filter(sapply(.$formula, goldenRules)) %>%
+    select(formula, exactmass) %>%
+    filter(sapply(formula, `%fin%`, pubchem_formulas))
+  if(!nrow(rdformat)){
     return(cbind(x, formula=NA, exactmass=NA))
   }
   return(cbind(x, rdformat))
-  }) %>% 
-  do.call(what = rbind) %>% as.data.frame() %>%
-  select(feature, mean_mz, mean_rt, area, formula, exactmass)
+}) %>% do.call(what = rbind)
+
+gp <- molecule_guesses %>%
+  group_by(feature, mean_mz, mean_rt) %>%
+  summarise(num=sum(!is.na(formula))) %>%
+  #pull(num) %>% plot()
+  ggplot() + geom_jitter(aes(x=mean_mz, y=num, label=feature), height=0.1)
+plotly::ggplotly(gp)
 
 
 
@@ -604,6 +582,7 @@ raw_msmsdata <- lapply(seq_along(raw_msmsdata), function(x){
 raw_msmsdata <- as.data.table(do.call(rbind, raw_msmsdata))
 feature_msms <- mapply(FUN = findMSMSdata, mzr=final_summary$mean_m_H_mz,
                        rtr=final_summary$mean_rt, SIMPLIFY = FALSE)
+
 
 
 

@@ -116,10 +116,13 @@ isIso <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
     is_M3 <- checkPeakCor(mass = peak_row_data["mz"]-3*1.003355,
                           rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
                           init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
+    is_S34 <- checkPeakCor(mass = peak_row_data["mz"]-1.995796,
+                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                          init_eic = init_eic, file_dt = file_dt, pmppm = pmppm)
     
-    return(cbind(is_M1, is_M2, is_M3))
+    return(cbind(is_M1, is_M2, is_M3, is_S34))
   }))
-  colnames(iso_matches) <- c("M1_match", "M2_match", "M3_match")
+  colnames(iso_matches) <- c("M1_match", "M2_match", "M3_match", "S34_match")
   return(cbind(file_peaks, iso_matches))
 }
 isAdduct <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
@@ -181,7 +184,7 @@ findIsoAdds <- function(file_peaks, xdata, grabSingleFileData,
                           rt%between%c(peak_row_data["rtmin"], 
                                        peak_row_data["rtmax"])]
     isoadd_masses <- as.numeric(peak_row_data["mz"])+
-      c(M_1=1.003355, M_2=2*1.003355, M_3=3*1.003355,
+      c(M_1=1.003355, M_2=2*1.003355, M_3=3*1.003355, S34=1.995796,
         Na=22.98922-1.007276, NH4=18.0338-1.007276,
         H2O_H=-18.0106, X2H=as.numeric(peak_row_data["mz"])-1.007276)
     isoadd_matches <- lapply(isoadd_masses, getPeakArea, 
@@ -192,7 +195,8 @@ findIsoAdds <- function(file_peaks, xdata, grabSingleFileData,
   }))
   colnames(adduct_matches) <- c("M_1_match", "M_1_area", 
                                 "M_2_match", "M_2_area",
-                                "M_3_match", "M_3_area", 
+                                "M_3_match", "M_3_area",
+                                "S_34_match", "S_34_area",
                                 "Na_match", "Na_area",
                                 "NH4_match", "NH4_area", 
                                 "H2O_H_match", "H2O_H_area",
@@ -248,15 +252,6 @@ trapz <- function(x, y) {
   
   return(0.5*(p1-p2))
 }
-findMSMSdata <- function(mzr, rtr, ppm=5, rtwindow=10, msmsdata=raw_msmsdata){
-  given_msms <- msmsdata[rt%between%c(rtr-rtwindow, rtr+rtwindow)&
-                           premz%between%pmppm(mzr, ppm)]
-  msms_list <- split(given_msms, given_msms$nrg)
-  lapply(msms_list, function(nrg_frags){
-    as.data.frame(select(nrg_frags, c("fragmz", "int")))
-  })
-}
-
 
 
 ### Load MS data ----
@@ -521,7 +516,8 @@ features_isoadded <- peaks_isoadded %>%
   summarise(mean_mz=mean(mz), mean_rt=mean(rt), area=mean(into), mean_q=mean(qscore),
             M1_area=mean(M_1_area)/area, prob_M1=mean(M_1_match), 
             M2_area=mean(M_2_area)/area, prob_M2=mean(M_2_match), 
-            M3_area=mean(M_3_area)/area, prob_M3=mean(M_3_match), 
+            M3_area=mean(M_3_area)/area, prob_M3=mean(M_3_match),
+            S34_area=mean(S_34_area)/area, prob_S34=mean(S_34_match),
             Na_area=mean(Na_area), prob_Na=mean(Na_match), 
             NH4_area=mean(NH4_area), prob_NH4=mean(NH4_match), 
             H2O_H_area=mean(H2O_H_area), prob_H2O_H=mean(H2O_H_match),
@@ -551,9 +547,6 @@ molecule_guesses <- pblapply(split(feature_df, feature_df$feature), function(x){
   rdout$isotopes <- NULL
   rdformat <- do.call(cbind, rdout) %>%
     as.data.frame() %>%
-    # filter(valid=="Valid") %>%
-    # filter(DBE>=0) %>%
-    # filter(sapply(.$formula, goldenRules)) %>%
     select(formula, exactmass) %>%
     filter(sapply(formula, `%fin%`, pubchem_formulas))
   if(!nrow(rdformat)){
@@ -561,15 +554,26 @@ molecule_guesses <- pblapply(split(feature_df, feature_df$feature), function(x){
   }
   return(cbind(x, rdformat))
 }) %>% do.call(what = rbind)
+write.csv(molecule_guesses, file = "XCMS/temp_data/molecule_guesses.csv", row.names = FALSE)
+
+
+# Plot # of 
+gp <- molecule_guesses %>%
+  group_by(feature, mean_mz, mean_rt) %>%
+  summarise(num=sum(!is.na(formula))) %>%
+  ggplot() + geom_jitter(aes(x=mean_mz, y=num, label=feature), height=0.1) +
+  theme_bw() + ylab("Number of possible formulae") + xlab("m/z")
+plotly::ggplotly(gp)
 
 gp <- molecule_guesses %>%
   group_by(feature, mean_mz, mean_rt) %>%
   summarise(num=sum(!is.na(formula))) %>%
-  #pull(num) %>% plot()
-  ggplot() + geom_jitter(aes(x=mean_mz, y=num, label=feature), height=0.1)
-plotly::ggplotly(gp)
-
-
+  mutate(num=ifelse(num>1, 2, num)) %>%
+  ggplot() + geom_jitter(aes(x=mean_rt, y=mean_mz, color=factor(num))) +
+  theme_bw() + ylab("m/z") + xlab("Retention time") +
+  scale_color_discrete(name="Number of\npossible\nformulae", 
+                       labels=c(0, 1, "2+"))
+gp
 
 
 ### Add MS2 info ----
@@ -580,9 +584,36 @@ raw_msmsdata <- lapply(seq_along(raw_msmsdata), function(x){
   cbind(nrg=nrgs[x], raw_msmsdata[[x]])
 })
 raw_msmsdata <- as.data.table(do.call(rbind, raw_msmsdata))
-feature_msms <- mapply(FUN = findMSMSdata, mzr=final_summary$mean_m_H_mz,
-                       rtr=final_summary$mean_rt, SIMPLIFY = FALSE)
+feature_msms <- apply(feature_df, 1, FUN = function(feature_data){
+  rtr <- as.numeric(feature_data["mean_rt"])+c(-10, 10)
+  mzr <- pmppm(as.numeric(feature_data["mean_mz"]), ppm = 5)
+  msms_data <- raw_msmsdata[rt%between%rtr & premz%between%mzr]
+  if(!nrow(msms_data))return(NULL)
+  return(cbind(feature=feature_data["feature"], msms_data))
+})
+v <- feature_msms %>%
+  do.call(what = rbind) %>%
+  left_join(feature_df, by="feature", all.y=TRUE) %>%
+  left_join(molecule_guesses) %>%
+  mutate(frag_found = apply(X = ., MARGIN = 1, FUN = fragCheck))
 
+fragCheck <- function(row_data){
+  formula <- row_data["formula"]
+  frag_mz <- as.numeric(row_data["fragmz"])
+  if(is.na(formula))return(NA)
+  decomposeMass(mass = frag_mz, ppm = 5, maxElements = formula) %>%
+    length() %>%
+    as.logical()
+}
+  
+frag_recovery <- pbsapply(seq_along(molecule_guesses$formula), function(i){
+  if(is.na(molecule_guesses$formula[i]))return(0)
+  if(!nrow(feature_msms[[i]]))return(0)
+  frag_matches <- lapply(feature_msms[[i]]$fragmz, decomposeMass, ppm=5, 
+                         maxElements=molecule_guesses$formula[i],
+                         maxisotopes=1)
+  frag_recovery <- mean(sapply(frag_matches, length)>0)
+})
 
 
 

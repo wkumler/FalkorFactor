@@ -58,7 +58,7 @@ grabSingleFileMS2 <- function(filename){
 qscoreCalculator <- function(eic){
   #Check for bogus EICs
   if(nrow(eic)<5){
-    return(data.frame(SNR=0, peak_cor=0, qscore=0))
+    return(data.frame(SNR=0, peak_cor=0, qscore=0, skew=0))
   }
   #Calculate where each rt would fall on a beta distribution (accounts for missed scans)
   scaled_rts <- (eic$rt-min(eic$rt))/(max(eic$rt)-min(eic$rt))
@@ -86,7 +86,9 @@ qscoreCalculator <- function(eic){
   #Calculate SNR
   SNR <- (max(eic$int)-min(eic$int))/sd(norm_residuals*max(eic$int))
   #Return the quality score
-  output <- data.frame(SNR, peak_cor, qscore=SNR*peak_cor^4*log10(max(eic$int)))
+  output <- data.frame(SNR, peak_cor, 
+                       qscore=SNR*peak_cor^4*log10(max(eic$int)), 
+                       skew=best_skew)
   return(output)
 }
 xcmsQscoreCalculator <- function(df_row, xcms_peakdf, file_data_table, 

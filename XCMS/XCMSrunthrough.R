@@ -323,7 +323,7 @@ beep(2)
 start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv"))
-threshold <- 20
+threshold <- 50
 cleandf_qscored <- peakdf_qscored[peakdf_qscored[, "qscore"]>threshold,]
 xdata_cleanpeak <- `chromPeaks<-`(xdata, cleandf_qscored)
 # sample_df <- peakdf_qscored[sample(1:nrow(peakdf_qscored), size = 10000),]
@@ -558,22 +558,20 @@ write.csv(molecule_guesses, file = "XCMS/temp_data/molecule_guesses.csv", row.na
 
 
 # Plot # of 
-gp <- molecule_guesses %>%
+molecule_guesses %>%
   group_by(feature, mean_mz, mean_rt) %>%
   summarise(num=sum(!is.na(formula))) %>%
-  ggplot() + geom_jitter(aes(x=mean_mz, y=num, label=feature), height=0.1) +
+  ggplot() + geom_jitter(aes(x=mean_mz, y=num), height=0.1) +
   theme_bw() + ylab("Number of possible formulae") + xlab("m/z")
-plotly::ggplotly(gp)
 
-gp <- molecule_guesses %>%
+molecule_guesses %>%
   group_by(feature, mean_mz, mean_rt) %>%
   summarise(num=sum(!is.na(formula))) %>%
   mutate(num=ifelse(num>1, 2, num)) %>%
   ggplot() + geom_jitter(aes(x=mean_rt, y=mean_mz, color=factor(num))) +
   theme_bw() + ylab("m/z") + xlab("Retention time") +
-  scale_color_discrete(name="Number of\npossible\nformulae", 
-                       labels=c(0, 1, "2+"))
-gp
+  scale_color_discrete(name="Number of\npossible\nformulae", labels=c(0, 1, "2+"))
+
 
 
 ### Add MS2 info ----

@@ -64,7 +64,7 @@ qscoreCalculator <- function(eic){
   scaled_rts <- (eic$rt-min(eic$rt))/(max(eic$rt)-min(eic$rt))
   
   # Create a couple different skews and test fit
-  possible_skews <- c(2,3,5)
+  possible_skews <- c(2,2.5,3,4,5)
   best_skew <- possible_skews[which.max(sapply(possible_skews, function(x){
     cor(dbeta(scaled_rts, shape1 = x, shape2 = 5), eic$int)
   }))]

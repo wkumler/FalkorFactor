@@ -60,13 +60,18 @@ qscoreCalculator <- function(eic){
   if(nrow(eic)<5){
     return(data.frame(SNR=0, peak_cor=0, qscore=0))
   }
-  #Calculate where each rt would fall on a Gaussian shape (accounts for missed scans)
-  #Scale to normal curve
-  scaled_rts <- ((eic$rt-min(eic$rt))*6)/(max(eic$rt)-min(eic$rt))-3
-  perf_peak <- dnorm(scaled_rts)
+  #Calculate where each rt would fall on a beta distribution (accounts for missed scans)
+  scaled_rts <- (eic$rt-min(eic$rt))/(max(eic$rt)-min(eic$rt))
   
-  #Calculate the correlation between the perfect peak and the observed values
+  # Create a couple different skews and test fit
+  possible_skews <- c(2,3,5)
+  best_skew <- possible_skews[which.max(sapply(possible_skews, function(x){
+    cor(dbeta(scaled_rts, shape1 = x, shape2 = 5), eic$int)
+  }))]
+  perf_peak <- dbeta(scaled_rts, shape1 = best_skew, shape2 = 5)
   peak_cor <- cor(perf_peak, eic$int)
+  
+  
   #Calculate the normalized residuals
   residuals <- eic$int/max(eic$int)-perf_peak/max(perf_peak)
   #Calculate the minimum SD, after normalizing for any shape discrepancy

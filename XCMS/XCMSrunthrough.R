@@ -356,8 +356,8 @@ beep(2)
 start_time <- Sys.time()
 xdata_rt <- readRDS(file = "XCMS/temp_data/current_xdata_rt.rds")
 pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
-                        bw = 2, minFraction = 0.5, 
-                        binSize = 0.002)
+                        bw = 2, minFraction = 0, 
+                        binSize = 0.002, minSamples = 2)
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 saveRDS(xdata_cor, file = "XCMS/temp_data/current_xdata_cor.rds")
 print(Sys.time()-start_time)
@@ -446,10 +446,10 @@ addisod_peaks_by_feature <- peaks_by_feature %>%
 
 addiso_features <- addisod_peaks_by_feature %>%
   group_by(feature) %>%
-  summarise(prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match),
-            prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
-            prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`)) %>%
-  `[`(,-1) %>% `>`(0.8) %>% rowSums() %>% as.logical() %>% which() %>%
+  summarise(prob_M1=median(M1_match), prob_M2=median(M2_match), prob_M3=median(M3_match),
+            prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
+            prob_H2O_H=median(H2O_H_match), prob_2H=median(`2H_match`)) %>%
+  `[`(,-1) %>% `>`(0.99) %>% rowSums() %>% as.logical() %>% which() %>%
   `[`(unique(addisod_peaks_by_feature$feature), .)
 
 cleaned_peaks_by_feature <- peaks_by_feature %>%
@@ -458,13 +458,13 @@ cleaned_peaks_by_feature <- peaks_by_feature %>%
 removed_features <- addisod_peaks_by_feature %>%
   filter(feature%in%addiso_features) %>%
   group_by(feature) %>%
-  summarise(mean_m_H_mz=mean(mz), mean_rt=mean(rt), mean_qscore=mean(qscore),
-            prob_M1=mean(M1_match), prob_M2=mean(M2_match), prob_M3=mean(M3_match),
-            prob_Na=mean(Na_match), prob_NH4=mean(NH4_match), 
-            prob_H2O_H=mean(H2O_H_match), prob_2H=mean(`2H_match`))
+  summarise(med_m_H_mz=median(mz), med_rt=median(rt), med_qscore=median(qscore),
+            prob_M1=median(M1_match), prob_M2=median(M2_match), prob_M3=median(M3_match),
+            prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
+            prob_H2O_H=median(H2O_H_match), prob_2H=median(`2H_match`))
 removed_features[,-1] <- round(removed_features[,-1], digits = 4)
-removed_features[removed_features<0.8] <- "-------"
-print(removed_features)
+removed_features[removed_features<0.99] <- "-------"
+as.data.frame(removed_features)
 
 saveRDS(cleaned_peaks_by_feature, file = "XCMS/temp_data/cleaned_peaks_by_feature.rds")
 print(Sys.time()-start_time)

@@ -388,7 +388,7 @@ feature_peaks <- lapply(seq_len(nrow(featureDefinitions(xdata_filled))), functio
   mutate(peak_id=as.numeric(peak_id)) %>%
   cbind(chromPeaks(xdata_filled)[.$peak_id, ]) %>%
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
-  select(-c(SNR, peak_cor, qscore))
+  select(-c(SNR, peak_cor, qscore, skew))
 
 split_groups <- split(feature_peaks, factor(feature_peaks$file_name))
 files_newscores <- bplapply(seq_along(split_groups), 

@@ -280,11 +280,12 @@ beep(2)
 start_time <- Sys.time()
 raw_data <- readRDS(file = "XCMS/temp_data/current_raw_data.rds")
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
-cwp <- CentWaveParam(ppm = 5, peakwidth = c(20, 80), 
-                     snthresh = 0, prefilter = c(0, 0), 
+cwp <- CentWaveParam(ppm = 5, peakwidth = c(10, 50), 
+                     snthresh = 0, prefilter = c(3, 10000), 
                      integrate = 1, mzCenterFun = "wMean", 
                      mzdiff = 0.0001, fitgauss = FALSE, 
-                     noise = 0, firstBaselineCheck = FALSE)
+                     noise = 0, firstBaselineCheck = FALSE, 
+                     extendLengthMSW = TRUE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
 print(Sys.time()-start_time)
@@ -356,7 +357,7 @@ beep(2)
 start_time <- Sys.time()
 xdata_rt <- readRDS(file = "XCMS/temp_data/current_xdata_rt.rds")
 pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
-                        bw = 2, minFraction = 0, 
+                        bw = 5, minFraction = 0, 
                         binSize = 0.002, minSamples = 2)
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 saveRDS(xdata_cor, file = "XCMS/temp_data/current_xdata_cor.rds")

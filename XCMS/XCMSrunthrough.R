@@ -275,11 +275,45 @@ beep(2)
 
 
 
+### Optimize XCMS settings with Autotuner (meh) ----
+# BiocManager::install("Autotuner")
+# library(Autotuner)
+# auto_paths <- ms_files[2:7]
+# auto_metadata <- data.frame(file_path=auto_paths, file_types=gl(2, 3, labels = c("Full", "Half")))
+# Autotuner <- createAutotuner(auto_paths, auto_metadata,
+#                              file_col = "file_path", factorCol = "file_types")
+# lag <- 50
+# threshold<- 2
+# influence <- 0.1
+# signals <- lapply(getAutoIntensity(Autotuner), 
+#                   ThresholdingAlgo, lag, threshold, influence)
+# plot_signals(Autotuner, 
+#              threshold, 
+#              ## index for which data files should be displayed
+#              sample_index = 1:6, 
+#              signals = signals)
+# Autotuner <- isolatePeaks(Autotuner = Autotuner, 
+#                           returned_peaks = 10, 
+#                           signals = signals)
+# for(i in 1:6) {
+#   plot_peaks(Autotuner = Autotuner, 
+#              boundary = 100, peak = i)    
+# }
+# eicParamEsts <- EICparams(Autotuner = Autotuner, 
+#                           massThresh = .005, 
+#                           verbose = FALSE,
+#                           returnPpmPlots = FALSE,
+#                           useGap = TRUE)
+
+
+
+
+
 ### Perform peakpicking ----
 start_time <- Sys.time()
 raw_data <- readRDS(file = "XCMS/temp_data/current_raw_data.rds")
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
-cwp <- CentWaveParam(ppm = 5, peakwidth = c(10, 50), 
+cwp <- CentWaveParam(ppm = 5, peakwidth = c(20, 50), 
                      snthresh = 0, prefilter = c(3, 10000), 
                      integrate = 1, mzCenterFun = "wMean", 
                      mzdiff = 0.0001, fitgauss = FALSE, 

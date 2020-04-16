@@ -17,8 +17,7 @@ ms_files <- "mzMLs" %>%
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 metadata <- data.frame(
-  fileid=seq_along(ms_files), 
-  filenames=gsub("190715_", "", basename(ms_files)),
+  fileid=basename(ms_files),
   sample_group=c("Blank", "Pooled", "Sample", "Std")[c(1, rep(2, 6), rep(3, 24), rep(4, 10))],
   depth=c("Blank", "Pooled", "DCM", "25m", "Std")[c(1, rep(2, 6), rep(c(rep(3, 3), rep(4, 3)), 4), rep(5, 10))],
   spindir=c("Blank", "Pooled", "Cyclone", "Anticyclone", "Std")[c(1, rep(2, 6), rep(3, 12), rep(4, 12), rep(5, 10))],
@@ -299,9 +298,9 @@ start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 xcms_peakdf <- as.data.frame(chromPeaks(xdata))
 
-fileids <- unique(xcms_peakdf$sample)
+sample_ids <- unique(xcms_peakdf$sample)
 split_xcms_filedata <- split(xcms_peakdf, xcms_peakdf$sample)
-files_qscores <- bplapply(fileids, function(x, split_xcms_filedata, ms_files, 
+files_qscores <- bplapply(sample_ids, function(x, split_xcms_filedata, ms_files, 
                                             grabSingleFileData, xcmsQscoreCalculator,
                                             qscoreCalculator){
   library(data.table)
@@ -491,7 +490,7 @@ ggplotly(gp)
 #Run some preliminary ANOVA/Tukey (needs revision!)
 # v <- cleaned_peaks_by_feature %>%
 #   mutate(filenames = gsub("190715_", "", file_name)) %>%
-#   left_join(metadata@data, by="filenames") %>%
+#   left_join(metadata@data, by="fileid") %>%
 #   filter(!depth%in%c("Pooled", "Std")) %>%
 #   split(.$feature) %>%
 #   lapply(FUN = function(x){

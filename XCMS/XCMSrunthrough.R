@@ -65,7 +65,7 @@ qscoreCalculator <- function(eic){
   # Create a couple different skews and test fit
   maybe_skews <- c(2.5,3,4,5) #Add 7 to catch more multipeaks and more noise
                               #Add 2 to catch very slopey peaks and more noise
-  best_skew <- maybe_skews[which.max(sapply(possible_skews, function(x){
+  best_skew <- maybe_skews[which.max(sapply(maybe_skews, function(x){
     cor(dbeta(scaled_rts, shape1 = x, shape2 = 5), eic$int)
   }))]
   perf_peak <- dbeta(scaled_rts, shape1 = best_skew, shape2 = 5)
@@ -315,7 +315,7 @@ start_time <- Sys.time()
 raw_data <- readRDS(file = "XCMS/temp_data/current_raw_data.rds")
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
-                     snthresh = 0, prefilter = c(0, 10000), 
+                     snthresh = 1, prefilter = c(0, 10000), 
                      integrate = 2, mzCenterFun = "wMean", 
                      mzdiff = 0.001, fitgauss = FALSE, 
                      noise = 5000, firstBaselineCheck = FALSE, 
@@ -323,7 +323,7 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
 print(Sys.time()-start_time)
-# 30 minutes
+# 10 minutes
 beep(2)
 
 

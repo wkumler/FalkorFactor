@@ -102,7 +102,7 @@ plot(chr_bleh, col = group_colors[chr_bleh$sample_group])
 
 
 
-cwp <- CentWaveParam(ppm = 5, peakwidth = c(15, 15), 
+cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
                      snthresh = 0, prefilter = c(0,0), 
                      integrate = 2, mzCenterFun = "wMean", 
                      mzdiff = 0.001, fitgauss = FALSE, 

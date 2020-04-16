@@ -314,10 +314,10 @@ beep(2)
 start_time <- Sys.time()
 raw_data <- readRDS(file = "XCMS/temp_data/current_raw_data.rds")
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
-cwp <- CentWaveParam(ppm = 5, peakwidth = c(15, 15), 
+cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
                      snthresh = 0, prefilter = c(0, 10000), 
                      integrate = 2, mzCenterFun = "wMean", 
-                     mzdiff = 0.0001, fitgauss = FALSE, 
+                     mzdiff = 0.001, fitgauss = FALSE, 
                      noise = 5000, firstBaselineCheck = FALSE, 
                      extendLengthMSW = TRUE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))

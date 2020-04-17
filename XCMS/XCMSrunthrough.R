@@ -271,7 +271,7 @@ raw_data <- readMSData(files = ms_files, pdata = metadata,
                        mode = "onDisk", verbose = TRUE)
 saveRDS(raw_data, file = "XCMS/temp_data/current_raw_data.rds")
 print(Sys.time()-start_time)
-#2.3 minutes
+#2.5 minutes
 beep(2)
 
 
@@ -323,7 +323,7 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
 print(Sys.time()-start_time)
-# 10 minutes
+# 8 minutes
 beep(2)
 
 
@@ -362,7 +362,6 @@ beep(2)
 
 
 ### Decide on quality threshold and reassign peaklist ----
-start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 peakdf_qscored <- as.matrix(read.csv(file = "XCMS/temp_data/peakdf_qscored.csv"))
 threshold <- 50
@@ -382,7 +381,7 @@ plotAdjustedRtime(xdata_rt, col = c("green", "red", "blue", "black", "black")[
 ])
 saveRDS(xdata_rt, file = "XCMS/temp_data/current_xdata_rt.rds")
 print(Sys.time()-start_time)
-# 17 minutes
+# 50 minutes
 beep(2)
 
 
@@ -407,7 +406,7 @@ xdata_cor <- readRDS(file = "XCMS/temp_data/current_xdata_cor.rds")
 xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = FillChromPeaksParam()))
 saveRDS(object = xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
 print(Sys.time()-start_time)
-# 1.5 minutes
+# 2 minutes
 beep(2)
 
 
@@ -454,7 +453,7 @@ peaks_by_feature <- do.call(rbind, files_newscores) %>%
   arrange(feature)
 saveRDS(peaks_by_feature, file = "XCMS/temp_data/peaks_by_feature.rds")
 print(Sys.time()-start_time)
-# 2.5 minutes
+# 5 minutes
 beep(2)
 
 
@@ -503,7 +502,7 @@ as.data.frame(removed_features)
 
 saveRDS(cleaned_peaks_by_feature, file = "XCMS/temp_data/cleaned_peaks_by_feature.rds")
 print(Sys.time()-start_time)
-# 10 minutes
+# 35 minutes
 beep(2)
 
 
@@ -571,7 +570,7 @@ features_isoadded <- peaks_isoadded %>%
 write.csv(peaks_isoadded, file = "XCMS/temp_data/peaks_isoadded.csv", row.names = FALSE)
 write.csv(features_isoadded, file = "XCMS/temp_data/features_isoadded.csv", row.names = FALSE)
 print(Sys.time()-start_time)
-# 10 minutes
+# 30 minutes
 beep(2)
 
 
@@ -666,3 +665,4 @@ for(formula in formulas_to_check){
                        ppm=5)
   print(frag_forms)
 }
+

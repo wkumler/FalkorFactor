@@ -1,6 +1,5 @@
 # XCMS, but with CAMERA this time
 
-
 # Functions ----
 pmppm <- function(mass, ppm=4){c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))}
 grabSingleFileData <- function(filename){
@@ -80,15 +79,17 @@ qscoreCalculator <- function(eic){
   #Return the quality score
   return(round(SNR*peak_cor^4*log10(max(eic$int))))
 }
+# Make sure the dev version of XCMS is installed!
+
 
 
 
 # Setup things ----
-library(xcms)
-library(CAMERA)
 library(tidyverse)
 library(data.table)
 library(pbapply)
+library(xcms)
+library(CAMERA)
 
 ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
@@ -142,18 +143,19 @@ peakdf_qscored <- files_qscores %>%
 write.csv(peakdf_qscored, file = "XCMS/temp_data/peakdf_qscored.csv", 
           row.names = FALSE)
 xdata_cleanpeak <- `chromPeaks<-`(xdata, peakdf_qscored)
-saveRDS(xdata_cleanpeak, file = "XCMS/temp_data/clean_xdata.rds")
+saveRDS(xdata_cleanpeak, file = "XCMS/temp_data/xdata_cleanpeak.rds")
 print(Sys.time()-start_time)
 # 10 minutes?
 
 
 
 # Plot picked peaks, just for kicks! ----
+xdata_cleanpeak <- readRDS("XCMS/temp_data/xdata_cleanpeak.rds")
 given_file <- ms_files[2]
 clean_peakdf <- chromPeaks(xdata_cleanpeak) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
-  mutate(filename=fileNames(xdata)[.[["sample"]]]) %>%
-  arrange(sn) %>%
+  mutate(filename=fileNames(xdata_cleanpeak)[.[["sample"]]]) %>%
+  arrange(mz) %>%
   filter(filename==given_file)
 file_eic <- as.data.table(grabSingleFileData(given_file))
 pdf(width = 17, height = 11)
@@ -175,3 +177,27 @@ dev.off()
 
 
 # Other XCMS things (rtcor, group) ----
+start_time <- Sys.time()
+register(BPPARAM = SerialParam())
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
+obp <- ObiwarpParam(binSize = 0.1, centerSample = 4, 
+                    response = 1, distFun = "cor_opt")
+xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
+plotAdjustedRtime(xdata_rt, col = c("green", "red", "blue", "black", "black")[
+  factor(metadata@data$depth)])
+
+pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
+                        bw = 5, minFraction = 0.5, 
+                        binSize = 0.002, minSamples = 2)
+xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
+
+fpp <- FillChromPeaksParam()
+xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = fpp))
+
+saveRDS(xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
+print(Sys.time()-start_time)
+# 10 minutes
+
+show(featureDefinitions(xdata_filled))
+
+

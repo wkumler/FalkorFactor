@@ -199,22 +199,3 @@ print(Sys.time()-start_time)
 # 10 minutes
 
 show(featureDefinitions(xdata_filled))
-
-
-
-# xMSannotator? ----
-xdata_filled <- readRDS("XCMS/temp_data/current_xdata_filled.rds")
-xdata_corrected <- applyAdjustedRtime(xdata_filled)
-dataA <- featureDefinitions(xdata_corrected) %>%
-  cbind(featureValues(xdata_corrected)) %>%
-  as.data.frame() %>%
-  select(mz=mzmed, time=rtmed, ends_with(".mzML"))
-dataA[is.na(dataA)] <- 0
-
-
-library(xMSannotator)
-xMSannotator::multilevelannotation(dataA, 
-                                   outloc = "G:/My Drive/FalkorFactor/XCMS/xMSannotator_data", 
-                                   num_nodes = 2, corthresh = 0.9)
-
-

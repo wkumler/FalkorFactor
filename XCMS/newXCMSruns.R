@@ -158,7 +158,7 @@ clean_peakdf <- chromPeaks(xdata_cleanpeak) %>%
   arrange(mz) %>%
   filter(filename==given_file)
 file_eic <- as.data.table(grabSingleFileData(given_file))
-pdf(width = 17, height = 11)
+pdf(width = 17, height = 11, file = "XCMS")
 par(mfrow=c(6, 8))
 par(mar=c(2.1, 2.1, 0.1, 0.1))
 apply(clean_peakdf, 1, function(x){

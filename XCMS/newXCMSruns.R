@@ -81,6 +81,45 @@ qscoreCalculator <- function(eic){
   #Return the quality score
   return(round(SNR*peak_cor^4*log10(max(eic$int))))
 }
+isIso <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
+  #Is the feature an isotope? I.e., is there a reasonable peak 1.003355 daltons less?
+  #Load the file and apply retention time correction
+  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_data <- grabSingleFileData(file_path)
+  file_data$rt <- xcms::adjustedRtime(xdata)[
+    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
+      factor(file_data$rt)]
+  library(data.table)
+  file_data_table <- as.data.table(file_data)
+  peak_splits <- split(file_peaks, ceiling(seq_len(nrow(file_peaks))/40))
+  
+  iso_matches_all <- lapply(peak_splits, function(i){
+    eic_many <- file_data_table[mz%between%c(min(i$mzmin), max(i$mzmax))]
+    individual_peaks <- split(i, seq_len(nrow(i)))
+    iso_matches <- lapply(individual_peaks, function(peak_row_data){
+      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                             rt%between%c(peak_row_data["rtmin"], 
+                                          peak_row_data["rtmax"])]
+      is_M1 <- checkPeakCor(mass = peak_row_data["mz"]-1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      is_M2 <- checkPeakCor(mass = peak_row_data["mz"]-2*1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      is_M3 <- checkPeakCor(mass = peak_row_data["mz"]-3*1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      is_S34 <- checkPeakCor(mass = peak_row_data["mz"]-1.995796,
+                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                             init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      return(cbind(is_M1, is_M2, is_M3, is_S34))
+    })
+    return(do.call(rbind, iso_matches))
+  })
+  iso_matches_all <- do.call(rbind, iso_matches_all)
+  colnames(iso_matches_all) <- c("M1_match", "M2_match", "M3_match", "S34_match")
+  return(cbind(file_peaks, iso_matches_all))
+}
 isAdduct <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
   #Is the feature an adduct? I.e., is there a reasonable peak at the [M+H] mass too?
   file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
@@ -90,28 +129,35 @@ isAdduct <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm)
       factor(file_data$rt)]
   library(data.table)
   file_data_table <- as.data.table(file_data)
+  peak_splits <- split(file_peaks, ceiling(seq_len(nrow(file_peaks))/40))
   
-  adduct_matches <- t(apply(file_peaks[,c("mz","rtmin","rtmax")], 1, function(peak_row_data){
-    init_eic <- file_data_table[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
-                          rt%between%c(peak_row_data["rtmin"], 
-                                       peak_row_data["rtmax"])]
-    is_Na <- checkPeakCor(mass = peak_row_data["mz"]-22.98922+1.007276,
-                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                          init_eic = init_eic, file_data_table = file_data_table, pmppm = pmppm)
-    is_NH4 <- checkPeakCor(mass = peak_row_data["mz"]-18.0338+1.007276,
-                           rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                           init_eic = init_eic, file_data_table = file_data_table, pmppm = pmppm)
-    is_H2O_H <- checkPeakCor(mass = peak_row_data["mz"]+18.0106,
+  adduct_matches_all <- lapply(peak_splits, function(i){
+    eic_many <- file_data_table[mz%between%c(min(i$mzmin), max(i$mzmax))]
+    individual_peaks <- split(i, seq_len(nrow(i)))
+    adduct_matches <- lapply(individual_peaks, function(peak_row_data){
+      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                             rt%between%c(peak_row_data["rtmin"], 
+                                          peak_row_data["rtmax"])]
+      is_Na <- checkPeakCor(mass = peak_row_data["mz"]-22.98922+1.007276,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = file_data_table, pmppm = pmppm)
+      is_NH4 <- checkPeakCor(mass = peak_row_data["mz"]-18.0338+1.007276,
                              rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
                              init_eic = init_eic, file_data_table = file_data_table, pmppm = pmppm)
-    is_2H <- checkPeakCor(mass = peak_row_data["mz"]*2-1.007276,
-                          rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                          init_eic = init_eic, file_data_table = file_data_table, pmppm = pmppm)
-    
-    return(cbind(is_Na, is_NH4, is_H2O_H, is_2H))
-  }))
-  colnames(adduct_matches) <- c("Na_match", "NH4_match", "H2O_H_match", "2H_match")
-  return(cbind(file_peaks, adduct_matches))
+      is_H2O_H <- checkPeakCor(mass = peak_row_data["mz"]+18.0106,
+                               rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                               init_eic = init_eic, file_data_table = file_data_table, pmppm = pmppm)
+      is_2H <- checkPeakCor(mass = peak_row_data["mz"]*2-1.007276,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = file_data_table, pmppm = pmppm)
+      
+      return(cbind(is_Na, is_NH4, is_H2O_H, is_2H))
+    })
+    return(do.call(rbind, adduct_matches))
+  })
+  adduct_matches_all <- do.call(rbind, adduct_matches_all)
+  colnames(adduct_matches_all) <- c("Na_match", "NH4_match", "H2O_H_match", "2H_match")
+  return(cbind(file_peaks, adduct_matches_all))
 }
 checkPeakCor <- function(mass, rtmin, rtmax, init_eic, file_data_table, pmppm){
   given_eic <- file_data_table[mz%between%pmppm(mass, ppm = 5) & rt%between%c(rtmin, rtmax)]
@@ -261,78 +307,18 @@ feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
   arrange(feature, sample)
 
-is_peak_iso <- pblapply(split(feature_peaks, feature_peaks$file_name), 
+is_peak_iso <- bplapply(split(feature_peaks, feature_peaks$file_name), 
                         FUN = isIso, xdata=xdata_filled,
                         grabSingleFileData=grabSingleFileData,
                         checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
   do.call(what = rbind) %>% as.data.frame()
-isIso <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
-  #Is the feature an isotope? I.e., is there a reasonable peak 1.003355 daltons less?
-  #Load the file and apply retention time correction
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
-  file_data <- grabSingleFileData(file_path)
-  file_data$rt <- xcms::adjustedRtime(xdata)[
-    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
-      factor(file_data$rt)]
-  library(data.table)
-  file_data_table <- as.data.table(file_data)
-  peak_splits <- split(file_peaks, ceiling(seq_len(nrow(file_peaks))/40))
-  
-  iso_matches_all <- lapply(peak_splits, function(i){
-    eic_many <- file_data_table[mz%between%c(min(i$mzmin), max(i$mzmax))]
-    individual_peaks <- split(i, seq_len(nrow(i)))
-    iso_matches <- lapply(individual_peaks, function(peak_row_data){
-      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
-                             rt%between%c(peak_row_data["rtmin"], 
-                                          peak_row_data["rtmax"])]
-      is_M1 <- checkPeakCor(mass = peak_row_data["mz"]-1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      is_M2 <- checkPeakCor(mass = peak_row_data["mz"]-2*1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      is_M3 <- checkPeakCor(mass = peak_row_data["mz"]-3*1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      is_S34 <- checkPeakCor(mass = peak_row_data["mz"]-1.995796,
-                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                             init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      return(cbind(is_M1, is_M2, is_M3, is_S34))
-    }) %>% do.call(what = rbind)
-  }) %>% do.call(what = rbind)
-  colnames(iso_matches_all) <- c("M1_match", "M2_match", "M3_match", "S34_match")
-  return(cbind(file_peaks, iso_matches_all))
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-is_peak_adduct <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+is_peak_adduct <- bplapply(split(feature_peaks, feature_peaks$file_name), 
                            FUN = isAdduct, xdata=xdata_filled,
                            grabSingleFileData=grabSingleFileData,
                            checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
   do.call(what = rbind) %>% as.data.frame()
 
-addisod_peaks_by_feature <- peaks_by_feature %>%
+addisod_peaks_by_feature <- feature_peaks %>%
   left_join(is_peak_iso) %>%
   left_join(is_peak_adduct)
 
@@ -341,19 +327,28 @@ addiso_features <- addisod_peaks_by_feature %>%
   summarise(prob_M1=median(M1_match), prob_M2=median(M2_match), prob_M3=median(M3_match),
             prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
             prob_H2O_H=median(H2O_H_match), prob_2H=median(`2H_match`)) %>%
-  `[`(,-1) %>% `>`(0.99) %>% rowSums() %>% as.logical() %>% which() %>%
+  `[`(,-1) %>% `>`(0.8) %>% rowSums() %>% as.logical() %>% which() %>%
   `[`(unique(addisod_peaks_by_feature$feature), .)
 
-cleaned_peaks_by_feature <- peaks_by_feature %>%
-  filter(!feature%in%addiso_features)
-
-removed_features <- addisod_peaks_by_feature %>%
+goodcor_features <- addisod_peaks_by_feature %>%
   filter(feature%in%addiso_features) %>%
   group_by(feature) %>%
-  summarise(med_m_H_mz=median(mz), med_rt=median(rt), med_qscore=median(qscore),
+  summarise(med_m_H_mz=median(mz), med_rt=median(rt),
             prob_M1=median(M1_match), prob_M2=median(M2_match), prob_M3=median(M3_match),
             prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
             prob_H2O_H=median(H2O_H_match), prob_2H=median(`2H_match`))
+
+possible_M1s <- goodcor_features %>%
+  filter(prob_M1>0.8) %>%
+  pull(feature) %>%
+  `[`(xcms::featureDefinitions(xdata_filled), .,) %>%
+  as.data.frame(stringsAsFactors=FALSE) %>%
+  select(mzmin, mzmax, rtmin, rtmax) %>%
+  split(seq_len(nrow(.)))
+
+
+
 removed_features[,-1] <- round(removed_features[,-1], digits = 4)
-removed_features[removed_features<0.99] <- "-------"
-as.data.frame(removed_features)
+removed_features <- as.data.frame(removed_features)
+removed_features[removed_features<0.8] <- "-------"
+removed_features

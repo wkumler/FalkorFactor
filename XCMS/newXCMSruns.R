@@ -1,6 +1,6 @@
 # XCMS, but with CAMERA this time
 # Just kidding, CAMERA doesn't do what I wanted it to at ALL
-# Update
+# Update: xMSannotator also sucks.
 
 # Functions ----
 pmppm <- function(mass, ppm=4){c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))}
@@ -80,43 +80,6 @@ qscoreCalculator <- function(eic){
   SNR <- (max(eic$int)-min(eic$int))/sd(norm_residuals*max(eic$int))
   #Return the quality score
   return(round(SNR*peak_cor^4*log10(max(eic$int))))
-}
-isIso <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
-  #Is the feature an isotope? I.e., is there a reasonable peak 1.003355 daltons less?
-  #Load the file and apply retention time correction
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
-  file_data <- grabSingleFileData(file_path)
-  file_data$rt <- xcms::adjustedRtime(xdata)[
-    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
-      factor(file_data$rt)]
-  library(data.table)
-  file_data_table <- as.data.table(file_data)
-  peak_splits <- split(file_peaks, ceiling(seq_len(nrow(file_peaks))/40))
-  
-  iso_matches_all <- lapply(peak_splits, function(i){
-    eic_many <- file_data_table[mz%between%c(min(i$mzmin), max(i$mzmax))]
-    individual_peaks <- split(i, seq_len(nrow(i)))
-    iso_matches <- lapply(individual_peaks, function(peak_row_data){
-      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
-                                    rt%between%c(peak_row_data["rtmin"], 
-                                                 peak_row_data["rtmax"])]
-      is_M1 <- checkPeakCor(mass = peak_row_data["mz"]-1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      is_M2 <- checkPeakCor(mass = peak_row_data["mz"]-2*1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      is_M3 <- checkPeakCor(mass = peak_row_data["mz"]-3*1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      is_S34 <- checkPeakCor(mass = peak_row_data["mz"]-1.995796,
-                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                             init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
-      return(cbind(is_M1, is_M2, is_M3, is_S34))
-    }) %>% do.call(what = rbind)
-  }) %>% do.call(what = rbind)
-  colnames(iso_matches_all) <- c("M1_match", "M2_match", "M3_match", "S34_match")
-  return(cbind(file_peaks, iso_matches_all))
 }
 isAdduct <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
   #Is the feature an adduct? I.e., is there a reasonable peak at the [M+H] mass too?
@@ -298,11 +261,71 @@ feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
   arrange(feature, sample)
 
-is_peak_iso <- pblapply(split(peaks_by_feature, peaks_by_feature$file_name), 
+is_peak_iso <- pblapply(split(feature_peaks, feature_peaks$file_name), 
                         FUN = isIso, xdata=xdata_filled,
                         grabSingleFileData=grabSingleFileData,
                         checkPeakCor=checkPeakCor, pmppm=pmppm) %>%
   do.call(what = rbind) %>% as.data.frame()
+isIso <- function(file_peaks, xdata, grabSingleFileData, checkPeakCor, pmppm){
+  #Is the feature an isotope? I.e., is there a reasonable peak 1.003355 daltons less?
+  #Load the file and apply retention time correction
+  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_data <- grabSingleFileData(file_path)
+  file_data$rt <- xcms::adjustedRtime(xdata)[
+    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][
+      factor(file_data$rt)]
+  library(data.table)
+  file_data_table <- as.data.table(file_data)
+  peak_splits <- split(file_peaks, ceiling(seq_len(nrow(file_peaks))/40))
+  
+  iso_matches_all <- lapply(peak_splits, function(i){
+    eic_many <- file_data_table[mz%between%c(min(i$mzmin), max(i$mzmax))]
+    individual_peaks <- split(i, seq_len(nrow(i)))
+    iso_matches <- lapply(individual_peaks, function(peak_row_data){
+      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                             rt%between%c(peak_row_data["rtmin"], 
+                                          peak_row_data["rtmax"])]
+      is_M1 <- checkPeakCor(mass = peak_row_data["mz"]-1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      is_M2 <- checkPeakCor(mass = peak_row_data["mz"]-2*1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      is_M3 <- checkPeakCor(mass = peak_row_data["mz"]-3*1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      is_S34 <- checkPeakCor(mass = peak_row_data["mz"]-1.995796,
+                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                             init_eic = init_eic, file_data_table = eic_many, pmppm = pmppm)
+      return(cbind(is_M1, is_M2, is_M3, is_S34))
+    }) %>% do.call(what = rbind)
+  }) %>% do.call(what = rbind)
+  colnames(iso_matches_all) <- c("M1_match", "M2_match", "M3_match", "S34_match")
+  return(cbind(file_peaks, iso_matches_all))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 is_peak_adduct <- bplapply(split(peaks_by_feature, peaks_by_feature$file_name), 
                            FUN = isAdduct, xdata=xdata_filled,
                            grabSingleFileData=grabSingleFileData,

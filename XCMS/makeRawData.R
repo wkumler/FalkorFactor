@@ -37,16 +37,19 @@ grabSingleFileMS2 <- function(filename){
 }
 
 # Metadata ----
-sample_files <- normalizePath(list.files("falkor_mzMLs", pattern = "Smp|Blk|Std", 
-                                         full.names = TRUE))
+sample_files <- normalizePath(setdiff(
+  list.files("mzMLs", pattern = "Smp|Blk|Std|Poo", full.names = TRUE),
+  list.files("mzMLs", pattern = "neg|pos|QC", full.names = TRUE)))
 
 metadframe <- data.frame(
   fileid=basename(sample_files),
-  depth=c("Blank", "DCM", "25m", "Std")[c(1, ceiling(1:24/3)%%2+2)],
-  spindir=c("Blank", "Cyclone", "Anticyclone", "Std")[c(1, (1-ceiling(1:24/12)%%2)+2)],
-  time=c("Blank", "Morning", "Afternoon", "Std")[c(1, ceiling(1:24/6)%%2+2)]
+  depth=c("Blank", "Pooled", "DCM", "25m", "Std")[
+    c(1, rep(2, 6), ceiling(1:24/3)%%2+3, rep(5, 10))],
+  spindir=c("Blank", "Pooled", "Cyclone", "Anticyclone", "Std")[
+    c(1, rep(2, 6), (1-ceiling(1:24/12)%%2)+3, rep(5, 10))],
+  time=c("Blank", "Pooled", "Morning", "Afternoon", "Std")[
+    c(1, rep(2, 6), ceiling(1:24/6)%%2+3, rep(5, 10))]
 )
-write.csv(metadframe, "Data/falkor_metadata.csv", row.names = FALSE)
 
 # Grab the actual data and clean up a little ----
 raw_data <- pblapply(sample_files, grabSingleFileData)
@@ -55,7 +58,7 @@ raw_data <- pblapply(seq_along(raw_data), function(x){
 })
 raw_data <- do.call(rbind, raw_data)
 raw_data <- raw_data[raw_data$rt>60&raw_data$rt<1100,]
-saveRDS(raw_data, file = "Data/MS1_data_frame")
+saveRDS(raw_data, file = "MS1_data_frame.rds")
 
 # Grab MSMS data and clean up a little ----
 msms_data_dir <- "falkor_mzMLs/MSMS"

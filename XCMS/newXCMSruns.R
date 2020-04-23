@@ -175,6 +175,7 @@ trapz <- function(x, y) {
 
 
 # Setup things ----
+start_time <- Sys.time()
 library(tidyverse)
 library(data.table)
 library(pbapply)
@@ -197,9 +198,8 @@ metadata <- data.frame(
 
 
 # Peakpicking ----
-start_time <- Sys.time()
-raw_data <- readRDS(file = "XCMS/temp_data/current_raw_data.rds")
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
+raw_data <- readMSData(files = ms_files, pdata = metadata, msLevel. = 1, 
+                       verbose = TRUE, centroided. = TRUE, mode = "onDisk")
 cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
                      snthresh = 1, prefilter = c(0, 10000), 
                      integrate = 2, mzCenterFun = "wMean", 
@@ -208,10 +208,9 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
                      extendLengthMSW = TRUE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
-print(Sys.time()-start_time)
+message(Sys.time()-start_time)
 # 8 minutes
 
-start_time <- Sys.time()
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 xcms_peakdf <- chromPeaks(xdata) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
@@ -233,7 +232,7 @@ write.csv(peakdf_qscored, file = "XCMS/temp_data/peakdf_qscored.csv",
           row.names = FALSE)
 xdata_cleanpeak <- `chromPeaks<-`(xdata, peakdf_qscored)
 saveRDS(xdata_cleanpeak, file = "XCMS/temp_data/xdata_cleanpeak.rds")
-print(Sys.time()-start_time)
+message(Sys.time()-start_time)
 # 10 minutes?
 
 
@@ -266,7 +265,6 @@ dev.off()
 
 
 # Other XCMS things (rtcor, group) ----
-start_time <- Sys.time()
 register(BPPARAM = SerialParam())
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 obp <- ObiwarpParam(binSize = 0.1, centerSample = 4, 
@@ -284,7 +282,7 @@ fpp <- FillChromPeaksParam()
 xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = fpp))
 
 saveRDS(xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
-print(Sys.time()-start_time)
+message(Sys.time()-start_time)
 # 10 minutes
 
 show(featureDefinitions(xdata_filled))
@@ -350,12 +348,24 @@ v[v<0.9] <- "-------"
 v <- cbind(addiso_feature_defs, v[,-1])
 
 
+saveRDS(addiso_feature_defs, file = "XCMS/temp_data/isoadd_features.rds")
+message(Sys.time()-start_time)
 
 
+# Calculate isotopes and adducts for remaining peaks ----
+xdata_filled <- readRDS("XCMS/temp_data/current_xdata_filled.rds")
+feature_defs <- featureDefinitions(xdata_filled)
+addiso_feature_defs <- readRDS("XCMS/temp_data/isoadd_features.rds")
+clean_feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
+  cbind(feature=sprintf("FT%03d", i), 
+        peak_id=unlist(feature_defs$peakidx[i]))
+}) %>% 
+  do.call(what=rbind) %>% 
+  as.data.frame(stringsAsFactors=FALSE) %>% 
+  mutate(peak_id=as.numeric(peak_id)) %>%
+  cbind(chromPeaks(xdata_filled)[.$peak_id, ]) %>%
+  mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
+  arrange(feature, sample) %>%
+  filter(!feature%in%addiso_feature_defs$feature)
 
-
-
-
-
-
-
+head(clean_feature_peaks)

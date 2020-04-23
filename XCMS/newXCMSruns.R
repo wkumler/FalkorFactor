@@ -329,10 +329,33 @@ peakareamatch <- lapply(unique(is_peak_iso$feature), function(i){
 }) %>% do.call(what=rbind) %>% `[<-`(is.na(.), 0) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(feature=unique(is_peak_iso$feature)) %>%
+  select(feature, everything()) %>%
   arrange(feature)
 
-peakareamatch$feature[
-  which(rowSums(peakareamatch>0.99&peakshapematch>0.99)>=1)
-] %>% length()
+likely_addisos <- peakareamatch$feature[
+  which(rowSums(peakareamatch[,names(peakareamatch)!="feature"]>0.95&
+                  peakshapematch[,names(peakshapematch)!="feature"]>0.9)>=1)
+]
 
-rowSums(peakareamatch>0.95&peakshapematch>0.95) %>% table()
+addiso_feature_defs <- feature_defs %>%
+  `[`(peakareamatch$feature%in%likely_addisos, c("mzmed", "rtmed")) %>%
+  as.data.frame() %>%
+  round(digits = 5)
+
+v <- peakareamatch[peakareamatch$feature%in%likely_addisos,]
+v <- cbind(v, peakshapematch[peakshapematch$feature%in%likely_addisos,-1])
+v <- v[,c(1, c(1,9)+rep(1:8,each=2))]
+v[,-1] <- round(v[,-1], digits = 5)
+v[v<0.9] <- "-------"
+v <- cbind(addiso_feature_defs, v[,-1])
+
+
+
+
+
+
+
+
+
+
+

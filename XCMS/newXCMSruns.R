@@ -169,6 +169,70 @@ trapz <- function(x, y) {
   
   return(0.5*(p1-p2))
 }
+findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
+                          checkPeakCor, pmppm, trapz){
+  file_peaks <- file_peaks[order(file_peaks$rtmax),]
+  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_data <- grabSingleFileData(file_path)
+  file_data$rt <- xcms::adjustedRtime(xdata)[
+    MSnbase::fromFile(xdata)==unique(file_peaks$sample)][factor(file_data$rt)]
+  library(data.table)
+  file_data_table <- as.data.table(file_data)
+  
+  peak_splits <- split(file_peaks, ceiling(seq_len(nrow(file_peaks))/10))
+  
+  iso_matches_all <- lapply(peak_splits, function(i){
+    eic_many <- file_data_table[rt>min(i$rtmin)&rt<max(i$rtmax)]
+    individual_peaks <- split(i, seq_len(nrow(i)))
+    iso_matches <- lapply(individual_peaks, function(peak_row_data){
+      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                             rt%between%c(peak_row_data["rtmin"], peak_row_data["rtmax"])]
+      init_area <- trapz(init_eic$rt, init_eic$int)
+      is_M1 <- checkPeakCor(mass = peak_row_data["mz"]+1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, 
+                            pmppm = pmppm, trapz = trapz)
+      is_M2 <- checkPeakCor(mass = peak_row_data["mz"]+2*1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, 
+                            pmppm = pmppm, trapz = trapz)
+      is_M3 <- checkPeakCor(mass = peak_row_data["mz"]+3*1.003355,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, 
+                            pmppm = pmppm, trapz = trapz)
+      is_S34 <- checkPeakCor(mass = peak_row_data["mz"]+1.995796,
+                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                             init_eic = init_eic, file_data_table = eic_many, 
+                             pmppm = pmppm, trapz = trapz)
+      is_Na <- checkPeakCor(mass = peak_row_data["mz"]+22.98922-1.007276,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, 
+                            pmppm = pmppm, trapz = trapz)
+      is_NH4 <- checkPeakCor(mass = peak_row_data["mz"]+18.0338-1.007276,
+                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                             init_eic = init_eic, file_data_table = eic_many, 
+                             pmppm = pmppm, trapz = trapz)
+      is_H2O_H <- checkPeakCor(mass = peak_row_data["mz"]-18.0106,
+                               rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                               init_eic = init_eic, file_data_table = eic_many, 
+                               pmppm = pmppm, trapz = trapz)
+      is_2H <- checkPeakCor(mass = (peak_row_data["mz"]-1.007276+2*1.007276)/2,
+                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
+                            init_eic = init_eic, file_data_table = eic_many, 
+                            pmppm = pmppm, trapz = trapz)
+      return(c(init_area, is_M1, is_M2, is_M3, is_S34, is_Na, is_NH4, is_H2O_H, is_2H))
+    })
+    iso_matches <- do.call(rbind, iso_matches)
+    colnames(iso_matches) <- c("M_area", "M1_match", "M1_area",
+                               "M2_match", "M2_area", "M3_match", "M3_area",
+                               "S34_match", "S34_area", "Na_match", "Na_area",
+                               "NH4_match", "NH4_area", "H2O_H_match", "H2O_H_area",
+                               "X2H_match", "X2H_area")
+    return(iso_matches)
+  })
+  iso_matches_all <- do.call(rbind, iso_matches_all)
+  return(cbind(file_peaks, iso_matches_all))
+}
 # Make sure the dev version of XCMS is installed!
 
 
@@ -209,7 +273,7 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
 message(Sys.time()-start_time)
-# 8 minutes
+# 13 minutes
 
 xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
 xcms_peakdf <- chromPeaks(xdata) %>%
@@ -233,7 +297,7 @@ write.csv(peakdf_qscored, file = "XCMS/temp_data/peakdf_qscored.csv",
 xdata_cleanpeak <- `chromPeaks<-`(xdata, peakdf_qscored)
 saveRDS(xdata_cleanpeak, file = "XCMS/temp_data/xdata_cleanpeak.rds")
 message(Sys.time()-start_time)
-# 10 minutes?
+# 20 minutes
 
 
 
@@ -246,7 +310,7 @@ clean_peakdf <- chromPeaks(xdata_cleanpeak) %>%
   arrange(mz) %>%
   filter(filename==given_file)
 file_eic <- as.data.table(grabSingleFileData(given_file))
-pdf(width = 17, height = 11, file = "XCMS")
+pdf(width = 17, height = 11, file = "XCMS/some_picked_peaks.pdf")
 par(mfrow=c(6, 8))
 par(mar=c(2.1, 2.1, 0.1, 0.1))
 apply(clean_peakdf, 1, function(x){
@@ -283,7 +347,7 @@ xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = fpp))
 
 saveRDS(xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
 message(Sys.time()-start_time)
-# 10 minutes
+# 30 minutes
 
 show(featureDefinitions(xdata_filled))
 
@@ -350,6 +414,7 @@ v <- cbind(addiso_feature_defs, v[,-1])
 
 saveRDS(addiso_feature_defs, file = "XCMS/temp_data/isoadd_features.rds")
 message(Sys.time()-start_time)
+#40 minutes
 
 
 # Calculate isotopes and adducts for remaining peaks ----
@@ -366,6 +431,49 @@ clean_feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   cbind(chromPeaks(xdata_filled)[.$peak_id, ]) %>%
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
   arrange(feature, sample) %>%
-  filter(!feature%in%addiso_feature_defs$feature)
+  filter(!feature%in%rownames(addiso_feature_defs))
 
 head(clean_feature_peaks)
+clean_feature_peaks %>% group_by(feature) %>% summarize(medmz=median(mz),
+                                                        medrt=median(rt),
+                                                        avgint=mean(into))
+
+split_list <- split(clean_feature_peaks, clean_feature_peaks$file_name)
+find_addiso <- bplapply(split_list, FUN = findIsoAdduct, xdata=xdata_filled,
+                        grabSingleFileData=grabSingleFileData,
+                        checkPeakCor=checkPeakCor, 
+                        pmppm=pmppm, trapz=trapz) %>%
+  do.call(what = rbind) %>% as.data.frame() %>% 
+  `rownames<-`(NULL) %>% arrange(feature)
+peakshapematch <- find_addiso %>%
+  group_by(feature) %>%
+  summarise(prob_M1=median(M1_match), prob_M2=median(M2_match), 
+            prob_M3=median(M3_match), prob_S34=median(S34_match),
+            prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
+            prob_H2O_H=median(H2O_H_match), prob_2H=median(X2H_match))
+peakareamatch <- lapply(unique(find_addiso$feature), function(i){
+  feature_areas <- find_addiso[find_addiso$feature==i,]
+  area_cols <- grep(pattern = "area$", names(feature_areas), value = TRUE)[-1]
+  sapply(area_cols, function(x){
+    suppressWarnings(cor(feature_areas$M_area, feature_areas[[x]]))
+  })
+}) %>% do.call(what=rbind) %>% `[<-`(is.na(.), 0) %>% 
+  as.data.frame(stringsAsFactors=FALSE) %>%
+  mutate(feature=unique(find_addiso$feature)) %>%
+  select(feature, everything()) %>%
+  arrange(feature)
+final_features <- find_addiso %>% 
+  group_by(feature) %>%
+  summarize(medmz=median(mz), medrt=median(rt), avgarea=mean(M_area)) %>%
+  as.data.frame(stringsAsFactors=FALSE)
+final_diffreport <- split(find_addiso, find_addiso$feature) %>%
+  lapply(function(x){
+    DCM_areas <- x$M_area[grep(pattern = "DCM", x$file_name)]
+    m25_areas <- x$M_area[grep(pattern = "25m", x$file_name)]
+    if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0.05, 1))
+    c(pval=t.test(DCM_areas, m25_areas)$p.value, 
+      diff=mean(DCM_areas)/mean(m25_areas))
+  }) %>% do.call(what = rbind) %>% as.data.frame() %>%
+  mutate(feature=rownames(.)) %>% left_join(final_features, ., by="feature") %>%
+  arrange(diff)
+head(final_diffreport)

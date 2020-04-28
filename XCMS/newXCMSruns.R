@@ -1,6 +1,6 @@
 # XCMS, but with CAMERA this time
 # Just kidding, CAMERA doesn't do what I wanted it to at ALL
-# Update: xMSannotator also sucks.
+# Update: xMSannotator also sucks. Time to try SIRIUS!
 
 # Functions ----
 pmppm <- function(mass, ppm=4){c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))}
@@ -434,39 +434,46 @@ clean_feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   filter(!feature%in%rownames(addiso_feature_defs))
 
 head(clean_feature_peaks)
-clean_feature_peaks %>% group_by(feature) %>% summarize(medmz=median(mz),
-                                                        medrt=median(rt),
+clean_feature_peaks %>% group_by(feature) %>% summarize(mzmed=median(mz),
+                                                        rtmed=median(rt),
                                                         avgint=mean(into))
 
 split_list <- split(clean_feature_peaks, clean_feature_peaks$file_name)
-find_addiso <- bplapply(split_list, FUN = findIsoAdduct, xdata=xdata_filled,
+final_peaks <- bplapply(split_list, FUN = findIsoAdduct, xdata=xdata_filled,
                         grabSingleFileData=grabSingleFileData,
                         checkPeakCor=checkPeakCor, 
                         pmppm=pmppm, trapz=trapz) %>%
   do.call(what = rbind) %>% as.data.frame() %>% 
   `rownames<-`(NULL) %>% arrange(feature)
-peakshapematch <- find_addiso %>%
+peakshapematch <- final_peaks %>%
   group_by(feature) %>%
   summarise(prob_M1=median(M1_match), prob_M2=median(M2_match), 
             prob_M3=median(M3_match), prob_S34=median(S34_match),
             prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
             prob_H2O_H=median(H2O_H_match), prob_2H=median(X2H_match))
-peakareamatch <- lapply(unique(find_addiso$feature), function(i){
-  feature_areas <- find_addiso[find_addiso$feature==i,]
+peakareamatch <- lapply(unique(final_peaks$feature), function(i){
+  feature_areas <- final_peaks[final_peaks$feature==i,]
   area_cols <- grep(pattern = "area$", names(feature_areas), value = TRUE)[-1]
   sapply(area_cols, function(x){
     suppressWarnings(cor(feature_areas$M_area, feature_areas[[x]]))
   })
-}) %>% do.call(what=rbind) %>% `[<-`(is.na(.), 0) %>% 
+}) %>% 
+  do.call(what=rbind) %>% `[<-`(is.na(.), 0) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>%
-  mutate(feature=unique(find_addiso$feature)) %>%
+  mutate(feature=unique(final_peaks$feature)) %>%
   select(feature, everything()) %>%
   arrange(feature)
-final_features <- find_addiso %>% 
+saveRDS(final_peaks, file = "XCMS/final_peaks.rds")
+
+
+
+# Analysis! ----
+final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
+final_features <- final_peaks %>% 
   group_by(feature) %>%
-  summarize(medmz=median(mz), medrt=median(rt), avgarea=mean(M_area)) %>%
+  summarize(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area)) %>%
   as.data.frame(stringsAsFactors=FALSE)
-final_diffreport <- split(find_addiso, find_addiso$feature) %>%
+final_diffreport <- split(final_peaks, final_peaks$feature) %>%
   lapply(function(x){
     DCM_areas <- x$M_area[grep(pattern = "DCM", x$file_name)]
     m25_areas <- x$M_area[grep(pattern = "25m", x$file_name)]
@@ -475,5 +482,137 @@ final_diffreport <- split(find_addiso, find_addiso$feature) %>%
       diff=mean(DCM_areas)/mean(m25_areas))
   }) %>% do.call(what = rbind) %>% as.data.frame() %>%
   mutate(feature=rownames(.)) %>% left_join(final_features, ., by="feature") %>%
-  arrange(diff)
-head(final_diffreport)
+  arrange(mzmed)
+DCM_enriched <- final_diffreport %>%
+  filter(diff>1) %>%
+  filter(pval<0.01) %>%
+  arrange(pval)
+surface_enriched <- final_diffreport %>%
+  filter(diff<1) %>%
+  filter(pval<0.01) %>%
+  arrange(pval)
+
+
+
+# SIRIUS ----
+final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
+final_features <- final_peaks %>% 
+  group_by(feature) %>%
+  summarize(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area),
+            areamed=median(M_area), 
+            M1_areamed=ifelse(median(M1_match>0.9), median(M1_area), NA), 
+            M2_areamed=ifelse(median(M2_match>0.9), median(M2_area), NA), 
+            M3_areamed=ifelse(median(M3_match>0.9), median(M3_area), NA),
+            S34_areamed=ifelse(median(S34_match>0.9), median(S34_area), NA),
+            Na_areamed=ifelse(median(Na_match>0.9), median(Na_area), NA),
+            NH4_areamed=ifelse(median(NH4_match>0.9), median(NH4_area), NA),
+            H2O_H_areamed=ifelse(median(H2O_H_match>0.9), median(H2O_H_area), NA),
+            X2H_areamed=ifelse(median(X2H_match>0.9), median(X2H_area), NA)) %>%
+  as.data.frame(stringsAsFactors=FALSE)
+
+MSMS_files <- "mzMLs/MSMS/" %>%
+  list.files(pattern = ".mzML", full.names = TRUE) %>%
+  normalizePath() %>%
+  `[`(grepl("pos", x = .))
+raw_MSMS_data <- lapply(MSMS_files, grabSingleFileMS2) %>%
+  mapply(FUN = cbind, as.numeric(gsub(".*DDApos|.mzML", "", MSMS_files)), 
+         SIMPLIFY = FALSE) %>%
+  lapply(`names<-`, c("rt", "premz", "fragmz", "int", "voltage")) %>%
+  do.call(what = rbind) %>% as.data.table()
+
+
+# MGF method
+output_dir <- "XCMS/sirius_temp/"
+mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
+  if(!nrow(ms2)){
+    outtext <- c("BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=1",
+                 "CHARGE=1+",
+                 apply(ms1, 1, paste, collapse=" "),
+                 "END IONS",
+                 "")
+  } else {
+    outtext <- c("BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=1",
+                 "CHARGE=1+",
+                 apply(ms1, 1, paste, collapse=" "),
+                 "END IONS",
+                 "",
+                 "BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=2",
+                 "CHARGE=1+",
+                 apply(ms2[ms2$voltage==20, c("fragmz", "int")], 
+                       1, paste, collapse=" "),
+                 "END IONS",
+                 "",
+                 "BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=2",
+                 "CHARGE=1+",
+                 apply(ms2[ms2$voltage==35, c("fragmz", "int")], 
+                       1, paste, collapse=" "),
+                 "END IONS",
+                 "BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=2",
+                 "CHARGE=1+",
+                 apply(ms2[ms2$voltage==50, c("fragmz", "int")], 
+                       1, paste, collapse=" "),
+                 "END IONS")
+  }
+  writeLines(outtext, con = output_file)
+}
+
+for(feature_num in head(final_features$feature, 20)){
+  output_file <- paste0(output_dir, feature_num, ".mgf")
+  feature_msdata <- final_features[final_features$feature==feature_num, ]
+  ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$areamed),
+               c(feature_msdata$mzmed+1.003355, feature_msdata$M1_areamed),
+               c(feature_msdata$mzmed+1.003355*2, feature_msdata$M2_areamed),
+               c(feature_msdata$mzmed+1.003355*3, feature_msdata$M3_areamed))
+  ms1 <- ms1[!is.na(ms1[,2]), , drop=FALSE]
+  ms2 <- raw_MSMS_data[premz%between%pmppm(feature_msdata$mzmed)&
+                         rt%between%(feature_msdata$rtmed+c(-10, 10))]
+  mgf_maker(feature_msdata = feature_msdata, ms1 = ms1, 
+            ms2 = ms2, output_file = output_file)
+}
+
+
+sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.0.1//',
+                     'sirius-console-64.exe" ',
+                     ' -p orbitrap',
+                     ' --database bio',
+                     ' -i [M+H]+ ', '"', normalizePath(output_dir), '"')
+
+sirius_output <- system(sirius_cmd, intern = TRUE)
+sirius_clean <- sirius_output %>%
+  grep(pattern = "^Sirius|^[[:digit:]]", value = TRUE) %>%
+  split(cumsum(grepl(pattern = "Sirius", x = .))) %>%
+  lapply(function(feature_data){
+    feature_num <- substr(x = feature_data[1], start = 22, 26)
+    clean_data <- lapply(strsplit(feature_data[-1], split = "\t"), function(x){
+      x[1] <- sub(pattern = "^[[:digit:]]\\.\\)\ ", "", x = x[1])
+      x <- gsub(pattern = ".*\\:\\ \\+*", "", x)
+      x <- gsub(pattern = "\\ \\%", "", x)
+    })
+    if(!length(clean_data)){
+      output <- matrix(c(feature_num, rep(NA, 8)), nrow = 1)
+    } else {
+      output <- do.call(rbind, clean_data) %>%
+        cbind(feature_num, .)
+    }
+    colnames(output) <- c("feature", "formula", "adduct", "score", "tree", 
+                          "iso", "peaks", "expl_int", "iso_peaks")
+    return(output)
+  }) %>% do.call(what = rbind)
+sirius_clean
+
+sirius_clean %>%
+  as.data.frame(stringsAsFactors=FALSE) %>%
+  left_join(final_features) %>%
+  arrange(mzmed) %>% select(!contains("_"))
+
+final_features %>% filter(feature=="FT002")

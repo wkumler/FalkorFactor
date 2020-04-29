@@ -102,11 +102,11 @@ isIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       init_area <- trapz(init_eic$rt, init_eic$int)
       
       
-      isos_to_check <- c(C13=1.003355, X2C13=2*1.003355, S34=1.995796, S33=0.999387,
-                         N15=0.997035, O18=2.004244) + peak_row_data[["mz"]]
-      adducts_to_check <- c(Na=22.98922-1.007276, NH4=18.0338-1.007276,
-                            H2O_H=-18.0106, K=38.963708-1.007276) + peak_row_data[["mz"]]
-      more_adducts <- c(X2H=peak_row_data[["mz"]]-1.007276+2*1.007276)/2
+      isos_to_check <- c(C13=-1.003355, X2C13=-2*1.003355, S34=-1.995796, S33=-0.999387,
+                         N15=-0.997035, O18=-2.004244) + peak_row_data[["mz"]]
+      adducts_to_check <- c(Na=-22.98922+1.007276, NH4=-18.0338+1.007276,
+                            H2O_H=+18.0106, K=-38.963708+1.007276) + peak_row_data[["mz"]]
+      more_adducts <- c(X2H=peak_row_data[["mz"]]*2-2*1.007276+1.007276)
       
       masses_to_check <- c(isos_to_check, adducts_to_check, more_adducts)
       
@@ -337,10 +337,13 @@ is_peak_iso <- bplapply(split(feature_peaks, feature_peaks$file_name),
 
 peakshapematch <- is_peak_iso %>%
   group_by(feature) %>%
-  summarise(prob_M1=median(M1_match), prob_M2=median(M2_match), 
-            prob_M3=median(M3_match), prob_S34=median(S34_match),
-            prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
-            prob_H2O_H=median(H2O_H_match), prob_2H=median(X2H_match))
+  summarise(C13_prob=median(C13_match), X2C13_prob=median(X2C13_match), 
+            S34_prob=median(S34_match), S33_prob=median(S33_match),
+            N15_prob=median(N15_match), O18_prob=median(O18_match),
+            Na_prob=median(Na_match), NH4_prob=median(NH4_match), 
+            H2O_H_prob=median(H2O_H_match), K_prob=median(K_match),
+            X2H_prob=median(X2H_match)) %>%
+  as.data.frame()
 
 peakareamatch <- lapply(unique(is_peak_iso$feature), function(i){
   feature_areas <- is_peak_iso[is_peak_iso$feature==i,]
@@ -348,7 +351,8 @@ peakareamatch <- lapply(unique(is_peak_iso$feature), function(i){
   sapply(area_cols, function(x){
     suppressWarnings(cor(feature_areas$M_area, feature_areas[[x]]))
   })
-}) %>% do.call(what=rbind) %>% `[<-`(is.na(.), 0) %>% 
+}) %>% do.call(what=rbind) %>% 
+  `[<-`(is.na(.), 0) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(feature=unique(is_peak_iso$feature)) %>%
   select(feature, everything()) %>%
@@ -366,12 +370,13 @@ addiso_feature_defs <- feature_defs %>%
 
 v <- peakareamatch[peakareamatch$feature%in%likely_addisos,]
 v <- cbind(v, peakshapematch[peakshapematch$feature%in%likely_addisos,-1])
-v <- v[,c(1, c(1,9)+rep(1:8,each=2))]
-v[,-1] <- round(v[,-1], digits = 5)
+cmpds <- c("C13", "X2C13", "N15", "O18", "S33", "S34", "Na", "NH4", "K", "H2O_H", "X2H")
+v <- v[,paste0(rep(cmpds, each=2), c("_prob", "_area"))]
+v <- round(v, digits = 5)
 v[v<0.9] <- "-------"
 v <- cbind(addiso_feature_defs, v[,-1])
 
-
+v[which(v["S33_area"]!="-------"&v["S33_prob"]!="-------"&v["rtmed"]<780),]
 saveRDS(addiso_feature_defs, file = "XCMS/temp_data/isoadd_features.rds")
 message(Sys.time()-start_time)
 #40 minutes
@@ -431,11 +436,11 @@ saveRDS(final_peaks, file = "XCMS/final_peaks.rds")
 # Analysis! ----
 # Single compound annotation sanity checks
 # Formula: C5H12NO2 (betaine+H)
-feature_num <- "FT112"
+feature_num <- "FT054"
 options(scipen = 5)
 
 ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
-  select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area) %>%
+  select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area, S33_area) %>%
   pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
 
 ggplot(ft_isodata, aes(x=M_area, y=value)) + 
@@ -454,10 +459,12 @@ lmoutput <- split(ft_isodata, ft_isodata$name) %>%
 (0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00368)-lmoutput[["N15_area"]]["M_area", "Estimate"]))]
 (0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00205)-lmoutput[["O18_area"]]["M_area", "Estimate"]))]
 (0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0421)-lmoutput[["S34_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0075)-lmoutput[["S33_area"]]["M_area", "Estimate"]))]
 final_peaks %>% filter(feature==feature_num) %>%
   summarize(mzmed=median(mz), rtmed=median(rt)) %>%
   mutate(C13=mzmed+1.003355, X2C13=mzmed+1.003355*2,
-         N15=mzmed+0.997035, O18=mzmed+2.004244, S34=mzmed+1.995796)
+         N15=mzmed+0.997035, O18=mzmed+2.004244, 
+         S33=mzmed+0.999387, S34=mzmed+1.995796)
 
 
 seq(0.005, 0.015, 0.0001)[which.min(abs(sapply(seq(0.005, 0.015, 0.0001), dbinom, x=1, size=5)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
@@ -499,6 +506,7 @@ final_features <- final_peaks %>%
             C13_areamed=ifelse(median(C13_match>0.9), median(C13_area), NA), 
             X2C13_areamed=ifelse(median(X2C13_match>0.9), median(X2C13_area), NA), 
             S34_areamed=ifelse(median(S34_match>0.9), median(S34_area), NA),
+            S33_areamed=ifelse(median(S33_match>0.9), median(S33_area), NA),
             N15_areamed=ifelse(median(N15_match>0.9), median(N15_area), NA),
             O18_areamed=ifelse(median(O18_match>0.9), median(O18_area), NA),
             Na_areamed=ifelse(median(Na_match>0.9), median(Na_area), NA),

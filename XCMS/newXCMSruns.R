@@ -522,7 +522,7 @@ raw_MSMS_data <- lapply(MSMS_files, grabSingleFileMS2) %>%
 
 
 # MGF method
-output_dir <- "XCMS/sirius_temp/"
+output_dir <- "XCMS/sirius_temp"
 mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
   if(!nrow(ms2)){
     outtext <- c("BEGIN IONS",
@@ -566,8 +566,8 @@ mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
   writeLines(outtext, con = output_file)
 }
 
-for(feature_num in head(final_features$feature, 20)){
-  output_file <- paste0(output_dir, feature_num, ".mgf")
+for(feature_num in head(final_features$feature, 40)){
+  output_file <- paste0(output_dir, "\\", feature_num, ".mgf")
   feature_msdata <- final_features[final_features$feature==feature_num, ]
   ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$areamed),
                c(feature_msdata$mzmed+1.003355, feature_msdata$M1_areamed),
@@ -585,6 +585,7 @@ sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.0.1//',
                      'sirius-console-64.exe" ',
                      ' -p orbitrap',
                      ' --database bio',
+                     #' --fingerid',
                      ' -i [M+H]+ ', '"', normalizePath(output_dir), '"')
 
 sirius_output <- system(sirius_cmd, intern = TRUE)
@@ -592,6 +593,7 @@ sirius_clean <- sirius_output %>%
   grep(pattern = "^Sirius|^[[:digit:]]", value = TRUE) %>%
   split(cumsum(grepl(pattern = "Sirius", x = .))) %>%
   lapply(function(feature_data){
+    dput(feature_data)
     feature_num <- substr(x = feature_data[1], start = 22, 26)
     clean_data <- lapply(strsplit(feature_data[-1], split = "\t"), function(x){
       x[1] <- sub(pattern = "^[[:digit:]]\\.\\)\ ", "", x = x[1])

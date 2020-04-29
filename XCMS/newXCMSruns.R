@@ -449,6 +449,40 @@ saveRDS(final_peaks, file = "XCMS/final_peaks.rds")
 
 
 # Analysis! ----
+# Single compound annotation sanity checks
+# Formula: C5H12NO2 (betaine+H)
+feature_num <- "FT054"
+options(scipen = 5)
+
+ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
+  select(M_area, C13_area, N15_area, O18_area, X2C13_area) %>%
+  pivot_longer(cols = starts_with(c("C", "X", "N", "O")))
+
+ggplot(ft_isodata, aes(x=M_area, y=value)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  facet_wrap(~name, scales = "free_y") +
+  ggtitle(feature_num)
+
+lmoutput <- split(ft_isodata, ft_isodata$name) %>%
+  lapply(lm, formula=value~M_area) %>%
+  lapply(summary) %>%
+  lapply(`[[`, "coefficients")
+
+which.min(abs(sapply(1:10, dbinom, x=1, prob=0.0107)-lmoutput[["C13_area"]]["M_area", "Estimate"]))
+which.min(abs(sapply(1:10, dbinom, x=2, prob=0.0107)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))
+which.min(abs(sapply(1:10, dbinom, x=1, prob=0.00368)-lmoutput[["N15_area"]]["M_area", "Estimate"]))
+which.min(abs(sapply(1:10, dbinom, x=1, prob=0.00205)-lmoutput[["O18_area"]]["M_area", "Estimate"]))
+final_peaks %>% filter(feature==feature_num) %>%
+  summarize(mzmed=median(mz), rtmed=median(rt)) %>%
+  mutate(C13=mzmed+1.003355, X2C13=mzmed+1.003355*2,
+         N15=mzmed+0.997035, O18=mzmed+2.004244)
+
+
+seq(0.005, 0.015, 0.0001)[which.min(abs(sapply(seq(0.005, 0.015, 0.0001), dbinom, x=1, size=5)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
+
+
+# Multi-peak stuff
 final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
 final_features <- final_peaks %>% 
   group_by(feature) %>%

@@ -98,48 +98,28 @@ isIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
     individual_peaks <- split(i, seq_len(nrow(i)))
     iso_matches <- lapply(individual_peaks, function(peak_row_data){
       init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
-                            rt%between%c(peak_row_data["rtmin"], peak_row_data["rtmax"])]
+                             rt%between%c(peak_row_data["rtmin"], peak_row_data["rtmax"])]
       init_area <- trapz(init_eic$rt, init_eic$int)
-      is_M1 <- checkPeakCor(mass = peak_row_data["mz"]-1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, 
-                            pmppm = pmppm, trapz = trapz)
-      is_M2 <- checkPeakCor(mass = peak_row_data["mz"]-2*1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, 
-                            pmppm = pmppm, trapz = trapz)
-      is_M3 <- checkPeakCor(mass = peak_row_data["mz"]-3*1.003355,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, 
-                            pmppm = pmppm, trapz = trapz)
-      is_S34 <- checkPeakCor(mass = peak_row_data["mz"]-1.995796,
-                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                             init_eic = init_eic, file_data_table = eic_many, 
-                             pmppm = pmppm, trapz = trapz)
-      is_Na <- checkPeakCor(mass = peak_row_data["mz"]-22.98922+1.007276,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, 
-                            pmppm = pmppm, trapz = trapz)
-      is_NH4 <- checkPeakCor(mass = peak_row_data["mz"]-18.0338+1.007276,
-                             rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                             init_eic = init_eic, file_data_table = eic_many, 
-                             pmppm = pmppm, trapz = trapz)
-      is_H2O_H <- checkPeakCor(mass = peak_row_data["mz"]+18.0106,
-                               rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                               init_eic = init_eic, file_data_table = eic_many, 
-                               pmppm = pmppm, trapz = trapz)
-      is_2H <- checkPeakCor(mass = peak_row_data["mz"]*2-1.007276,
-                            rtmin=peak_row_data["rtmin"], rtmax=peak_row_data["rtmax"],
-                            init_eic = init_eic, file_data_table = eic_many, 
-                            pmppm = pmppm, trapz = trapz)
-      return(c(init_area, is_M1, is_M2, is_M3, is_S34, is_Na, is_NH4, is_H2O_H, is_2H))
+      
+      
+      isos_to_check <- c(C13=1.003355, X2C13=2*1.003355, S34=1.995796, S33=0.999387,
+                         N15=0.997035, O18=2.004244) + peak_row_data[["mz"]]
+      adducts_to_check <- c(Na=22.98922-1.007276, NH4=18.0338-1.007276,
+                            H2O_H=-18.0106, K=38.963708-1.007276) + peak_row_data[["mz"]]
+      more_adducts <- c(X2H=peak_row_data[["mz"]]-1.007276+2*1.007276)/2
+      
+      masses_to_check <- c(isos_to_check, adducts_to_check, more_adducts)
+      
+      output <- lapply(masses_to_check, checkPeakCor, rtmin=peak_row_data["rtmin"], 
+                       rtmax=peak_row_data["rtmax"], init_eic = init_eic, 
+                       file_data_table = eic_many, pmppm = pmppm, trapz = trapz)
+      linear_output <- do.call(c, output)
+      names(linear_output) <- paste0(rep(names(masses_to_check), each=2), 
+                                     c("_match", "_area"))
+      linear_output <- c(M_area=init_area, linear_output)
+      return(linear_output)
     })
     iso_matches <- do.call(rbind, iso_matches)
-    colnames(iso_matches) <- c("M_area", "M1_match", "M1_area",
-                               "M2_match", "M2_area", "M3_match", "M3_area",
-                               "S34_match", "S34_area", "Na_match", "Na_area",
-                               "NH4_match", "NH4_area", "H2O_H_match", "H2O_H_area",
-                               "X2H_match", "X2H_area")
     return(iso_matches)
   })
   iso_matches_all <- do.call(rbind, iso_matches_all)
@@ -190,7 +170,7 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       init_area <- trapz(init_eic$rt, init_eic$int)
       
       
-      isos_to_check <- c(C13=1.003355, X2C13=2*1.003355, S34=1.995796, 
+      isos_to_check <- c(C13=1.003355, X2C13=2*1.003355, S34=1.995796, S33=0.999387,
                          N15=0.997035, O18=2.004244) + peak_row_data[["mz"]]
       adducts_to_check <- c(Na=22.98922-1.007276, NH4=18.0338-1.007276,
                             H2O_H=-18.0106, K=38.963708-1.007276) + peak_row_data[["mz"]]
@@ -451,12 +431,12 @@ saveRDS(final_peaks, file = "XCMS/final_peaks.rds")
 # Analysis! ----
 # Single compound annotation sanity checks
 # Formula: C5H12NO2 (betaine+H)
-feature_num <- "FT054"
+feature_num <- "FT112"
 options(scipen = 5)
 
 ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
-  select(M_area, C13_area, N15_area, O18_area, X2C13_area) %>%
-  pivot_longer(cols = starts_with(c("C", "X", "N", "O")))
+  select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area) %>%
+  pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
 
 ggplot(ft_isodata, aes(x=M_area, y=value)) + 
   geom_point() + 
@@ -469,14 +449,15 @@ lmoutput <- split(ft_isodata, ft_isodata$name) %>%
   lapply(summary) %>%
   lapply(`[[`, "coefficients")
 
-which.min(abs(sapply(1:10, dbinom, x=1, prob=0.0107)-lmoutput[["C13_area"]]["M_area", "Estimate"]))
-which.min(abs(sapply(1:10, dbinom, x=2, prob=0.0107)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))
-which.min(abs(sapply(1:10, dbinom, x=1, prob=0.00368)-lmoutput[["N15_area"]]["M_area", "Estimate"]))
-which.min(abs(sapply(1:10, dbinom, x=1, prob=0.00205)-lmoutput[["O18_area"]]["M_area", "Estimate"]))
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0107)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=2, prob=0.0107)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00368)-lmoutput[["N15_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00205)-lmoutput[["O18_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0421)-lmoutput[["S34_area"]]["M_area", "Estimate"]))]
 final_peaks %>% filter(feature==feature_num) %>%
   summarize(mzmed=median(mz), rtmed=median(rt)) %>%
   mutate(C13=mzmed+1.003355, X2C13=mzmed+1.003355*2,
-         N15=mzmed+0.997035, O18=mzmed+2.004244)
+         N15=mzmed+0.997035, O18=mzmed+2.004244, S34=mzmed+1.995796)
 
 
 seq(0.005, 0.015, 0.0001)[which.min(abs(sapply(seq(0.005, 0.015, 0.0001), dbinom, x=1, size=5)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]

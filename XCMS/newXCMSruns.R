@@ -386,6 +386,9 @@ message(Sys.time()-start_time)
 xdata_filled <- readRDS("XCMS/temp_data/current_xdata_filled.rds")
 feature_defs <- featureDefinitions(xdata_filled)
 addiso_feature_defs <- readRDS("XCMS/temp_data/isoadd_features.rds")
+
+# Find the chromPeaks associated with each featureDefinition
+# Remove the features identified in addiso_feature_defs as likely adducts/isotopes
 clean_feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   cbind(feature=sprintf("FT%03d", i), 
         peak_id=unlist(feature_defs$peakidx[i]))
@@ -398,11 +401,8 @@ clean_feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   arrange(feature, sample) %>%
   filter(!feature%in%rownames(addiso_feature_defs))
 
-head(clean_feature_peaks)
-clean_feature_peaks %>% group_by(feature) %>% 
-  summarize(mzmed=median(mz), rtmed=median(rt), avgint=mean(into)) %>%
-  as.data.frame()
-
+# For each peak, look for data at +/- each adduct/isotope m/z 
+# Also calculate cor while the raw data is being accessed anyway
 split_list <- split(clean_feature_peaks, clean_feature_peaks$file_name)
 final_peaks <- bplapply(split_list, FUN = findIsoAdduct, xdata=xdata_filled,
                         grabSingleFileData=grabSingleFileData,
@@ -410,31 +410,70 @@ final_peaks <- bplapply(split_list, FUN = findIsoAdduct, xdata=xdata_filled,
                         pmppm=pmppm, trapz=trapz) %>%
   do.call(what = rbind) %>% as.data.frame() %>% 
   `rownames<-`(NULL) %>% arrange(feature)
-peakshapematch <- final_peaks %>%
+# Calculate median cor for each FEATURE from the various peak cors
+peak_cors <- final_peaks %>%
   group_by(feature) %>%
-  summarise(prob_C13=median(C13_match), prob_X2C13=median(X2C13_match), 
-            prob_S34=median(S34_match), prob_N15=median(N15_match), 
-            prob_O18=median(O18_match), prob_K=median(K_match),
-            prob_Na=median(Na_match), prob_NH4=median(NH4_match), 
-            prob_H2O_H=median(H2O_H_match), prob_2H=median(X2H_match))
-peakareamatch <- lapply(unique(final_peaks$feature), function(i){
+  summarise(C13_cor=median(C13_match), X2C13_cor=median(X2C13_match), 
+            S34_cor=median(S34_match), N15_cor=median(N15_match), 
+            O18_cor=median(O18_match), K_cor=median(K_match),
+            S33_cor=median(S33_match),
+            Na_cor=median(Na_match), NH4_cor=median(NH4_match), 
+            H2O_H_cor=median(H2O_H_match), X2H_cor=median(X2H_match)) %>% 
+  pivot_longer(cols = -c("feature"), names_to = "addiso", values_to = "cor") %>%
+  mutate(addiso=gsub("_cor", "", addiso))
+# For each feature, plot adduct/iso areas against OG peak areas
+# Run lm() to get best fit line slope and R-squared
+peak_slope_R2 <- lapply(unique(final_peaks$feature), function(i){
   feature_areas <- final_peaks[final_peaks$feature==i,]
   area_cols <- grep(pattern = "area$", names(feature_areas), value = TRUE)[-1]
-  sapply(area_cols, function(x){
-    suppressWarnings(cor(feature_areas$M_area, feature_areas[[x]]))
+  area_outputs <- lapply(area_cols, function(x){
+    lmoutput <- lm(feature_areas[[x]]~feature_areas$M_area)
+    useful_info <- c(r2=summary(lmoutput)$r.squared, 
+                     slope=lmoutput$coefficients["feature_areas$M_area"])
+    return(useful_info)
   })
+  lapply(area_outputs, c) %>%
+    unlist() %>%
+    `names<-`(paste0(rep(gsub("area", "", area_cols), each=2), c("R2", "slope")))
 }) %>% 
   do.call(what=rbind) %>% `[<-`(is.na(.), 0) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(feature=unique(final_peaks$feature)) %>%
   select(feature, everything()) %>%
   arrange(feature)
-saveRDS(final_peaks, file = "XCMS/final_peaks.rds")
+# Separate out R-squareds and slopes (easier to do here than after merging)
+peak_R2s <- peak_slope_R2 %>%
+  select(1, grep("R2", names(peakareamatch))) %>%
+  pivot_longer(cols = -c("feature"), names_to = "addiso", values_to = "R2") %>%
+  mutate(addiso=gsub("_R2", "", addiso))
+peak_slopes <- peak_slope_R2 %>%
+  select(1, grep("slope", names(peakareamatch))) %>%
+  pivot_longer(cols = -c("feature"), names_to = "addiso", values_to = "slope") %>%
+  mutate(addiso=gsub("_slope", "", addiso))
 
+
+# Establish thresholds for "yes, this is probably an adduct"
+# If above threshold, return peak area as relative intensity
+# If below, return nothing
+# Essentially produces a cleaned up MS1 spectrum with only adducts/isotopes
+final_features <- final_peaks %>% 
+  group_by(feature) %>%
+  summarize(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area)) %>%
+  left_join(peak_cors, by="feature") %>%
+  left_join(peak_R2s, by=c("feature", "addiso")) %>%
+  left_join(peak_slopes, by=c("feature", "addiso")) %>%
+  mutate(rel_int=ifelse(cor>0.8&R2>0.9, slope*avgarea, 0)) %>%
+  select(-c("cor", "R2", "slope")) %>%
+  pivot_wider(names_from = addiso, values_from = rel_int)
+
+saveRDS(final_peaks, file = "XCMS/final_peaks.rds")
+saveRDS(final_features, file = "XCMS/final_features.rds")
 
 
 # Analysis! ----
 # Single compound annotation sanity checks
+final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
+
 # Formula: C5H12NO2 (betaine+H)
 feature_num <- "FT054"
 options(scipen = 5)

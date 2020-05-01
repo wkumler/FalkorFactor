@@ -493,28 +493,25 @@ lmoutput <- split(ft_isodata, ft_isodata$name) %>%
   lapply(summary) %>%
   lapply(`[[`, "coefficients")
 
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0107)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=2, prob=0.0107)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00368)-lmoutput[["N15_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00205)-lmoutput[["O18_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0421)-lmoutput[["S34_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0075)-lmoutput[["S33_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.011)/sapply(0:10, dbinom, x=0, prob=0.011)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=2, prob=0.011)/sapply(0:10, dbinom, x=0, prob=0.011)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00368)/sapply(0:10, dbinom, x=0, prob=0.00368)-lmoutput[["N15_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00205)/sapply(0:10, dbinom, x=0, prob=0.00205)-lmoutput[["O18_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0421)/sapply(0:10, dbinom, x=0, prob=0.0421)-lmoutput[["S34_area"]]["M_area", "Estimate"]))]
+(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0075)/sapply(0:10, dbinom, x=0, prob=0.0075)-lmoutput[["S33_area"]]["M_area", "Estimate"]))]
 final_peaks %>% filter(feature==feature_num) %>%
   summarize(mzmed=median(mz), rtmed=median(rt)) %>%
   mutate(C13=mzmed+1.003355, X2C13=mzmed+1.003355*2,
          N15=mzmed+0.997035, O18=mzmed+2.004244, 
          S33=mzmed+0.999387, S34=mzmed+1.995796)
-
-
 seq(0.005, 0.015, 0.0001)[which.min(abs(sapply(seq(0.005, 0.015, 0.0001), dbinom, x=1, size=5)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
+seq(0.005, 0.015, 0.0001)[which.min(abs(sapply(seq(0.005, 0.015, 0.0001), dbinom, x=2, size=5)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))]
+
+
 
 
 # Multi-peak stuff
 final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
-final_features <- final_peaks %>% 
-  group_by(feature) %>%
-  summarize(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area)) %>%
-  as.data.frame(stringsAsFactors=FALSE)
 final_diffreport <- split(final_peaks, final_peaks$feature) %>%
   lapply(function(x){
     DCM_areas <- x$M_area[grep(pattern = "DCM", x$file_name)]

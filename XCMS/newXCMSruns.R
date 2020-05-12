@@ -207,22 +207,26 @@ isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
     print(gp)
   }
   
-  lmoutput <- split(ft_isodata, ft_isodata$name) %>%
-    lapply(lm, formula=value~M_area) %>%
-    lapply(summary)
+  pcaoutput <- split(ft_isodata, ft_isodata$name) %>%
+    lapply(function(isodata_i){
+      num_mat <- isodata_i[, c("M_area", "value")]
+      pca_out <- prcomp(num_mat)$rotation
+      slope <- pca_out[2,1]/pca_out[1,1]
+      r.squared <- as.vector(cor(num_mat[,"M_area"], num_mat[,"value"]))
+      return(list(slope=slope, r.squared=r.squared))
+    })
   
-  count_ests <- mapply(checkbinom, lminput=lmoutput, n_atoms=c(1,1,1,1,1,2), 
+  count_ests <- mapply(checkbinom, pcainput=pcaoutput, n_atoms=c(1,1,1,1,1,2), 
                        prob=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011))
   return(count_ests)
 }
-checkbinom <- function(lminput, n_atoms, prob){
-  rsquared <- lminput$r.squared
+checkbinom <- function(pcainput, n_atoms, prob){
+  rsquared <- pcainput$r.squared
   if(is.na(rsquared))return(NA)
   if(rsquared<0.95)return(NA)
-  coefs <- lminput$coefficients
   norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
   pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
-  est_slope <- coefs["M_area", "Estimate"]
+  est_slope <- pcainput$slope
   (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
 }
 rdisop_check <- function(feature_num, final_features, database_formulae){
@@ -679,7 +683,7 @@ sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      #' zodiac',
                      ' fingerid',
                      ' --database bio')
-if(dir.exists(paste0(output_dir), "\\projectdir")){
+if(dir.exists(paste0(output_dir, "\\projectdir"))){
   unlink(paste0(normalizePath(output_dir), '\\projectdir'), recursive = TRUE)
   dir.create(paste0(normalizePath(output_dir), '\\projectdir'))
 }
@@ -693,6 +697,9 @@ csv_names <- paste0(output_dir, "/projectdir") %>%
 tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
 file.rename(csv_names, tsv_names)
 
+
+
+# Formula collation and checking ----
 # Read in the data and merge with existing estimates
 sirius_formulas <- read.table(paste0(output_dir, "/projectdir/formula_",
                                       "identifications.tsv"), sep = "\t",
@@ -710,7 +717,7 @@ iso_formulas <- final_features$feature %>%
   as.data.frame(stringsAsFactors=FALSE) %>% 
   cbind(feature=final_features$feature)
 
-isocheck(feature_num = "FT187", final_peaks = final_peaks, printplot = TRUE)
+isocheck(feature_num = "FT060", final_peaks = final_peaks, printplot = TRUE)
 
 # Triple-check by using Rdisop
 rdisop_formulas <- final_features$feature %>%
@@ -722,9 +729,12 @@ rdisop_formulas <- final_features$feature %>%
   `names<-`(c("rdisop", "feature"))
 
 
-v <- left_join(sirius_formulas, rdisop_formulas, by="feature") %>%
+v <- left_join(final_features, sirius_formulas, by="feature") %>%
+  left_join(rdisop_formulas, by="feature") %>%
   left_join(iso_formulas, by="feature") %>%
-  select(feature, molecularFormula, rdisop, ends_with("area"))
+  select(feature, mzmed, rtmed, molecularFormula, rdisop, ends_with("area")) %>%
+  as.data.frame()
 
 
-filter(v, molecularFormula==rdisop)
+filter(v, molecularFormula!=rdisop)
+filter(v, C13_area!=X2C13_area)

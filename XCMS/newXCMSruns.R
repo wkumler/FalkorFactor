@@ -193,6 +193,63 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
   iso_matches_all <- do.call(rbind, iso_matches_all)
   return(cbind(file_peaks, iso_matches_all))
 }
+isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
+  ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
+    select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area, S33_area) %>%
+    pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
+  
+  if(printplot){
+    gp <- ggplot(ft_isodata, aes(x=M_area, y=value)) + 
+      geom_point() + 
+      geom_smooth(method = "lm") +
+      facet_wrap(~name, scales = "free_y") +
+      ggtitle(feature_num)
+    print(gp)
+  }
+  
+  lmoutput <- split(ft_isodata, ft_isodata$name) %>%
+    lapply(lm, formula=value~M_area) %>%
+    lapply(summary)
+  
+  count_ests <- mapply(checkbinom, lminput=lmoutput, n_atoms=c(1,1,1,1,1,2), 
+                       prob=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011))
+  return(count_ests)
+}
+checkbinom <- function(lminput, n_atoms, prob){
+  rsquared <- lminput$r.squared
+  if(is.na(rsquared))return(NA)
+  if(rsquared<0.95)return(NA)
+  coefs <- lminput$coefficients
+  norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
+  pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
+  est_slope <- coefs["M_area", "Estimate"]
+  (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
+}
+rdisop_check <- function(feature_num, final_features, database_formulae){
+  feature_msdata <- final_features[final_features$feature==feature_num, ]
+  ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
+               c(feature_msdata$mzmed+1.003355, feature_msdata$C13),
+               c(feature_msdata$mzmed+1.003355*2, feature_msdata$X2C13),
+               c(feature_msdata$mzmed+1.995796, feature_msdata$S34),
+               c(feature_msdata$mzmed+0.997035, feature_msdata$N15),
+               c(feature_msdata$mzmed+2.004244, feature_msdata$O18))
+  ms1 <- ms1[ms1[,2]!=0, , drop=FALSE]
+  ms1[,1] <- ms1[,1]-1.007276
+  rdoutput <- Rdisop::decomposeIsotopes(masses = ms1[,1], intensities = ms1[,2], 
+                                        ppm = ifelse(ms1[1,1]<200, 5*200/ms1[1,1], 5), 
+                                        maxisotopes = 2)
+  if(is.null(rdoutput)){return(NA)}
+  rd_df <- rdoutput %>%
+    `[[<-`("isotopes", NULL) %>%
+    do.call(what = cbind) %>% 
+    as.data.frame(stringsAsFactors=FALSE) %>%
+    filter(valid=="Valid"&DBE>=0) %>%
+    filter(formula%chin%database_formulae)
+  if(!nrow(rd_df)){return(NA)}
+  rd_df %>% slice(1) %>%
+    pull(formula) %>%
+    unlist()
+}
 # Make sure the dev version of XCMS is installed!
 
 
@@ -361,7 +418,7 @@ peakareamatch <- lapply(unique(is_peak_iso$feature), function(i){
 likely_addisos <- peakareamatch$feature[
   which(rowSums(peakareamatch[,names(peakareamatch)!="feature"]>0.95&
                   peakshapematch[,names(peakshapematch)!="feature"]>0.9)>=1)
-]
+  ]
 
 addiso_feature_defs <- feature_defs %>%
   `[`(peakareamatch$feature%in%likely_addisos, c("mzmed", "rtmed")) %>%
@@ -410,15 +467,16 @@ final_peaks <- bplapply(split_list, FUN = findIsoAdduct, xdata=xdata_filled,
                         pmppm=pmppm, trapz=trapz) %>%
   do.call(what = rbind) %>% as.data.frame() %>% 
   `rownames<-`(NULL) %>% arrange(feature)
+
 # Calculate median cor for each FEATURE from the various peak cors
 peak_cors <- final_peaks %>%
   group_by(feature) %>%
   summarise(C13_cor=median(C13_match), X2C13_cor=median(X2C13_match), 
             S34_cor=median(S34_match), N15_cor=median(N15_match), 
-            O18_cor=median(O18_match), K_cor=median(K_match),
-            S33_cor=median(S33_match),
-            Na_cor=median(Na_match), NH4_cor=median(NH4_match), 
-            H2O_H_cor=median(H2O_H_match), X2H_cor=median(X2H_match)) %>% 
+            O18_cor=median(O18_match), S33_cor=median(S33_match),
+            K_cor=median(K_match), Na_cor=median(Na_match), 
+            NH4_cor=median(NH4_match), H2O_H_cor=median(H2O_H_match), 
+            X2H_cor=median(X2H_match)) %>% 
   pivot_longer(cols = -c("feature"), names_to = "addiso", values_to = "cor") %>%
   mutate(addiso=gsub("_cor", "", addiso))
 # For each feature, plot adduct/iso areas against OG peak areas
@@ -443,11 +501,11 @@ peak_slope_R2 <- lapply(unique(final_peaks$feature), function(i){
   arrange(feature)
 # Separate out R-squareds and slopes (easier to do here than after merging)
 peak_R2s <- peak_slope_R2 %>%
-  select(1, grep("R2", names(peakareamatch))) %>%
+  select(1, grep("R2", names(peak_slope_R2))) %>%
   pivot_longer(cols = -c("feature"), names_to = "addiso", values_to = "R2") %>%
   mutate(addiso=gsub("_R2", "", addiso))
 peak_slopes <- peak_slope_R2 %>%
-  select(1, grep("slope", names(peakareamatch))) %>%
+  select(1, grep("slope", names(peak_slope_R2))) %>%
   pivot_longer(cols = -c("feature"), names_to = "addiso", values_to = "slope") %>%
   mutate(addiso=gsub("_slope", "", addiso))
 
@@ -462,7 +520,7 @@ final_features <- final_peaks %>%
   left_join(peak_cors, by="feature") %>%
   left_join(peak_R2s, by=c("feature", "addiso")) %>%
   left_join(peak_slopes, by=c("feature", "addiso")) %>%
-  mutate(rel_int=ifelse(cor>0.8&R2>0.9, slope*avgarea, 0)) %>%
+  mutate(rel_int=ifelse(cor>0.8&R2>0.9, round(slope*avgarea), 0)) %>%
   select(-c("cor", "R2", "slope")) %>%
   pivot_wider(names_from = addiso, values_from = rel_int)
 
@@ -471,52 +529,14 @@ saveRDS(final_features, file = "XCMS/final_features.rds")
 
 
 # Analysis! ----
-# Single compound annotation sanity checks
 final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
-
-# Formula: C5H12NO2 (betaine+H)
-feature_num <- "FT054"
-options(scipen = 5)
-
-ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
-  select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area, S33_area) %>%
-  pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
-
-ggplot(ft_isodata, aes(x=M_area, y=value)) + 
-  geom_point() + 
-  geom_smooth(method = "lm") +
-  facet_wrap(~name, scales = "free_y") +
-  ggtitle(feature_num)
-
-lmoutput <- split(ft_isodata, ft_isodata$name) %>%
-  lapply(lm, formula=value~M_area) %>%
-  lapply(summary) %>%
-  lapply(`[[`, "coefficients")
-
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.011)/sapply(0:10, dbinom, x=0, prob=0.011)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=2, prob=0.011)/sapply(0:10, dbinom, x=0, prob=0.011)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00368)/sapply(0:10, dbinom, x=0, prob=0.00368)-lmoutput[["N15_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.00205)/sapply(0:10, dbinom, x=0, prob=0.00205)-lmoutput[["O18_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0421)/sapply(0:10, dbinom, x=0, prob=0.0421)-lmoutput[["S34_area"]]["M_area", "Estimate"]))]
-(0:10)[which.min(abs(sapply(0:10, dbinom, x=1, prob=0.0075)/sapply(0:10, dbinom, x=0, prob=0.0075)-lmoutput[["S33_area"]]["M_area", "Estimate"]))]
-final_peaks %>% filter(feature==feature_num) %>%
-  summarize(mzmed=median(mz), rtmed=median(rt)) %>%
-  mutate(C13=mzmed+1.003355, X2C13=mzmed+1.003355*2,
-         N15=mzmed+0.997035, O18=mzmed+2.004244, 
-         S33=mzmed+0.999387, S34=mzmed+1.995796)
-seq(0.005, 0.015, 0.0001)[which.min(abs(sapply(seq(0.005, 0.015, 0.0001), dbinom, x=1, size=5)-lmoutput[["C13_area"]]["M_area", "Estimate"]))]
-seq(0.005, 0.015, 0.0001)[which.min(abs(sapply(seq(0.005, 0.015, 0.0001), dbinom, x=2, size=5)-lmoutput[["X2C13_area"]]["M_area", "Estimate"]))]
-
-
-
-
-# Multi-peak stuff
-final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
+final_features <- readRDS(file = "XCMS/final_features.rds")
+# Depth data!
 final_diffreport <- split(final_peaks, final_peaks$feature) %>%
   lapply(function(x){
     DCM_areas <- x$M_area[grep(pattern = "DCM", x$file_name)]
     m25_areas <- x$M_area[grep(pattern = "25m", x$file_name)]
-    if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0.05, 1))
+    if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0.0005, 1))
     c(pval=t.test(DCM_areas, m25_areas)$p.value, 
       diff=mean(DCM_areas)/mean(m25_areas))
   }) %>% do.call(what = rbind) %>% as.data.frame() %>%
@@ -530,28 +550,33 @@ surface_enriched <- final_diffreport %>%
   filter(diff<1) %>%
   filter(pval<0.01) %>%
   arrange(pval)
+# Diel data!
+final_diffreport <- split(final_peaks, final_peaks$feature) %>%
+  lapply(function(x){
+    AM_areas <- x$M_area[grep(pattern = "62|77", x$file_name)]
+    PM_areas <- x$M_area[grep(pattern = "64|80", x$file_name)]
+    if(length(AM_areas)<3|length(PM_areas)<3)return(c(0.0005, 1))
+    c(pval=t.test(AM_areas, PM_areas)$p.value, 
+      diff=mean(AM_areas)/mean(PM_areas))
+  }) %>% do.call(what = rbind) %>% as.data.frame() %>%
+  mutate(feature=rownames(.)) %>% left_join(final_features, ., by="feature") %>%
+  arrange(mzmed)
+AM_enriched <- final_diffreport %>%
+  filter(diff>1) %>%
+  filter(pval<0.01) %>%
+  arrange(pval)
+PM_enriched <- final_diffreport %>%
+  filter(diff<1) %>%
+  filter(pval<0.01) %>%
+  arrange(pval)
 
 
 
 # SIRIUS ----
+final_features <- readRDS(file = "XCMS/final_features.rds")
 final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
-final_features <- final_peaks %>% 
-  group_by(feature) %>%
-  summarize(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area),
-            areamed=median(M_area), 
-            C13_areamed=ifelse(median(C13_match>0.9), median(C13_area), NA), 
-            X2C13_areamed=ifelse(median(X2C13_match>0.9), median(X2C13_area), NA), 
-            S34_areamed=ifelse(median(S34_match>0.9), median(S34_area), NA),
-            S33_areamed=ifelse(median(S33_match>0.9), median(S33_area), NA),
-            N15_areamed=ifelse(median(N15_match>0.9), median(N15_area), NA),
-            O18_areamed=ifelse(median(O18_match>0.9), median(O18_area), NA),
-            Na_areamed=ifelse(median(Na_match>0.9), median(Na_area), NA),
-            NH4_areamed=ifelse(median(NH4_match>0.9), median(NH4_area), NA),
-            K_areamed=ifelse(median(K_match>0.9), median(K_area), NA),
-            H2O_H_areamed=ifelse(median(H2O_H_match>0.9), median(H2O_H_area), NA),
-            X2H_areamed=ifelse(median(X2H_match>0.9), median(X2H_area), NA)) %>%
-  as.data.frame(stringsAsFactors=FALSE)
 
+# Grab MSMS data
 MSMS_files <- "mzMLs/MSMS/" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
@@ -561,10 +586,28 @@ raw_MSMS_data <- lapply(MSMS_files, grabSingleFileMS2) %>%
          SIMPLIFY = FALSE) %>%
   lapply(`names<-`, c("rt", "premz", "fragmz", "int", "voltage")) %>%
   do.call(what = rbind) %>% as.data.table()
+has_msms <- final_features %>%
+  split(.$feature) %>%
+  sapply(function(x){
+    raw_MSMS_data %>%
+      filter(premz%between%pmppm(x$mzmed, ppm = 5)&
+               rt%between%(x$rtmed+c(-20, 20))) %>%
+      nrow() %>%
+      as.logical()
+  })
+final_features <- mutate(final_features, has_msms=has_msms)
+final_features %>% 
+  select(c("feature", "mzmed", "rtmed", "avgarea", "has_msms")) %>%
+  as.data.frame() %>% 
+  head(20)
 
-
-# MGF method
+# Create .mgf files for SIRIUS to read
 output_dir <- "XCMS/sirius_temp"
+if(dir.exists(output_dir)){
+  unlink(output_dir, recursive = TRUE)
+  dir.create(output_dir)
+}
+
 mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
   if(!nrow(ms2)){
     outtext <- c("BEGIN IONS",
@@ -608,54 +651,80 @@ mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
   writeLines(outtext, con = output_file)
 }
 
-for(feature_num in head(final_features$feature, 40)){
+for(feature_num in final_features$feature){
   output_file <- paste0(output_dir, "\\", feature_num, ".mgf")
   feature_msdata <- final_features[final_features$feature==feature_num, ]
-  ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$areamed),
-               c(feature_msdata$mzmed+1.003355, feature_msdata$M1_areamed),
-               c(feature_msdata$mzmed+1.003355*2, feature_msdata$M2_areamed))
-  ms1 <- ms1[!is.na(ms1[,2]), , drop=FALSE]
+  ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
+               c(feature_msdata$mzmed+1.003355, feature_msdata$C13),
+               c(feature_msdata$mzmed+1.003355*2, feature_msdata$X2C13),
+               c(feature_msdata$mzmed+1.995796, feature_msdata$S34),
+               c(feature_msdata$mzmed+0.997035, feature_msdata$N15),
+               c(feature_msdata$mzmed+2.004244, feature_msdata$O18))
+  ms1 <- ms1[ms1[,2]!=0, , drop=FALSE]
   ms2 <- raw_MSMS_data[premz%between%pmppm(feature_msdata$mzmed)&
                          rt%between%(feature_msdata$rtmed+c(-10, 10))]
   mgf_maker(feature_msdata = feature_msdata, ms1 = ms1, 
             ms2 = ms2, output_file = output_file)
 }
 
-
-sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.0.1//',
+# Run SIRIUS
+sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      'sirius-console-64.exe" ',
-                     ' -p orbitrap',
-                     ' --database bio',
-                     #' --fingerid',
-                     ' -i [M+H]+ ', '"', normalizePath(output_dir), '"')
+                     ' -i "', normalizePath(output_dir), '"',
+                     ' -o "', normalizePath(output_dir), '\\projectdir', '"',
+                     ' formula',
+                     ' --database pubchem',
+                     ' --profile orbitrap',
+                     ' -c 50',
+                     #' zodiac',
+                     ' fingerid',
+                     ' --database bio')
+if(dir.exists(paste0(output_dir), "\\projectdir")){
+  unlink(paste0(normalizePath(output_dir), '\\projectdir'), recursive = TRUE)
+  dir.create(paste0(normalizePath(output_dir), '\\projectdir'))
+}
+system(sirius_cmd)
 
-sirius_output <- system(sirius_cmd, intern = TRUE)
-sirius_clean <- sirius_output %>%
-  grep(pattern = "^Sirius|^[[:digit:]]", value = TRUE) %>%
-  split(cumsum(grepl(pattern = "Sirius", x = .))) %>%
-  lapply(function(feature_data){
-    dput(feature_data)
-    feature_num <- substr(x = feature_data[1], start = 22, 26)
-    clean_data <- lapply(strsplit(feature_data[-1], split = "\t"), function(x){
-      x[1] <- sub(pattern = "^[[:digit:]]\\.\\)\ ", "", x = x[1])
-      x <- gsub(pattern = ".*\\:\\ \\+*", "", x)
-      x <- gsub(pattern = "\\ \\%", "", x)
-    })
-    if(!length(clean_data)){
-      output <- matrix(c(feature_num, rep(NA, 8)), nrow = 1)
-    } else {
-      output <- do.call(rbind, clean_data) %>%
-        cbind(feature_num, .)
-    }
-    colnames(output) <- c("feature", "formula", "adduct", "score", "tree", 
-                          "iso", "peaks", "expl_int", "iso_peaks")
-    return(output)
-  }) %>% do.call(what = rbind)
-sirius_clean
+# Rename "csv"s to actual tsvs to facilitate reading
+csv_names <- paste0(output_dir, "/projectdir") %>%
+  list.files(recursive = TRUE) %>%
+  grep(pattern = ".csv", value = TRUE) %>%
+  paste0(output_dir, "/projectdir/", .)
+tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
+file.rename(csv_names, tsv_names)
 
-sirius_clean %>%
+# Read in the data and merge with existing estimates
+sirius_formulas <- read.table(paste0(output_dir, "/projectdir/formula_",
+                                      "identifications.tsv"), sep = "\t",
+                               row.names = NULL, header = TRUE) %>%
+  `names<-`(c(names(.)[-1], "drop")) %>%
+  select(-last_col()) %>%
+  mutate(feature=sub(pattern = "_FEATURE1", replacement = "", x = .$id)) %>%
+  mutate(feature=sub(pattern = ".*_", replacement = "", x = .$feature)) %>%
+  arrange(feature)
+
+# Double-check by using isotope matches
+iso_formulas <- final_features$feature %>%
+  pblapply(isocheck, final_peaks=final_peaks) %>%
+  do.call(what=rbind) %>% 
+  as.data.frame(stringsAsFactors=FALSE) %>% 
+  cbind(feature=final_features$feature)
+
+isocheck(feature_num = "FT187", final_peaks = final_peaks, printplot = TRUE)
+
+# Triple-check by using Rdisop
+rdisop_formulas <- final_features$feature %>%
+  pbsapply(rdisop_check, final_features = final_features, 
+           database_formulae=readRDS("XCMS/unique_formulae.rds")) %>%
+  unlist() %>%
+  cbind(feature=final_features$feature) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
-  left_join(final_features) %>%
-  arrange(mzmed) %>% select(!contains("_"))
+  `names<-`(c("rdisop", "feature"))
 
-final_features %>% filter(feature=="FT002")
+
+v <- left_join(sirius_formulas, rdisop_formulas, by="feature") %>%
+  left_join(iso_formulas, by="feature") %>%
+  select(feature, molecularFormula, rdisop, ends_with("area"))
+
+
+filter(v, molecularFormula==rdisop)

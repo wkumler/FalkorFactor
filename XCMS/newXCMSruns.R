@@ -700,6 +700,38 @@ sum(file.rename(csv_names, tsv_names))==length(tsv_names)
 
 
 # Formula collation and checking ----
+isocheckOLS <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
+  ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
+    select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area, S33_area) %>%
+    pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
+  
+  if(printplot){
+    gp <- ggplot(ft_isodata, aes(x=M_area, y=value)) + 
+      geom_point() + 
+      geom_smooth(method = "lm") +
+      facet_wrap(~name, scales = "free_y") +
+      ggtitle(feature_num)
+    print(gp)
+  }
+  
+  lmoutput <- split(ft_isodata, ft_isodata$name) %>%
+    lapply(lm, formula=value~M_area) %>%
+    lapply(summary)
+  
+  count_ests <- mapply(checkbinomOLS, lminput=lmoutput, n_atoms=c(1,1,1,1,1,2), 
+                       prob=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011))
+  return(count_ests)
+}
+checkbinomOLS <- function(lminput, n_atoms, prob){
+  rsquared <- lminput$r.squared
+  if(is.na(rsquared))return(NA)
+  if(rsquared<0.95)return(NA)
+  coefs <- lminput$coefficients
+  norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
+  pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
+  est_slope <- coefs["M_area", "Estimate"]
+  (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
+}
 # Read in the data and merge with existing estimates
 final_features <- readRDS(file = "XCMS/final_features.rds")
 final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
@@ -714,13 +746,18 @@ sirius_formulas <- read.table(paste0(output_dir, "/projectdir/formula_",
   arrange(feature)
 
 # Double-check by using isotope matches
+iso_formulas_OLS <- final_features$feature %>%
+  pblapply(isocheckOLS, final_peaks=final_peaks) %>%
+  do.call(what=rbind) %>% 
+  as.data.frame(stringsAsFactors=FALSE) %>% 
+  cbind(feature=final_features$feature)
 iso_formulas <- final_features$feature %>%
   pblapply(isocheck, final_peaks=final_peaks) %>%
   do.call(what=rbind) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>% 
   cbind(feature=final_features$feature)
 
-isocheck(feature_num = "FT060", final_peaks = final_peaks, printplot = TRUE)
+isocheck(feature_num = "FT346", final_peaks = final_peaks, printplot = TRUE)
 
 # Triple-check by using Rdisop
 rdisop_formulas <- final_features$feature %>%
@@ -735,9 +772,13 @@ rdisop_formulas <- final_features$feature %>%
 v <- left_join(final_features, sirius_formulas, by="feature") %>%
   left_join(rdisop_formulas, by="feature") %>%
   left_join(iso_formulas, by="feature") %>%
-  select(feature, mzmed, rtmed, molecularFormula, rdisop, ends_with("area")) %>%
+  left_join(iso_formulas_OLS, by="feature") %>%
+  select(feature, mzmed, rtmed, molecularFormula, rdisop, ends_with(".x"), ends_with(".y")) %>%
   as.data.frame()
 
 
-filter(v, molecularFormula!=rdisop)
+v %>%
+  select(feature, molecularFormula, rdisop, starts_with("C13")) %>%
+  filter(molecularFormula==rdisop) %>%
+  filter(C13_area.x!=C13_area.y)
 filter(v, C13_area!=X2C13_area)

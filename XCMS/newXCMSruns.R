@@ -585,7 +585,7 @@ MSMS_files <- "mzMLs/MSMS/" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
   `[`(grepl("pos", x = .))
-raw_MSMS_data <- lapply(MSMS_files, grabSingleFileMS2) %>%
+raw_MSMS_data <- pblapply(MSMS_files, grabSingleFileMS2) %>%
   mapply(FUN = cbind, as.numeric(gsub(".*DDApos|.mzML", "", MSMS_files)), 
          SIMPLIFY = FALSE) %>%
   lapply(`names<-`, c("rt", "premz", "fragmz", "int", "voltage")) %>%
@@ -609,8 +609,8 @@ final_features %>%
 output_dir <- "XCMS/sirius_temp"
 if(dir.exists(output_dir)){
   unlink(output_dir, recursive = TRUE)
-  dir.create(output_dir)
 }
+dir.create(output_dir)
 
 mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
   if(!nrow(ms2)){
@@ -677,15 +677,15 @@ sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      ' -i "', normalizePath(output_dir), '"',
                      ' -o "', normalizePath(output_dir), '\\projectdir', '"',
                      ' formula',
-                     ' --database pubchem',
-                     ' --profile orbitrap',
-                     ' -c 50',
-                     #' zodiac',
-                     ' fingerid',
-                     ' --database bio')
-if(dir.exists(paste0(output_dir, "\\projectdir"))){
-  unlink(paste0(normalizePath(output_dir), '\\projectdir'), recursive = TRUE)
-  dir.create(paste0(normalizePath(output_dir), '\\projectdir'))
+                      ' --database pubchem',
+                     ' --profile orbitrap')#,
+                     # ' -c 50',
+                     # ' zodiac',
+                     # ' fingerid',
+                     # ' --database bio')
+if(dir.exists(paste0(output_dir, "/projectdir"))){
+  unlink(paste0(normalizePath(output_dir), '/projectdir'), recursive = TRUE)
+  dir.create(paste0(normalizePath(output_dir), '/projectdir'))
 }
 system(sirius_cmd)
 
@@ -695,12 +695,15 @@ csv_names <- paste0(output_dir, "/projectdir") %>%
   grep(pattern = ".csv", value = TRUE) %>%
   paste0(output_dir, "/projectdir/", .)
 tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
-file.rename(csv_names, tsv_names)
+sum(file.rename(csv_names, tsv_names))==length(tsv_names)
 
 
 
 # Formula collation and checking ----
 # Read in the data and merge with existing estimates
+final_features <- readRDS(file = "XCMS/final_features.rds")
+final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
+output_dir <- "XCMS/sirius_temp"
 sirius_formulas <- read.table(paste0(output_dir, "/projectdir/formula_",
                                       "identifications.tsv"), sep = "\t",
                                row.names = NULL, header = TRUE) %>%

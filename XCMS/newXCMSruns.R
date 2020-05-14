@@ -218,7 +218,7 @@ isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
 checkbinom <- function(lminput, n_atoms, prob){
   rsquared <- lminput$r.squared
   if(is.na(rsquared))return(NA)
-  if(rsquared<0.95)return(NA)
+  if(rsquared<0.99)return(NA)
   coefs <- lminput$coefficients
   norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
   pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
@@ -250,6 +250,18 @@ rdisop_check <- function(feature_num, final_features, database_formulae){
     pull(formula) %>%
     unlist()
 }
+formula2elements <- function(formula_vec){
+  split_formulas <- formula_vec %>%
+    gregexpr(pattern = "[A-Z][a-z]*[0-9]*") %>%
+    regmatches(x = formula_vec)
+  elements_in <- lapply(split_formulas, gsub, pattern = "[0-9]", replacement = "")
+  element_counts <- lapply(split_formulas, gsub, pattern = "[A-z]", replacement = "")
+  element_counts <- lapply(element_counts, function(x){
+    x[!nchar(x)]<-1
+    return(as.numeric(x))
+  })
+  mapply(`names<-`, element_counts, elements_in, SIMPLIFY = FALSE)
+}
 # Make sure the dev version of XCMS is installed!
 
 
@@ -266,7 +278,6 @@ ms_files <- "mzMLs" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 metadata <- data.frame(
   fileid=basename(ms_files),
@@ -276,6 +287,8 @@ metadata <- data.frame(
   time=c("Blank", "Pooled", "Morning", "Afternoon", "Std")[c(1, rep(2, 6), rep(c(rep(3, 6), rep(4, 6)), 2), rep(5, 10))]
 ) %>% new(Class = "NAnnotatedDataFrame")
 
+sirius_output_dir <- "XCMS/sirius_temp"
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 
 # Peakpicking ----
@@ -602,11 +615,10 @@ final_features %>%
   head(20)
 
 # Create .mgf files for SIRIUS to read
-output_dir <- "XCMS/sirius_temp"
-if(dir.exists(output_dir)){
-  unlink(output_dir, recursive = TRUE)
-  dir.create(output_dir)
+if(dir.exists(sirius_output_dir)){
+  unlink(sirius_output_dir, recursive = TRUE)
 }
+dir.create(sirius_output_dir)
 
 mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
   if(!nrow(ms2)){
@@ -652,7 +664,7 @@ mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
 }
 
 for(feature_num in final_features$feature){
-  output_file <- paste0(output_dir, "\\", feature_num, ".mgf")
+  output_file <- paste0(sirius_output_dir, "\\", feature_num, ".mgf")
   feature_msdata <- final_features[final_features$feature==feature_num, ]
   ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
                c(feature_msdata$mzmed+1.003355, feature_msdata$C13),
@@ -670,47 +682,58 @@ for(feature_num in final_features$feature){
 # Run SIRIUS
 sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      'sirius-console-64.exe" ',
-                     ' -i "', normalizePath(output_dir), '"',
-                     ' -o "', normalizePath(output_dir), '\\projectdir', '"',
+                     ' -i "', normalizePath(sirius_output_dir), '"',
+                     ' -o "', normalizePath(sirius_output_dir), '\\projectdir', '"',
                      ' formula',
                      ' --database pubchem',
                      ' --profile orbitrap',
                      ' -c 50',
-                     #' zodiac',
-                     ' fingerid',
-                     ' --database bio')
-if(dir.exists(paste0(output_dir), "\\projectdir")){
-  unlink(paste0(normalizePath(output_dir), '\\projectdir'), recursive = TRUE)
-  dir.create(paste0(normalizePath(output_dir), '\\projectdir'))
+                     ' zodiac')#,
+                     # ' fingerid',
+                     # ' --database bio')
+if(dir.exists(paste0(sirius_output_dir, "\\projectdir"))){
+  unlink(paste0(normalizePath(sirius_output_dir), '\\projectdir'), recursive = TRUE)
 }
+dir.create(paste0(normalizePath(sirius_output_dir), '\\projectdir'))
 system(sirius_cmd)
+#"C://Program Files//sirius-win64-4.4.17//sirius-console-64.exe"  -i "G:\\My Drive\\FalkorFactor\\XCMS\\sirius_temp" -o "G:\\My Drive\\FalkorFactor\\XCMS\\sirius_temp\\projectdir" formula --database pubchem --profile orbitrap -c 50 zodiac
 
 # Rename "csv"s to actual tsvs to facilitate reading
-csv_names <- paste0(output_dir, "/projectdir") %>%
+csv_names <- paste0(sirius_output_dir, "/projectdir") %>%
   list.files(recursive = TRUE) %>%
   grep(pattern = ".csv", value = TRUE) %>%
-  paste0(output_dir, "/projectdir/", .)
+  paste0(sirius_output_dir, "/projectdir/", .)
 tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
-file.rename(csv_names, tsv_names)
+sum(!file.rename(csv_names, tsv_names))
+
+
+
+# Check formula assignments ----
+final_features <- readRDS(file = "XCMS/final_features.rds")
+final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
 
 # Read in the data and merge with existing estimates
-sirius_formulas <- read.table(paste0(output_dir, "/projectdir/formula_",
+sirius_formulas <- read.table(paste0(sirius_output_dir, "/projectdir/formula_",
                                       "identifications.tsv"), sep = "\t",
-                               row.names = NULL, header = TRUE) %>%
+                              row.names = NULL, header = TRUE, 
+                              stringsAsFactors = FALSE) %>%
   `names<-`(c(names(.)[-1], "drop")) %>%
   select(-last_col()) %>%
   mutate(feature=sub(pattern = "_FEATURE1", replacement = "", x = .$id)) %>%
   mutate(feature=sub(pattern = ".*_", replacement = "", x = .$feature)) %>%
-  arrange(feature)
+  arrange(feature) %>%
+  select(feature, sirius_formula=molecularFormula)
 
 # Double-check by using isotope matches
 iso_formulas <- final_features$feature %>%
   pblapply(isocheck, final_peaks=final_peaks) %>%
   do.call(what=rbind) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>% 
-  cbind(feature=final_features$feature)
+  cbind(feature=final_features$feature, stringsAsFactors=FALSE) %>%
+  select(paste0(c("C13", "N15", "O18", "S34"), "_area"), "feature") %>%
+  `names<-`(c("C", "N", "O", "S", "feature"))
 
-isocheck(feature_num = "FT187", final_peaks = final_peaks, printplot = TRUE)
+isocheck(feature_num = "FT100", final_peaks = final_peaks, printplot = TRUE)
 
 # Triple-check by using Rdisop
 rdisop_formulas <- final_features$feature %>%
@@ -719,12 +742,35 @@ rdisop_formulas <- final_features$feature %>%
   unlist() %>%
   cbind(feature=final_features$feature) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
-  `names<-`(c("rdisop", "feature"))
+  `names<-`(c("rdisop_formula", "feature"))
 
 
-v <- left_join(sirius_formulas, rdisop_formulas, by="feature") %>%
+feature_formulas <- final_features %>%
+  left_join(sirius_formulas, by="feature") %>%
+  left_join(rdisop_formulas, by="feature") %>%
   left_join(iso_formulas, by="feature") %>%
-  select(feature, molecularFormula, rdisop, ends_with("area"))
+  select(feature, mzmed, rtmed, avgarea, 
+         sirius_formula, rdisop_formula, 
+         C, N, O, S)
 
+# Assemble formulas and remove problematic ones
+element_formulas <- formula2elements(feature_formulas$sirius_formula)
+iso_mismatches <- sapply(c("C", "N", "O", "S"), function(element){
+  elem_match <- sapply(seq_along(element_formulas), function(i){
+    element_formulas[[i]][element]==feature_formulas[i,][[element]]
+  })}) %>% 
+  `!`() %>% rowSums(na.rm = TRUE)
 
-filter(v, molecularFormula==rdisop)
+best_formulas <- feature_formulas %>%
+  filter(rdisop_formula==sirius_formula&!iso_mismatches) %>%
+  select(feature, mzmed, rtmed, avgarea, formula=sirius_formula) %>%
+  as.data.frame()
+
+duped_features <- lapply(seq_len(nrow(best_formulas)), function(i){
+  feature_data <- best_formulas[i,]
+  dup_candidates <- best_formulas[
+    best_formulas$mzmed%between%pmppm(feature_data$mzmed, ppm = 5)&
+      best_formulas$rtmed%between%(feature_data$rtmed+c(-10, 10)),]
+  return(dup_candidates[-c(which.max(dup_candidates$avgarea)),])
+}) %>% do.call(what = rbind) %>% `[`(duplicated(.),)
+

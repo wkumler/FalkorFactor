@@ -421,7 +421,8 @@ v[v<0.9] <- "-------"
 v <- cbind(addiso_feature_defs, v[,-1])
 
 v[which(v["S33_area"]!="-------"&v["S33_prob"]!="-------"&v["rtmed"]<780),]
-saveRDS(addiso_feature_defs, file = "XCMS/data_intermediate/isoadd_features.rds")
+write.csv(addiso_feature_defs, row.names = FALSE,
+          file = "XCMS/data_intermediate/isotope_adduct_features.csv")
 message(Sys.time()-start_time)
 #40 minutes
 
@@ -429,7 +430,7 @@ message(Sys.time()-start_time)
 # Calculate isotopes and adducts for remaining peaks ----
 xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 feature_defs <- featureDefinitions(xdata_filled)
-addiso_feature_defs <- readRDS("XCMS/data_intermediate/isoadd_features.rds")
+addiso_feature_defs <- read.csv("XCMS/data_intermediate/isotope_adduct_features.csv")
 
 # Find the chromPeaks associated with each featureDefinition
 # Remove the features identified in addiso_feature_defs as likely adducts/isotopes
@@ -511,13 +512,13 @@ final_features <- final_peaks %>%
   select(-c("cor", "R2", "slope")) %>%
   pivot_wider(names_from = addiso, values_from = rel_int)
 
-saveRDS(final_peaks, file = "XCMS/final_peaks.rds")
-saveRDS(final_features, file = "XCMS/final_features.rds")
+write.csv(x = final_peaks, file = "XCMS/data_pretty/final_peaks.csv")
+write.csv(x = final_features, file = "XCMS/data_pretty/final_features.csv")
 
 
 # Analysis! ----
-final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
-final_features <- readRDS(file = "XCMS/final_features.rds")
+final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
+final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
 # Depth data!
 final_diffreport <- split(final_peaks, final_peaks$feature) %>%
   lapply(function(x){
@@ -560,8 +561,8 @@ PM_enriched <- final_diffreport %>%
 
 
 # SIRIUS ----
-final_features <- readRDS(file = "XCMS/final_features.rds")
-final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
+final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
+final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
 
 # Grab MSMS data
 MSMS_files <- "mzMLs/MSMS/" %>%
@@ -657,7 +658,7 @@ for(feature_num in final_features$feature){
 sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      'sirius-console-64.exe" ',
                      ' -i "', normalizePath(sirius_project_dir), '"',
-                     ' -o "', normalizePath(sirius_project_dir), '\\projectdir', '"',
+                     ' -o "', normalizePath(sirius_project_dir), '"',
                      ' formula',
                      ' --database pubchem',
                      ' --profile orbitrap',
@@ -665,29 +666,28 @@ sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      ' zodiac')#,
                      # ' fingerid',
                      # ' --database bio')
-if(dir.exists(paste0(sirius_project_dir, "\\projectdir"))){
-  unlink(paste0(normalizePath(sirius_project_dir), '\\projectdir'), recursive = TRUE)
+if(dir.exists(sirius_project_dir)){
+  unlink(sirius_project_dir, recursive = TRUE)
 }
-dir.create(paste0(normalizePath(sirius_project_dir), '\\projectdir'))
+dir.create(sirius_project_dir)
 system(sirius_cmd)
-#"C://Program Files//sirius-win64-4.4.17//sirius-console-64.exe"  -i "G:\\My Drive\\FalkorFactor\\XCMS\\sirius_temp" -o "G:\\My Drive\\FalkorFactor\\XCMS\\sirius_temp\\projectdir" formula --database pubchem --profile orbitrap -c 50 zodiac
 
 # Rename "csv"s to actual tsvs to facilitate reading
-csv_names <- paste0(sirius_project_dir, "/projectdir") %>%
+csv_names <- sirius_project_dir %>%
   list.files(recursive = TRUE) %>%
   grep(pattern = ".csv", value = TRUE) %>%
-  paste0(sirius_project_dir, "/projectdir/", .)
+  paste0(sirius_project_dir, .)
 tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
 sum(!file.rename(csv_names, tsv_names))
 
 
 
 # Check formula assignments ----
-final_features <- readRDS(file = "XCMS/final_features.rds")
-final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
+final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
+final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
 
 # Read in the data and merge with existing estimates
-sirius_formulas <- read.table(paste0(sirius_project_dir, "/projectdir/formula_",
+sirius_formulas <- read.table(paste0(sirius_project_dir, "/formula_",
                                       "identifications.tsv"), sep = "\t",
                               row.names = NULL, header = TRUE, 
                               stringsAsFactors = FALSE) %>%
@@ -749,3 +749,4 @@ duped_features <- lapply(seq_len(nrow(best_formulas)), function(i){
 }) %>% do.call(what = rbind) %>% `[`(duplicated(.),)
 
 best_formulas <- anti_join(x = best_formulas, y=duped_features, by="feature")
+write.csv(x = best_formulas, file = "XCMS/data_pretty/feature_formulas.csv")

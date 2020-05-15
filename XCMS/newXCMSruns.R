@@ -243,7 +243,7 @@ rdisop_check <- function(feature_num, final_features, database_formulae){
     `[[<-`("isotopes", NULL) %>%
     do.call(what = cbind) %>% 
     as.data.frame(stringsAsFactors=FALSE) %>%
-    filter(valid=="Valid"&DBE>=0) %>%
+    filter(valid=="Valid"&DBE>=-1) %>%
     filter(formula%chin%database_formulae)
   if(!nrow(rd_df)){return(NA)}
   rd_df %>% slice(1) %>%
@@ -736,7 +736,7 @@ iso_formulas <- final_features$feature %>%
 isocheck(feature_num = "FT100", final_peaks = final_peaks, printplot = TRUE)
 
 # Triple-check by using Rdisop
-rdisop_formulas <- final_features$feature %>%
+rdisop_formulas_2 <- final_features$feature %>%
   pbsapply(rdisop_check, final_features = final_features, 
            database_formulae=readRDS("XCMS/unique_formulae.rds")) %>%
   unlist() %>%
@@ -774,3 +774,4 @@ duped_features <- lapply(seq_len(nrow(best_formulas)), function(i){
   return(dup_candidates[-c(which.max(dup_candidates$avgarea)),])
 }) %>% do.call(what = rbind) %>% `[`(duplicated(.),)
 
+best_formulas <- anti_join(x = best_formulas, y=duped_features, by="feature")

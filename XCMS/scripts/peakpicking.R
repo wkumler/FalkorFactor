@@ -343,7 +343,7 @@ v <- cbind(addiso_feature_defs, v[,-1])
 
 v[which(v["S33_area"]!="-------"&v["S33_prob"]!="-------"&v["rtmed"]<780),]
 write.csv(addiso_feature_defs, row.names = FALSE,
-          file = "XCMS/data_intermediate/isotope_adduct_features.csv")
+          file = "XCMS/data_pretty/isotope_adduct_features.csv")
 message(Sys.time()-start_time)
 #40 minutes
 
@@ -351,7 +351,7 @@ message(Sys.time()-start_time)
 # Calculate isotopes and adducts for remaining peaks ----
 xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 feature_defs <- featureDefinitions(xdata_filled)
-addiso_feature_defs <- read.csv("XCMS/data_intermediate/isotope_adduct_features.csv")
+addiso_feature_defs <- read.csv("XCMS/data_pretty/isotope_adduct_features.csv")
 
 # Find the chromPeaks associated with each featureDefinition
 # Remove the features identified in addiso_feature_defs as likely adducts/isotopes

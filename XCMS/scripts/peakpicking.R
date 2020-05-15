@@ -516,50 +516,6 @@ write.csv(x = final_peaks, file = "XCMS/data_pretty/final_peaks.csv")
 write.csv(x = final_features, file = "XCMS/data_pretty/final_features.csv")
 
 
-# Analysis! ----
-final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
-final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
-# Depth data!
-final_diffreport <- split(final_peaks, final_peaks$feature) %>%
-  lapply(function(x){
-    DCM_areas <- x$M_area[grep(pattern = "DCM", x$file_name)]
-    m25_areas <- x$M_area[grep(pattern = "25m", x$file_name)]
-    if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0.0005, 1))
-    c(pval=t.test(DCM_areas, m25_areas)$p.value, 
-      diff=mean(DCM_areas)/mean(m25_areas))
-  }) %>% do.call(what = rbind) %>% as.data.frame() %>%
-  mutate(feature=rownames(.)) %>% left_join(final_features, ., by="feature") %>%
-  arrange(mzmed)
-DCM_enriched <- final_diffreport %>%
-  filter(diff>1) %>%
-  filter(pval<0.01) %>%
-  arrange(pval)
-surface_enriched <- final_diffreport %>%
-  filter(diff<1) %>%
-  filter(pval<0.01) %>%
-  arrange(pval)
-# Diel data!
-final_diffreport <- split(final_peaks, final_peaks$feature) %>%
-  lapply(function(x){
-    AM_areas <- x$M_area[grep(pattern = "62|77", x$file_name)]
-    PM_areas <- x$M_area[grep(pattern = "64|80", x$file_name)]
-    if(length(AM_areas)<3|length(PM_areas)<3)return(c(0.0005, 1))
-    c(pval=t.test(AM_areas, PM_areas)$p.value, 
-      diff=mean(AM_areas)/mean(PM_areas))
-  }) %>% do.call(what = rbind) %>% as.data.frame() %>%
-  mutate(feature=rownames(.)) %>% left_join(final_features, ., by="feature") %>%
-  arrange(mzmed)
-AM_enriched <- final_diffreport %>%
-  filter(diff>1) %>%
-  filter(pval<0.01) %>%
-  arrange(pval)
-PM_enriched <- final_diffreport %>%
-  filter(diff<1) %>%
-  filter(pval<0.01) %>%
-  arrange(pval)
-
-
-
 # SIRIUS ----
 final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
 final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")

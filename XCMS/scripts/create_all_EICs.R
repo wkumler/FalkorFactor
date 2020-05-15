@@ -6,6 +6,9 @@ library(data.table)
 library(gridExtra)
 library(pbapply)
 
+#Only for RScript running
+setwd(r"(G:\My Drive\FalkorFactor)")
+
 ms_files <- "mzMLs" %>%
   list.files(pattern = "Blk|Smp", full.names = TRUE) %>%
   normalizePath()
@@ -54,7 +57,7 @@ raw_data <- pblapply(ms_files, grabSingleFileData)
 raw_data <- pblapply(seq_along(raw_data), function(x){
   cbind(fileid=basename(ms_files)[x], raw_data[[x]])
 }) %>% do.call(what = rbind) %>%
-  `[`(.$rt>60&.$rt<1100)
+  `[`(.$rt>60&.$rt<1100,)
 saveRDS(raw_data, file = "XCMS/data_intermediate/MS1_data_frame.rds")
 MS1_dt <- readRDS("XCMS/data_intermediate/MS1_data_frame.rds") %>%
   mutate(fileid=as.character(MS1_data$fileid)) %>%
@@ -127,8 +130,7 @@ ms_files <- "mzMLs" %>%
 raw_data <- pblapply(ms_files, grabSingleFileData)
 raw_data <- pblapply(seq_along(raw_data), function(x){
   cbind(fileid=basename(ms_files)[x], raw_data[[x]])
-}) %>% do.call(what = rbind) %>%
-  `[`(.$rt>60&.$rt<1100)
+}) %>% do.call(what = rbind)
 saveRDS(raw_data, file = "XCMS/data_intermediate/MS1_data_frame.rds")
 MS1_dt <- readRDS("XCMS/data_intermediate/MS1_data_frame.rds") %>%
   mutate(fileid=as.character(MS1_data$fileid)) %>%

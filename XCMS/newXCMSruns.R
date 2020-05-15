@@ -286,8 +286,9 @@ metadata <- data.frame(
   spindir=c("Blank", "Pooled", "Cyclone", "Anticyclone", "Std")[c(1, rep(2, 6), rep(3, 12), rep(4, 12), rep(5, 10))],
   time=c("Blank", "Pooled", "Morning", "Afternoon", "Std")[c(1, rep(2, 6), rep(c(rep(3, 6), rep(4, 6)), 2), rep(5, 10))]
 ) %>% new(Class = "NAnnotatedDataFrame")
+write.csv(x = metadata@data, file = "XCMS/data_pretty/metadata.csv", row.names = FALSE)
 
-sirius_output_dir <- "XCMS/sirius_temp"
+sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 
@@ -301,11 +302,11 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
                      noise = 5000, firstBaselineCheck = FALSE, 
                      extendLengthMSW = TRUE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
-saveRDS(xdata, file = "XCMS/temp_data/current_xdata.rds")
+saveRDS(xdata, file = "XCMS/data_intermediate/current_xdata.rds")
 message(Sys.time()-start_time)
 # 13 minutes
 
-xdata <- readRDS(file = "XCMS/temp_data/current_xdata.rds")
+xdata <- readRDS(file = "XCMS/data_intermediate/current_xdata.rds")
 xcms_peakdf <- chromPeaks(xdata) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(filename=fileNames(xdata)[.[["sample"]]]) %>%
@@ -322,39 +323,12 @@ peakdf_qscored <- files_qscores %>%
   select(-filename) %>%
   arrange(sample, rtmin, rtmax) %>%
   as.matrix()
-write.csv(peakdf_qscored, file = "XCMS/temp_data/peakdf_qscored.csv", 
-          row.names = FALSE)
+write.csv(x = peakdf_qscored, row.names = FALSE,
+          file = "XCMS/data_intermediate/all_peaks_w_qscores.csv")
 xdata_cleanpeak <- `chromPeaks<-`(xdata, peakdf_qscored)
-saveRDS(xdata_cleanpeak, file = "XCMS/temp_data/xdata_cleanpeak.rds")
+saveRDS(xdata_cleanpeak, file = "XCMS/data_intermediate/xdata_cleanpeak.rds")
 message(Sys.time()-start_time)
 # 20 minutes
-
-
-
-# Plot picked peaks, just for kicks! ----
-xdata_cleanpeak <- readRDS("XCMS/temp_data/xdata_cleanpeak.rds")
-given_file <- ms_files[2]
-clean_peakdf <- chromPeaks(xdata_cleanpeak) %>%
-  as.data.frame(stringsAsFactors=FALSE) %>%
-  mutate(filename=fileNames(xdata_cleanpeak)[.[["sample"]]]) %>%
-  arrange(mz) %>%
-  filter(filename==given_file)
-file_eic <- as.data.table(grabSingleFileData(given_file))
-pdf(width = 17, height = 11, file = "XCMS/some_picked_peaks.pdf")
-par(mfrow=c(6, 8))
-par(mar=c(2.1, 2.1, 0.1, 0.1))
-apply(clean_peakdf, 1, function(x){
-  eic <- file_eic[rt%between%(as.numeric(c(x["rtmin"], x["rtmax"]))+c(-50, 50))&
-                    mz%between%as.numeric(c(x["mzmin"], x["mzmax"]))]
-  plot(eic$rt, eic$int, type="l", xlab="", ylab="", 
-       ylim=c(0, max(eic$int)*1.2), xlim=c(min(eic$rt)-10, max(eic$rt)+10))
-  abline(v=as.numeric(x["rtmin"]), col="red")
-  abline(v=as.numeric(x["rtmax"]), col="red")
-  legend("topright", legend = x["sn"], bty="n")
-  legend("topleft", legend = substr(x["mz"], 1, 9), bty="n")
-  return(NULL)
-})
-dev.off()
 
 
 
@@ -375,7 +349,7 @@ xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 fpp <- FillChromPeaksParam()
 xdata_filled <- suppressMessages(fillChromPeaks(xdata_cor, param = fpp))
 
-saveRDS(xdata_filled, file = "XCMS/temp_data/current_xdata_filled.rds")
+saveRDS(xdata_filled, file = "XCMS/data_intermediate/current_xdata_filled.rds")
 message(Sys.time()-start_time)
 # 30 minutes
 
@@ -384,7 +358,7 @@ show(featureDefinitions(xdata_filled))
 
 
 # Find isotopes and adducts ----
-xdata_filled <- readRDS("XCMS/temp_data/current_xdata_filled.rds")
+xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 feature_defs <- featureDefinitions(xdata_filled)
 feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   cbind(feature=sprintf("FT%03d", i), 
@@ -447,15 +421,15 @@ v[v<0.9] <- "-------"
 v <- cbind(addiso_feature_defs, v[,-1])
 
 v[which(v["S33_area"]!="-------"&v["S33_prob"]!="-------"&v["rtmed"]<780),]
-saveRDS(addiso_feature_defs, file = "XCMS/temp_data/isoadd_features.rds")
+saveRDS(addiso_feature_defs, file = "XCMS/data_intermediate/isoadd_features.rds")
 message(Sys.time()-start_time)
 #40 minutes
 
 
 # Calculate isotopes and adducts for remaining peaks ----
-xdata_filled <- readRDS("XCMS/temp_data/current_xdata_filled.rds")
+xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 feature_defs <- featureDefinitions(xdata_filled)
-addiso_feature_defs <- readRDS("XCMS/temp_data/isoadd_features.rds")
+addiso_feature_defs <- readRDS("XCMS/data_intermediate/isoadd_features.rds")
 
 # Find the chromPeaks associated with each featureDefinition
 # Remove the features identified in addiso_feature_defs as likely adducts/isotopes
@@ -615,10 +589,10 @@ final_features %>%
   head(20)
 
 # Create .mgf files for SIRIUS to read
-if(dir.exists(sirius_output_dir)){
-  unlink(sirius_output_dir, recursive = TRUE)
+if(dir.exists(sirius_project_dir)){
+  unlink(sirius_project_dir, recursive = TRUE)
 }
-dir.create(sirius_output_dir)
+dir.create(sirius_project_dir)
 
 mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
   if(!nrow(ms2)){
@@ -664,7 +638,7 @@ mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
 }
 
 for(feature_num in final_features$feature){
-  output_file <- paste0(sirius_output_dir, "\\", feature_num, ".mgf")
+  output_file <- paste0(sirius_project_dir, "\\", feature_num, ".mgf")
   feature_msdata <- final_features[final_features$feature==feature_num, ]
   ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
                c(feature_msdata$mzmed+1.003355, feature_msdata$C13),
@@ -682,8 +656,8 @@ for(feature_num in final_features$feature){
 # Run SIRIUS
 sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      'sirius-console-64.exe" ',
-                     ' -i "', normalizePath(sirius_output_dir), '"',
-                     ' -o "', normalizePath(sirius_output_dir), '\\projectdir', '"',
+                     ' -i "', normalizePath(sirius_project_dir), '"',
+                     ' -o "', normalizePath(sirius_project_dir), '\\projectdir', '"',
                      ' formula',
                      ' --database pubchem',
                      ' --profile orbitrap',
@@ -691,18 +665,18 @@ sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      ' zodiac')#,
                      # ' fingerid',
                      # ' --database bio')
-if(dir.exists(paste0(sirius_output_dir, "\\projectdir"))){
-  unlink(paste0(normalizePath(sirius_output_dir), '\\projectdir'), recursive = TRUE)
+if(dir.exists(paste0(sirius_project_dir, "\\projectdir"))){
+  unlink(paste0(normalizePath(sirius_project_dir), '\\projectdir'), recursive = TRUE)
 }
-dir.create(paste0(normalizePath(sirius_output_dir), '\\projectdir'))
+dir.create(paste0(normalizePath(sirius_project_dir), '\\projectdir'))
 system(sirius_cmd)
 #"C://Program Files//sirius-win64-4.4.17//sirius-console-64.exe"  -i "G:\\My Drive\\FalkorFactor\\XCMS\\sirius_temp" -o "G:\\My Drive\\FalkorFactor\\XCMS\\sirius_temp\\projectdir" formula --database pubchem --profile orbitrap -c 50 zodiac
 
 # Rename "csv"s to actual tsvs to facilitate reading
-csv_names <- paste0(sirius_output_dir, "/projectdir") %>%
+csv_names <- paste0(sirius_project_dir, "/projectdir") %>%
   list.files(recursive = TRUE) %>%
   grep(pattern = ".csv", value = TRUE) %>%
-  paste0(sirius_output_dir, "/projectdir/", .)
+  paste0(sirius_project_dir, "/projectdir/", .)
 tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
 sum(!file.rename(csv_names, tsv_names))
 
@@ -713,7 +687,7 @@ final_features <- readRDS(file = "XCMS/final_features.rds")
 final_peaks <- readRDS(file = "XCMS/final_peaks.rds")
 
 # Read in the data and merge with existing estimates
-sirius_formulas <- read.table(paste0(sirius_output_dir, "/projectdir/formula_",
+sirius_formulas <- read.table(paste0(sirius_project_dir, "/projectdir/formula_",
                                       "identifications.tsv"), sep = "\t",
                               row.names = NULL, header = TRUE, 
                               stringsAsFactors = FALSE) %>%

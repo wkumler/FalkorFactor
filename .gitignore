@@ -12,10 +12,5 @@
 *.arf2
 *.mtd2
 *.msp2
-*raw_data_MSnExp
-mzMLs/
-XCMS/simple_samples/
-XCMS/temp_data/
 *.rds
-MS1_data_frame
-XCMS/sirius_temp/
+mzMLs/

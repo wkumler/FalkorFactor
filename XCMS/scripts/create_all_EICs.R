@@ -34,7 +34,7 @@ plotPeak <- function(feature_num_i){
   feature_info <- feature_data[feature_data$feature_num==feature_num_i,]
   feature_raw <- lapply(split(feature_info, feature_info$fileid), function(row_data){
     split_MS1_dt[[row_data$fileid]][
-      rt%between%(c(row_data$rtmin, row_data$rtmax)+c(-50, 50)) &
+      rt%between%(c(row_data$rtmin, row_data$rtmax)+c(-30, 80)) &
         mz%between%c(row_data$mzmin, row_data$mzmax)]
   }) %>% do.call(what = rbind) %>%
     left_join(feature_info, by=c("fileid"))
@@ -42,7 +42,8 @@ plotPeak <- function(feature_num_i){
   
   gp <- ggplot(feature_raw) + geom_line(aes(x=rt, y=int, group=fileid, color=depth)) +
     scale_color_manual(values = c(`DCM`="#00FF0099", `25m`="#0000FF99", 
-                                  `Blank`="#FF000099")) +
+                                  `Blank`="#FF000099", `Standard`="#00000099", 
+                                  `Pooled`="#00FFFF99")) +
     geom_text(aes(x=Inf, y=Inf, label=unique(med_qscore)), hjust=1.5, vjust=1.5) +
     geom_text(aes(x=-Inf, y=Inf, label=round(mean(mz), digits = 5)), hjust=-0.5, vjust=1.5) +
     theme_bw() + theme(legend.position = "none") +
@@ -60,7 +61,7 @@ raw_data <- pblapply(seq_along(raw_data), function(x){
   `[`(.$rt>60&.$rt<1100,)
 saveRDS(raw_data, file = "XCMS/data_intermediate/MS1_data_frame.rds")
 MS1_dt <- readRDS("XCMS/data_intermediate/MS1_data_frame.rds") %>%
-  mutate(fileid=as.character(MS1_data$fileid)) %>%
+  mutate(fileid=as.character(.$fileid)) %>%
   as.data.table()
 split_MS1_dt <- split(MS1_dt, MS1_dt$fileid)
 
@@ -131,9 +132,9 @@ raw_data <- pblapply(ms_files, grabSingleFileData)
 raw_data <- pblapply(seq_along(raw_data), function(x){
   cbind(fileid=basename(ms_files)[x], raw_data[[x]])
 }) %>% do.call(what = rbind)
-saveRDS(raw_data, file = "XCMS/data_intermediate/MS1_data_frame.rds")
-MS1_dt <- readRDS("XCMS/data_intermediate/MS1_data_frame.rds") %>%
-  mutate(fileid=as.character(MS1_data$fileid)) %>%
+saveRDS(raw_data, file = "XCMS/data_intermediate/MS1_data_frame_all.rds")
+MS1_dt <- readRDS("XCMS/data_intermediate/MS1_data_frame_all.rds") %>%
+  mutate(fileid=as.character(.$fileid)) %>%
   as.data.table()
 split_MS1_dt <- split(MS1_dt, MS1_dt$fileid)
 metadata <- data.frame(
@@ -158,7 +159,6 @@ feature_data <- xdata_filled %>%
                names_to = "fileid", values_to = "peak_area") %>%
   mutate(peak_area=as.numeric(peak_area)) %>%
   left_join(metadata %>% mutate(fileid=as.character(fileid)), by="fileid") %>%
-  filter(sample_group%in%c("Blank", "Sample")) %>%
   left_join(xdata_filled %>% 
               xcms::featureDefinitions() %>% 
               as.data.frame(stringsAsFactors=FALSE) %>%

@@ -5,13 +5,20 @@
 # Needs bugtesting after WD restructuring
 
 
+#Only for RScript running
+setwd(r"(G:\My Drive\FalkorFactor)")
+
+
 
 # Setup things ----
 library(tidyverse)
 library(data.table)
+library(pbapply)
 # Requires mzR to load MSMS data
 final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
 final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
+sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
+
 
 
 
@@ -178,9 +185,11 @@ if(dir.exists(sirius_project_dir)){
   unlink(sirius_project_dir, recursive = TRUE)
 }
 dir.create(sirius_project_dir)
+dir.create(paste0(sirius_project_dir, "//raw_files"))
+dir.create(paste0(sirius_project_dir, "//output_dir"))
 
 for(feature_num in final_features$feature){
-  output_file <- paste0(sirius_project_dir, "\\", feature_num, ".mgf")
+  output_file <- paste0(sirius_project_dir, "\\raw_files\\", feature_num, ".mgf")
   feature_msdata <- final_features[final_features$feature==feature_num, ]
   ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
                c(feature_msdata$mzmed+1.003355, feature_msdata$C13),
@@ -200,31 +209,29 @@ for(feature_num in final_features$feature){
 # Run SIRIUS ----
 sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
                      'sirius-console-64.exe" ',
-                     ' -i "', normalizePath(sirius_project_dir), '"',
-                     ' -o "', normalizePath(sirius_project_dir), '"',
+                     ' -i "', normalizePath(sirius_project_dir), '//raw_files"',
+                     ' -o "', normalizePath(sirius_project_dir), '//output_dir"',
                      ' formula',
                      ' --database pubchem',
                      ' --profile orbitrap',
                      ' -c 50',
-                     ' zodiac')#,
-# ' fingerid',
-# ' --database bio')
-if(dir.exists(sirius_project_dir)){
-  unlink(sirius_project_dir, recursive = TRUE)
-}
-dir.create(sirius_project_dir)
+                     ' zodiac',
+                     ' fingerid',
+                     ' --database bio',
+                     ' canopus')
+message(sirius_cmd)
 system(sirius_cmd)
 
 # Rename "csv"s to actual tsvs to facilitate reading
 csv_names <- sirius_project_dir %>%
   list.files(recursive = TRUE) %>%
   grep(pattern = ".csv", value = TRUE) %>%
-  paste0(sirius_project_dir, .)
+  paste0(sirius_project_dir, "/", .)
 tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
 sum(!file.rename(csv_names, tsv_names))
 
 # Read in SIRIUS data ----
-sirius_formulas <- read.table(paste0(sirius_project_dir, "/formula_",
+sirius_formulas <- read.table(paste0(sirius_project_dir, "/output_dir/formula_",
                                      "identifications.tsv"), sep = "\t",
                               row.names = NULL, header = TRUE, 
                               stringsAsFactors = FALSE) %>%
@@ -240,7 +247,7 @@ sirius_formulas <- read.table(paste0(sirius_project_dir, "/formula_",
 # Run Rdisop ----
 rdisop_formulas <- final_features$feature %>%
   pbsapply(rdisop_check, final_features = final_features, 
-           database_formulae=readRDS("XCMS/unique_formulae.rds")) %>%
+           database_formulae=readRDS("XCMS/data_raw/unique_formulae.rds")) %>%
   unlist() %>%
   cbind(feature=final_features$feature) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
@@ -288,7 +295,8 @@ duped_features <- lapply(seq_len(nrow(best_formulas)), function(i){
     best_formulas$mzmed%between%pmppm(feature_data$mzmed, ppm = 5)&
       best_formulas$rtmed%between%(feature_data$rtmed+c(-10, 10)),]
   return(dup_candidates[-c(which.max(dup_candidates$avgarea)),])
-}) %>% do.call(what = rbind) %>% `[`(duplicated(.),)
+}) %>% 
+  do.call(what = rbind) %>% `[`(duplicated(.),)
 
 best_formulas <- anti_join(x = best_formulas, y=duped_features, by="feature")
 write.csv(x = best_formulas, file = "XCMS/data_pretty/feature_formulas.csv")

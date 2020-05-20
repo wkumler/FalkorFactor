@@ -316,7 +316,8 @@ peakareamatch <- lapply(unique(is_peak_iso$feature), function(i){
   sapply(area_cols, function(x){
     suppressWarnings(cor(feature_areas$M_area, feature_areas[[x]]))
   })
-}) %>% do.call(what=rbind) %>% 
+}) %>% 
+  do.call(what=rbind) %>% 
   `[<-`(is.na(.), 0) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(feature=unique(is_peak_iso$feature)) %>%

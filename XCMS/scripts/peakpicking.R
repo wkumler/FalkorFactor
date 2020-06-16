@@ -285,8 +285,14 @@ message(Sys.time()-start_time)
 show(featureDefinitions(xdata_filled))
 
 
+# Normalize to the best internal standard ----
+# Grab data & set thresholds
+bionorm_values <- "XCMS/data_raw/Sample.Key.Falkor.Manual.csv" %>%
+  read.csv() %>%
+  select(`file_name`="ï..Sample.Name", norm_vol="Bio.Normalization")
+cut.off <- 0.4 #Necessary improvement for "acceptable"
+cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
-# Find isotopes and adducts ----
 xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 feature_defs <- featureDefinitions(xdata_filled)
 feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
@@ -300,12 +306,121 @@ feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
   arrange(feature, sample)
 
+# Grab the internal standards from the internet and clean up a little
+internal_stans <- "https://raw.githubusercontent.com/IngallsLabUW/" %>%
+  paste0("Ingalls_Standards/master/Ingalls_Lab_Standards_NEW.csv") %>%
+  read.csv() %>%
+  filter(Column=="HILIC") %>%
+  filter(Fraction1=="HILICPos") %>%
+  filter(Compound.Type=="Internal Standard") %>%
+  mutate(m.z=as.numeric(m.z)) %>%
+  mutate(lower_mz_bound=lapply(m.z, pmppm, ppm=5) %>% sapply(`[`, 1)) %>%
+  mutate(upper_mz_bound=lapply(m.z, pmppm, ppm=5) %>% sapply(`[`, 2)) %>%
+  mutate(RT_sec=RT..min.*60) %>%
+  select(Compound.Name, Emperical.Formula, RT_sec, 
+         m.z, lower_mz_bound, upper_mz_bound)
+
+# For each IS, look in the picked peaks and see if one matches mz & rt
+found_stans <- internal_stans %>%
+  split(seq_len(nrow(.))) %>%
+  lapply(function(i){
+    feature_defs %>%
+      as.data.frame() %>%
+      mutate(feature=rownames(.)) %>%
+      filter(mzmed%between%c(i$lower_mz_bound,i$upper_mz_bound)) %>%
+      mutate(stan=i$Compound.Name) %>%
+      mutate(ppm_diff=(abs(i$m.z-.$mzmed)/.$mzmed)*1000000) %>%
+      mutate(rt_diff=i$RT_sec-.$rtmed) %>%
+      select(feature, stan, mzmed, ppm_diff, rtmed, rt_diff)
+  }) %>% do.call(what="rbind") %>% as.data.frame()
+# Remove all those for which more than one peak was found
+found_stans <- found_stans[
+  !found_stans$stan%in%found_stans$stan[duplicated(found_stans$stan)],]
+
+# Plot it prettily
+facet_labels <- found_stans %>%
+  split(found_stans$feature) %>%
+  sapply(function(i){paste(i$stan, i$feature, sep=": ")})
+feature_peaks %>%
+  filter(feature%in%found_stans$feature) %>%
+  ggplot() +
+  geom_bar(aes(x=file_name, y=into), stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  facet_wrap(~feature, ncol = 1, scales = "free_y",
+             labeller = as_labeller(facet_labels))
+ggsave(filename = "XCMS/data_pretty/internal_stan_values.pdf", 
+       device = "pdf", height = 15, width = 7.5)
+
+
+
+# Step 1: Grab the peak areas from the pooled sample(s) & normalize to injection volume
+stan_data <- lapply(found_stans$feature, function(feature_num){
+  stan_name <- found_stans[found_stans$feature==feature_num, "stan"]
+  feature_peaks %>%
+    filter(feature==feature_num) %>%
+    mutate(stan_name=stan_name) %>%
+    select(stan_name, feature, mz, rt, into, file_name) %>%
+    left_join(bionorm_values, by="file_name") %>%
+    mutate(bionorm_area=into/norm_vol)
+})
+
+# Step 2: compare every feature to every standard and calculate min CV
+BMIS <- pbsapply(unique(feature_peaks$feature), function(feature_num){
+  feature_pooled <- feature_peaks %>%
+    filter(feature==feature_num) %>%
+    slice(grep(pattern = "Poo", file_name)) %>%
+    left_join(bionorm_values, by="file_name") %>%
+    mutate(bionorm_area=into/norm_vol)
+  initial_rsd <- sd(feature_pooled$bionorm_area)/mean(feature_1_pooled$bionorm_area)
+  
+  suppressMessages(
+    stan_data %>%
+    do.call(what=rbind) %>%
+    slice(grep(pattern = "Poo", file_name)) %>%
+    select(file_name, stan_name, stan_bionorm_area=bionorm_area) %>%
+    left_join(feature_pooled, by="file_name") %>%
+    mutate(stan_norm_area=bionorm_area/stan_bionorm_area) %>%
+    group_by(stan_name) %>%
+    summarize(MIS_rsd=sd(stan_norm_area, na.rm = TRUE)/mean(stan_norm_area, na.rm=TRUE)) %>%
+    ungroup() %>%
+    mutate(improvement=(initial_rsd-MIS_rsd)/initial_rsd) %>%
+    mutate(initial_rsd=initial_rsd) %>%
+    mutate(acceptable=improvement>cut.off) %>%
+    rbind(c("None", initial_rsd, 0, initial_rsd, TRUE), .) %>%
+    filter(improvement==max(improvement, na.rm = TRUE)) %>%
+    pull(stan_name)
+  )
+}) %>%
+  data.frame(feature=names(.), BMIS=.)
+
+# Step 3: Calculate new peak areas, normalizing to B-MIS
+stan_df <- stan_data %>%
+  do.call(what = rbind) %>%
+  select("BMIS"=stan_name, file_name, bionorm_area) %>%
+  rbind(data.frame(BMIS="None", file_name=unique(.$file_name), bionorm_area=1))
+BMISed_feature_peaks <- feature_peaks %>%
+  left_join(BMIS, by="feature") %>%
+  left_join(stan_df, by=c("BMIS", "file_name")) %>%
+  group_by(feature) %>%
+  mutate(BMISed_area=(into/bionorm_area)*mean(bionorm_area, na.rm=TRUE)) %>%
+  ungroup() %>%
+  select(-bionorm_area)
+write.csv(BMISed_feature_peaks, file = "XCMS/data_intermediate/BMISed_feature_peaks.csv", row.names = FALSE)
+
+
+
+# Find isotopes and adducts ----
+xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
+feature_peaks <- read.csv(file = "XCMS/data_intermediate/BMISed_feature_peaks.csv")
+feature_defs <- featureDefinitions(xdata_filled)
+
 is_peak_iso <- bplapply(split(feature_peaks, feature_peaks$file_name), 
                         FUN = isIsoAdduct, xdata=xdata_filled,
                         grabSingleFileData=grabSingleFileData,
                         checkPeakCor=checkPeakCor, 
                         pmppm=pmppm, trapz=trapz) %>%
   do.call(what = rbind) %>% as.data.frame()
+write.csv(is_peak_iso, file = "XCMS/data_intermediate/is_peak_iso.csv", row.names = FALSE)
 #6.5 minutes
 
 peakshapematch <- is_peak_iso %>%
@@ -340,17 +455,10 @@ likely_addisos <- peakareamatch$feature[
 addiso_feature_defs <- feature_defs %>%
   `[`(peakareamatch$feature%in%likely_addisos, c("mzmed", "rtmed")) %>%
   as.data.frame() %>%
-  round(digits = 5)
+  round(digits = 5) %>%
+  mutate(feature=rownames(.)) %>%
+  select(feature, everything())
 
-v <- peakareamatch[peakareamatch$feature%in%likely_addisos,]
-v <- cbind(v, peakshapematch[peakshapematch$feature%in%likely_addisos,-1])
-cmpds <- c("C13", "X2C13", "N15", "O18", "S33", "S34", "Na", "NH4", "K", "H2O_H", "X2H")
-v <- v[,paste0(rep(cmpds, each=2), c("_prob", "_area"))]
-v <- round(v, digits = 5)
-v[v<0.9] <- "-------"
-v <- cbind(addiso_feature_defs, v[,-1])
-
-v[which(v["S33_area"]!="-------"&v["S33_prob"]!="-------"&v["rtmed"]<780),]
 write.csv(addiso_feature_defs, row.names = FALSE,
           file = "XCMS/data_pretty/isotope_adduct_features.csv")
 message(Sys.time()-start_time)
@@ -361,20 +469,12 @@ message(Sys.time()-start_time)
 xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 feature_defs <- featureDefinitions(xdata_filled)
 addiso_feature_defs <- read.csv("XCMS/data_pretty/isotope_adduct_features.csv")
+feature_peaks <- read.csv(file = "XCMS/data_intermediate/BMISed_feature_peaks.csv")
 
 # Find the chromPeaks associated with each featureDefinition
 # Remove the features identified in addiso_feature_defs as likely adducts/isotopes
-clean_feature_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
-  cbind(feature=sprintf("FT%03d", i), 
-        peak_id=unlist(feature_defs$peakidx[i]))
-}) %>% 
-  do.call(what=rbind) %>% 
-  as.data.frame(stringsAsFactors=FALSE) %>% 
-  mutate(peak_id=as.numeric(peak_id)) %>%
-  cbind(chromPeaks(xdata_filled)[.$peak_id, ]) %>%
-  mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
-  arrange(feature, sample) %>%
-  filter(!feature%in%rownames(addiso_feature_defs))
+clean_feature_peaks <- feature_peaks %>%
+  filter(!feature%in%addiso_feature_defs$feature)
 
 # For each peak, look for data at +/- each adduct/isotope m/z 
 # Also calculate cor while the raw data is being accessed anyway

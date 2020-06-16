@@ -27,8 +27,8 @@ feature_putatives <- feature_putatives[-1] %>%
 diffreport <- function(peaks, pattern_a, pattern_b){
   split(peaks, peaks$feature) %>%
     lapply(function(x){
-      DCM_areas <- x$M_area[grep(pattern = pattern_a, x$file_name)]
-      m25_areas <- x$M_area[grep(pattern = pattern_b, x$file_name)]
+      DCM_areas <- x$BMISed_area[grep(pattern = pattern_a, x$file_name)]
+      m25_areas <- x$BMISed_area[grep(pattern = pattern_b, x$file_name)]
       if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0, 1))
       c(pval=t.test(DCM_areas, m25_areas)$p.value, 
         diff=mean(DCM_areas)/mean(m25_areas))
@@ -55,15 +55,20 @@ diffreport(final_peaks, pattern_a = "62|64", pattern_b = "77|80")
 
 
 mega_df <- final_peaks %>%
-  #diffreport(pattern_a = "DCM", pattern_b = "25m") %>%
+  diffreport(pattern_a = "DCM", pattern_b = "25m") %>%
   #diffreport(pattern_a = "62|77", pattern_b = "64|80") %>%
-  diffreport(pattern_a = "62|64", pattern_b = "77|80") %>%
+  #diffreport(pattern_a = "62|64", pattern_b = "77|80") %>%
   `[[`(1) %>%
   left_join(final_features, by="feature") %>% 
   arrange(p_adj) %>%
-  select(-X) %>%
   left_join(feature_formulas, by=c("feature", "mzmed", "rtmed", "avgarea")) %>%
   select(feature, p_adj, mzmed, rtmed, avgarea, C13, S34, N15, O18, formula) %>%
   left_join(feature_putatives, by="feature")
+mega_df <- final_peaks %>%
+  diffreport(pattern_a = "DCM", pattern_b = "25m") %>%
+  do.call(what = rbind) %>%
+  left_join(final_features, by="feature") %>%
+  arrange(p_adj) %>%
+  select(feature, p_adj, mzmed, rtmed, BMIS_avg)
 as_tibble(mega_df)
 

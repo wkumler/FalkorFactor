@@ -1,7 +1,7 @@
 library(tidyverse)
 library(vegan)
 library(dendextend)
-xdata_filled <- readRDS("XCMS/temp_data/current_xdata_filled.rds")
+xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 
 feature_values <- xcms::featureValues(xdata_filled) %>%
   #`[`(,grepl(pattern = "Smp", x = colnames(.)))

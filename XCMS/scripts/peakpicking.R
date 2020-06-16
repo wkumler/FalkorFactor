@@ -748,8 +748,9 @@ write.csv(BMISed_feature_peaks,
 # Write out peak and feature lists ----
 final_features <- addiso_features %>%
   left_join(BMISed_features, by="feature")
-feature_peaks <- addiso_feature_peaks %>%
+write.csv(final_features, file = "XCMS/data_pretty/final_features.csv", row.names = FALSE)
+final_peaks <- addiso_feature_peaks %>%
   left_join(select(BMISed_feature_peaks, 
                    c("feature", "BMIS", "BMISed_area", "file_name")), 
             by=c("feature", "file_name"))
-
+write.csv(final_peaks, file = "XCMS/data_pretty/final_peaks.csv", row.names = FALSE)

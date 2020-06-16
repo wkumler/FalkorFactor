@@ -200,22 +200,30 @@ ms_files <- "mzMLs" %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
 
-metadata <- data.frame(
+metadframe <- data.frame(
   fileid=basename(ms_files),
-  sample_group=c("Blank", "Pooled", "Sample", "Std")[c(1, rep(2, 6), rep(3, 24), rep(4, 10))],
-  depth=c("Blank", "Pooled", "DCM", "25m", "Std")[c(1, rep(2, 6), rep(c(rep(3, 3), rep(4, 3)), 4), rep(5, 10))],
-  spindir=c("Blank", "Pooled", "Cyclone", "Anticyclone", "Std")[c(1, rep(2, 6), rep(3, 12), rep(4, 12), rep(5, 10))],
-  time=c("Blank", "Pooled", "Morning", "Afternoon", "Std")[c(1, rep(2, 6), rep(c(rep(3, 6), rep(4, 6)), 2), rep(5, 10))]
-) %>% new(Class = "NAnnotatedDataFrame")
-write.csv(x = metadata@data, file = "XCMS/data_pretty/metadata.csv", row.names = FALSE)
+  depth=regmatches(regexpr(pattern = "Std|Poo|Blk|DCM|25m", ms_files), x = ms_files),
+  station=regmatches(regexpr(pattern = "Std|Poo|Blk|S62|S64|S77|S80", ms_files), 
+                     x = ms_files)
+)
+station_spindirs <- c(Blk="Blk", S62="Cyclone", S64="Cyclone", 
+                      S77="Anticyclone", S80="Anticyclone",
+                      Poo="Poo", Std="Std")
+metadframe$spindir=station_spindirs[metadframe$station]
+station_times <- c(Blk="Blk", S62="Morning", S64="Afternoon", 
+                   S77="Morning", S80="Afternoon",
+                   Poo="Poo", Std="Std")
+metadframe$time=station_times[metadframe$station]
+write.csv(x = metadframe, file = "XCMS/data_pretty/metadata.csv", row.names = FALSE)
 
 sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 
 # Peakpicking ----
-raw_data <- readMSData(files = ms_files, pdata = metadata, msLevel. = 1, 
-                       verbose = TRUE, centroided. = TRUE, mode = "onDisk")
+raw_data <- readMSData(files = ms_files, msLevel. = 1, 
+                       verbose = TRUE, centroided. = TRUE, mode = "onDisk",
+                       pdata = as(metadata, "AnnotatedDataFrame"))
 cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
                      snthresh = 1, prefilter = c(0, 10000), 
                      integrate = 2, mzCenterFun = "wMean", 

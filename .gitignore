@@ -14,4 +14,4 @@
 *.msp2
 *.rds
 mzMLs/
-XCMS/data_intermediate/
+XCMS/*_intermediate/

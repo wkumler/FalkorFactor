@@ -13,5 +13,5 @@
 *.mtd2
 *.msp2
 *.rds
-mzMLs/
-XCMS/data_intermediate/
+XCMS_pos/data_intermediate/
+XCMS_neg/data_intermediate/

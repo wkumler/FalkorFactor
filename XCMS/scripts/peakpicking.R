@@ -381,10 +381,12 @@ library(data.table)
 library(pbapply)
 library(xcms)
 
-polarity <- "pos"
-#polarity <- "neg"
+#polarity <- "pos"
+polarity <- "neg"
 pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
+if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
 intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
+if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
 
 ms_files <- "mzMLs" %>%
   paste0("/", polarity) %>%
@@ -757,4 +759,5 @@ write.csv(file = paste0(pretty_folder, "final_features.csv"),
           BMISed_features, row.names = FALSE)
 write.csv(file = paste0(pretty_folder, "final_peaks.csv"), 
           BMISed_feature_peaks, row.names = FALSE)
+unique(warnings())
 message(Sys.time()-start_time)

@@ -12,7 +12,7 @@ setwd(r"(G:\My Drive\FalkorFactor)")
 ms_files <- "mzMLs" %>%
   list.files(pattern = "Blk|Smp", full.names = TRUE) %>%
   normalizePath()
-xdata_filled <- readRDS("XCMS_pos/data_intermediate/current_xdata_filled.rds")
+xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
 
 
 
@@ -59,8 +59,8 @@ raw_data <- pblapply(seq_along(raw_data), function(x){
   cbind(fileid=basename(ms_files)[x], raw_data[[x]])
 }) %>% do.call(what = rbind) %>%
   `[`(.$rt>60&.$rt<1100,)
-saveRDS(raw_data, file = "XCMS_pos/data_intermediate/MS1_data_frame.rds")
-MS1_dt <- readRDS("XCMS_pos/data_intermediate/MS1_data_frame.rds") %>%
+saveRDS(raw_data, file = "XCMS/data_intermediate/MS1_data_frame.rds")
+MS1_dt <- readRDS("XCMS/data_intermediate/MS1_data_frame.rds") %>%
   mutate(fileid=as.character(.$fileid)) %>%
   as.data.table()
 split_MS1_dt <- split(MS1_dt, MS1_dt$fileid)
@@ -106,7 +106,7 @@ feature_data <- xdata_filled %>%
 
 
 # Plot each chromatogram and save to pdf ----
-pdf(file = "XCMS_pos/data_pretty/all_feature_EICs.pdf", width = 17, height = 11)
+pdf(file = "XCMS/data_pretty/all_feature_EICs.pdf", width = 17, height = 11)
 pb <- txtProgressBar(min = 0, max = length(unique(feature_data$feature_num)), style = 3)
 for(i in seq(1, length(unique(feature_data$feature_num)), 16)){
   if(i+15>length(unique(feature_data$feature_num))){
@@ -132,8 +132,8 @@ raw_data <- pblapply(ms_files, grabSingleFileData)
 raw_data <- pblapply(seq_along(raw_data), function(x){
   cbind(fileid=basename(ms_files)[x], raw_data[[x]])
 }) %>% do.call(what = rbind)
-saveRDS(raw_data, file = "XCMS_pos/data_intermediate/MS1_data_frame_all.rds")
-MS1_dt <- readRDS("XCMS_pos/data_intermediate/MS1_data_frame_all.rds") %>%
+saveRDS(raw_data, file = "XCMS/data_intermediate/MS1_data_frame_all.rds")
+MS1_dt <- readRDS("XCMS/data_intermediate/MS1_data_frame_all.rds") %>%
   mutate(fileid=as.character(.$fileid)) %>%
   as.data.table()
 split_MS1_dt <- split(MS1_dt, MS1_dt$fileid)
@@ -167,7 +167,7 @@ feature_data <- xdata_filled %>%
               mutate(feature_num=as.character(feature_num)), 
             by="feature_num") %>%
   left_join(feature_qscores, by="feature_num")
-pdf(file = "XCMS_pos/data_pretty/all_feature_EICs_w_stans.pdf", width = 17, height = 11)
+pdf(file = "XCMS/data_pretty/all_feature_EICs_w_stans.pdf", width = 17, height = 11)
 pb <- txtProgressBar(min = 0, max = length(unique(feature_data$feature_num)), style = 3)
 for(i in seq(1, length(unique(feature_data$feature_num)), 16)){
   if(i+15>length(unique(feature_data$feature_num))){

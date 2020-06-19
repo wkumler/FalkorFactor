@@ -9,7 +9,7 @@ raw_json <- raw_json[-1,c(2,3,1)]
 names(raw_json) <- c("id", "parent", "class")
 head(raw_json)
 
-sirius_output <- "XCMS_pos/data_intermediate/sirius_project/output_dir/" %>%
+sirius_output <- "XCMS/data_intermediate/sirius_project/output_dir/" %>%
   paste0("canopus_summary.tsv") %>%
   readLines() %>%
   strsplit(split = "\t")

@@ -20,7 +20,7 @@ getSynonymsCID <- function(CID, how_many=20){
   paste0(content, collapse = "; ")
 }
 
-cmpd_file <- "XCMS_pos/data_intermediate/sirius_project/output_dir/compound_identifications_adducts.tsv"
+cmpd_file <- "XCMS/data_intermediate/sirius_project/output_dir/compound_identifications_adducts.tsv"
 cmpd_raw <- read_tsv(cmpd_file, col_types = 
          cols(
            rank = col_double(),

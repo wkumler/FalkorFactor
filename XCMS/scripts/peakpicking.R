@@ -620,6 +620,7 @@ write.csv(x = complete_peaks,
 write.csv(x = complete_features, 
           file = paste0(intermediate_folder, "complete_features.csv"),
           row.names = FALSE)
+message(Sys.time()-start_time)
 
 
 
@@ -756,3 +757,4 @@ write.csv(file = paste0(pretty_folder, "final_features.csv"),
           BMISed_features, row.names = FALSE)
 write.csv(file = paste0(pretty_folder, "final_peaks.csv"), 
           BMISed_feature_peaks, row.names = FALSE)
+message(Sys.time()-start_time)

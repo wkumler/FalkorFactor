@@ -365,9 +365,9 @@ fillChromPeaks_wkumler <- function(object, param){
   lockEnvironment(newFd, bindings = TRUE)
   object@msFeatureData <- newFd
   ph <- xcms:::XProcessHistory(param = param, date. = startDate, 
-                        type. = xcms:::.PROCSTEP.PEAK.FILLING, 
-                        fileIndex = 1:length(fileNames(object)), 
-                        msLevel = msLevel)
+                               type. = xcms:::.PROCSTEP.PEAK.FILLING, 
+                               fileIndex = 1:length(fileNames(object)), 
+                               msLevel = msLevel)
   object <- xcms:::addProcessHistory(object, ph)
   object
 }
@@ -381,7 +381,13 @@ library(data.table)
 library(pbapply)
 library(xcms)
 
+polarity <- "pos"
+#polarity <- "neg"
+pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
+intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
+
 ms_files <- "mzMLs" %>%
+  paste0("/", polarity) %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
@@ -400,9 +406,9 @@ station_times <- c(Blk="Blk", S62="Morning", S64="Afternoon",
                    S77="Morning", S80="Afternoon",
                    Poo="Poo", Std="Std")
 metadframe$time=station_times[metadframe$station]
-write.csv(x = metadframe, file = "XCMS/data_pretty/metadata.csv", row.names = FALSE)
+write.csv(x = metadframe, row.names = FALSE,
+          file = paste0(pretty_folder, "metadata.csv"))
 
-sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 
@@ -417,11 +423,11 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
                      noise = 5000, firstBaselineCheck = FALSE, 
                      extendLengthMSW = TRUE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
-saveRDS(xdata, file = "XCMS/data_intermediate/current_xdata.rds")
+saveRDS(xdata, file = paste0(intermediate_folder, "current_xdata.rds"))
 message(Sys.time()-start_time)
 # 13 minutes
 
-xdata <- readRDS(file = "XCMS/data_intermediate/current_xdata.rds")
+xdata <- readRDS(file = paste0(intermediate_folder, "current_xdata.rds"))
 xcms_peakdf <- chromPeaks(xdata) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(filename=fileNames(xdata)[.[["sample"]]]) %>%
@@ -439,16 +445,17 @@ peakdf_qscored <- files_qscores %>%
   arrange(sample, rtmin, rtmax) %>%
   as.matrix()
 write.csv(x = peakdf_qscored, row.names = FALSE,
-          file = "XCMS/data_intermediate/all_peaks_w_qscores.csv")
+          file = paste0(intermediate_folder, "all_peaks_w_qscores.csv"))
 xdata_cleanpeak <- `chromPeaks<-`(xdata, peakdf_qscored)
-saveRDS(xdata_cleanpeak, file = "XCMS/data_intermediate/xdata_cleanpeak.rds")
+saveRDS(xdata_cleanpeak, 
+        file = paste0(intermediate_folder, "xdata_cleanpeak.rds"))
 message(Sys.time()-start_time)
 # 20 minutes
 
 
 
 # Other XCMS things (rtcor, group) ----
-xdata_cleanpeak <- readRDS("XCMS/data_intermediate/xdata_cleanpeak.rds")
+xdata_cleanpeak <- readRDS(file = paste0(intermediate_folder, "xdata_cleanpeak.rds"))
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 obp <- ObiwarpParam(binSize = 0.1, centerSample = 4, 
                     response = 1, distFun = "cor_opt")
@@ -476,17 +483,16 @@ raw_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
   arrange(feature, sample)
 
-saveRDS(xdata_filled, file = "XCMS/data_intermediate/current_xdata_filled.rds")
-write.csv(raw_peaks, file = "XCMS/data_intermediate/raw_peaks.csv",
-          row.names = FALSE)
+saveRDS(xdata_filled, file = paste0(intermediate_folder, "current_xdata_filled.rds"))
+write.csv(raw_peaks, file = paste0(intermediate_folder, "raw_peaks.csv"), row.names = FALSE)
 message(Sys.time()-start_time)
 # 30 minutes
 
 
 
 # Find isotopes and adducts ----
-xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
-raw_peaks <- read.csv("XCMS/data_intermediate/raw_peaks.csv")
+xdata_filled <- readRDS(file = paste0(intermediate_folder, "current_xdata_filled.rds"))
+raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
 is_peak_iso <- raw_peaks %>%
   split(.$file_name) %>%
@@ -494,7 +500,7 @@ is_peak_iso <- raw_peaks %>%
            grabSingleFileData=grabSingleFileData, checkPeakCor=checkPeakCor, 
            pmppm=pmppm, trapz=trapz) %>%
   do.call(what = rbind) %>% as.data.frame()
-write.csv(is_peak_iso, file = "XCMS/data_intermediate/is_peak_iso.csv", row.names = FALSE)
+write.csv(is_peak_iso, file = paste0(intermediate_folder, "is_peak_iso.csv"), row.names = FALSE)
 #6.5 minutes
 
 peakshapematch <- is_peak_iso %>%
@@ -530,7 +536,7 @@ addiso_features <- raw_peaks %>%
   group_by(feature) %>%
   summarise(mzmed=median(mz), rtmed=median(rt), avginto=mean(into, na.rm=TRUE)) %>%
   filter(feature%in%likely_addisos)
-write.csv(addiso_features, file = "XCMS/data_pretty/addiso_features.csv", 
+write.csv(addiso_features, file = paste0(pretty_folder, "addiso_features.csv"), 
           row.names = FALSE)
 
 message(Sys.time()-start_time)
@@ -538,8 +544,8 @@ message(Sys.time()-start_time)
 
 
 # Calculate isotopes and adducts for remaining peaks ----
-raw_peaks <- read.csv("XCMS/data_intermediate/raw_peaks.csv")
-addiso_features <- read.csv("XCMS/data_pretty/addiso_features.csv")
+raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
+addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
 
 # For each peak, look for data at +/- each adduct/isotope m/z 
 # Also calculate cor while the raw data is being accessed anyway
@@ -609,33 +615,31 @@ complete_features <- complete_peaks %>%
   pivot_wider(names_from = addiso, values_from = rel_int)
 
 write.csv(x = complete_peaks, 
-          file = "XCMS/data_intermediate/complete_peaks.csv",
+          file = paste0(intermediate_folder, "complete_peaks.csv"),
           row.names = FALSE)
 write.csv(x = complete_features, 
-          file = "XCMS/data_intermediate/complete_features.csv",
+          file = paste0(intermediate_folder, "complete_features.csv"),
           row.names = FALSE)
 
 
 
 # Normalize to the best internal standard ----
-xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
-raw_peaks <- read.csv("XCMS/data_intermediate/raw_peaks.csv")
-addiso_features <- read.csv("XCMS/data_pretty/addiso_features.csv")
-is_peak_iso <- read.csv("XCMS/data_intermediate/is_peak_iso.csv")
-complete_peaks <- read.csv("XCMS/data_intermediate/complete_peaks.csv")
-bionorm_values <- "XCMS/data_raw/Sample.Key.Falkor.Manual.csv" %>%
+xdata_filled <- readRDS(paste0(intermediate_folder, "current_xdata_filled.rds"))
+raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
+addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
+is_peak_iso <- read.csv(paste0(intermediate_folder, "is_peak_iso.csv"))
+complete_peaks <- read.csv(paste0(intermediate_folder, "complete_peaks.csv"))
+bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
   read.csv() %>%
   select(file_name="ï..Sample.Name", norm_vol="Bio.Normalization")
 cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
 # Grab the internal standards from the internet and clean up a little
-internal_stans <- "https://raw.githubusercontent.com/IngallsLabUW/" %>%
-  paste0("Ingalls_Standards/master/Ingalls_Lab_Standards_NEW.csv") %>%
-  read.csv() %>%
-  filter(Column=="HILIC") %>%
-  filter(Fraction1=="HILICPos") %>%
+internal_stans <- read.csv("XCMS/falkor_stans.csv") %>%
   filter(Compound.Type=="Internal Standard") %>%
+  filter(Fraction1==paste0("HILIC", paste0(toupper(substring(polarity, 1, 1)), 
+                                           substring(polarity, 2)))) %>%
   mutate(m.z=as.numeric(m.z)) %>%
   mutate(lower_mz_bound=lapply(m.z, pmppm, ppm=5) %>% sapply(`[`, 1)) %>%
   mutate(upper_mz_bound=lapply(m.z, pmppm, ppm=5) %>% sapply(`[`, 2)) %>%
@@ -674,7 +678,7 @@ is_peak_iso %>%
   theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
   facet_wrap(~feature, ncol = 1, scales = "free_y",
              labeller = as_labeller(facet_labels))
-ggsave(filename = "XCMS/data_pretty/internal_stan_values.pdf", 
+ggsave(filename = paste0(pretty_folder, "internal_stan_values.pdf"), 
        device = "pdf", height = 15, width = 7.5)
 
 
@@ -738,11 +742,13 @@ BMISed_features <- BMISed_feature_peaks %>%
   group_by(feature) %>%
   summarise(mzmed=median(mz), rtmed=median(rt), BMIS=unique(BMIS), BMIS_avg=mean(BMISed_area, na.rm=TRUE))
 write.csv(BMISed_feature_peaks, 
-          file = "XCMS/data_intermediate/BMISed_feature_peaks.csv", 
+          file = paste0(intermediate_folder, "BMISed_feature_peaks.csv"), 
           row.names = FALSE)
 
 
 
 # Write out peak and feature lists ----
-write.csv(BMISed_features, file = "XCMS/data_pretty/final_features.csv", row.names = FALSE)
-write.csv(BMISed_feature_peaks, file = "XCMS/data_pretty/final_peaks.csv", row.names = FALSE)
+write.csv(file = paste0(pretty_folder, "final_features.csv"),
+          BMISed_features, row.names = FALSE)
+write.csv(file = paste0(pretty_folder, "final_peaks.csv"), 
+          BMISed_feature_peaks, row.names = FALSE)

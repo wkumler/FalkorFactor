@@ -15,9 +15,10 @@ library(tidyverse)
 library(data.table)
 library(pbapply)
 # Requires mzR to load MSMS data
-final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
-final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
-sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
+# Load in non-BMIS normalized data because 
+final_features <- read.csv(file = "XCMS_pos/data_intermediate/complete_features.csv")
+final_peaks <- read.csv(file = "XCMS_pos/data_intermediate/complete_peaks.csv")
+sirius_project_dir <- "XCMS_pos/data_intermediate/sirius_project"
 
 
 
@@ -248,7 +249,7 @@ sirius_formulas <- read.table(paste0(sirius_project_dir, "/output_dir/formula_",
 # Run Rdisop ----
 rdisop_formulas <- final_features$feature %>%
   pbsapply(rdisop_check, final_features = final_features, 
-           database_formulae=readRDS("XCMS/data_raw/unique_formulae.rds")) %>%
+           database_formulae=readRDS("XCMS_pos/data_raw/unique_formulae.rds")) %>%
   unlist() %>%
   cbind(feature=final_features$feature) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
@@ -300,4 +301,4 @@ duped_features <- lapply(seq_len(nrow(best_formulas)), function(i){
   do.call(what = rbind) %>% `[`(duplicated(.),)
 
 best_formulas <- anti_join(x = best_formulas, y=duped_features, by="feature")
-write.csv(x = best_formulas, file = "XCMS/data_pretty/feature_formulas.csv")
+write.csv(x = best_formulas, file = "XCMS_pos/data_pretty/feature_formulas.csv")

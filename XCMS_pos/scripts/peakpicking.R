@@ -2,7 +2,7 @@
 # followed by de-adducting/de-isotoping
 # Custom de-adducting and de-isotoping because CAMERA and xMSannotator suck
 # Could be improved by including a triple-check via clustering function
-# Expects .mzML files in mzMLs subdirectory of project dir
+# Expects .mzML files in mzMLs_pos subdirectory of project dir
 # Returns a de-adducted/de-isotoped peak list
 # Requires dev version of XCMS for improved peakpicking given settings
 
@@ -76,7 +76,7 @@ qscoreCalculator <- function(eic){
 isIsoAdduct <- function(file_peaks, xdata, grabSingleFileData, 
                         checkPeakCor, pmppm, trapz){
   file_peaks <- file_peaks[order(file_peaks$rtmax),]
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_path <- paste("mzMLs_pos", unique(file_peaks$file_name), sep = "/")
   file_data <- grabSingleFileData(file_path)
   file_data$rt <- xcms::adjustedRtime(xdata)[
     MSnbase::fromFile(xdata)==unique(file_peaks$sample)][factor(file_data$rt)]
@@ -145,7 +145,7 @@ trapz <- function(x, y) {
 findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
                           checkPeakCor, pmppm, trapz){
   file_peaks <- file_peaks[order(file_peaks$rtmax),]
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_path <- paste("mzMLs_pos", unique(file_peaks$file_name), sep = "/")
   file_data <- grabSingleFileData(file_path)
   file_data$rt <- xcms::adjustedRtime(xdata)[
     MSnbase::fromFile(xdata)==unique(file_peaks$sample)][factor(file_data$rt)]
@@ -381,7 +381,7 @@ library(data.table)
 library(pbapply)
 library(xcms)
 
-ms_files <- "mzMLs" %>%
+ms_files <- "mzMLs_pos" %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
@@ -623,6 +623,7 @@ raw_peaks <- read.csv("XCMS/data_intermediate/raw_peaks.csv")
 addiso_features <- read.csv("XCMS/data_pretty/addiso_features.csv")
 is_peak_iso <- read.csv("XCMS/data_intermediate/is_peak_iso.csv")
 complete_peaks <- read.csv("XCMS/data_intermediate/complete_peaks.csv")
+complete_features <- read.csv("XCMS/data_intermediate/complete_features.csv")
 bionorm_values <- "XCMS/data_raw/Sample.Key.Falkor.Manual.csv" %>%
   read.csv() %>%
   select(file_name="ï..Sample.Name", norm_vol="Bio.Normalization")
@@ -732,11 +733,9 @@ BMISed_feature_peaks <- complete_peaks %>%
   group_by(feature) %>%
   mutate(BMISed_area=(M_area/bionorm_area)*mean(bionorm_area, na.rm=TRUE)) %>%
   ungroup() %>%
-  select(-bionorm_area) %>%
-  filter(!feature%in%found_stans$feature)
-BMISed_features <- BMISed_feature_peaks %>%
-  group_by(feature) %>%
-  summarise(mzmed=median(mz), rtmed=median(rt), BMIS=unique(BMIS), BMIS_avg=mean(BMISed_area, na.rm=TRUE))
+  select(-bionorm_area)
+
+
 write.csv(BMISed_feature_peaks, 
           file = "XCMS/data_intermediate/BMISed_feature_peaks.csv", 
           row.names = FALSE)

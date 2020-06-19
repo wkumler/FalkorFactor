@@ -1,7 +1,7 @@
 library(tidyverse)
 library(vegan)
 library(dendextend)
-xdata_filled <- readRDS("XCMS/data_intermediate/current_xdata_filled.rds")
+xdata_filled <- readRDS("XCMS_pos/data_intermediate/current_xdata_filled.rds")
 
 feature_values <- xcms::featureValues(xdata_filled) %>%
   #`[`(,grepl(pattern = "Smp", x = colnames(.)))
@@ -25,7 +25,7 @@ titledata <- as.data.frame(feature_defs[,c("mzmed", "rtmed")]) %>%
   mutate(title=paste0(feature, ": m/z=", round(mzmed, 5), ", RT=", round(rtmed))) %>%
   pull(title)
 labels(vegdend) <- titledata[order(labels(vegdend))]
-pdf(file = "XCMS/temp_data/dendro_addinfo.pdf", height = 100, width=8)
+pdf(file = "XCMS_pos/data_intermediate/dendro_addinfo.pdf", height = 100, width=8)
 par(mar=c(4.1, 4.1, 4.1, 16.1))
 plot(vegdend, horiz=TRUE)
 dev.off()

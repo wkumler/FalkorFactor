@@ -6,10 +6,10 @@
 # Data that only shows up in one treatment is given a p-value of 0
 
 library(tidyverse)
-final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
-final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
-feature_formulas <- read.csv(file = "XCMS/data_pretty/feature_formulas.csv")
-feature_putatives <- "XCMS/data_intermediate/sirius_project/output_dir/" %>%
+final_peaks <- read.csv(file = "XCMS_pos/data_pretty/final_peaks.csv")
+final_features <- read.csv(file = "XCMS_pos/data_pretty/final_features.csv")
+feature_formulas <- read.csv(file = "XCMS_pos/data_pretty/feature_formulas.csv")
+feature_putatives <- "XCMS_pos/data_intermediate/sirius_project/output_dir/" %>%
   paste0("compound_identifications.tsv") %>%
   readLines() %>%
   strsplit(split = "\t")

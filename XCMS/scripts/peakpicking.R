@@ -74,9 +74,9 @@ qscoreCalculator <- function(eic){
   return(round(SNR*peak_cor^4*log10(max(eic$int))))
 }
 isIsoAdduct <- function(file_peaks, xdata, grabSingleFileData, 
-                        checkPeakCor, pmppm, trapz){
+                        checkPeakCor, pmppm, trapz, polarity){
   file_peaks <- file_peaks[order(file_peaks$rtmax),]
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_path <- paste("mzMLs/", polarity, unique(file_peaks$file_name), sep = "/")
   file_data <- grabSingleFileData(file_path)
   file_data$rt <- xcms::adjustedRtime(xdata)[
     MSnbase::fromFile(xdata)==unique(file_peaks$sample)][factor(file_data$rt)]
@@ -143,9 +143,9 @@ trapz <- function(x, y) {
   return(0.5*(p1-p2))
 }
 findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
-                          checkPeakCor, pmppm, trapz){
+                          checkPeakCor, pmppm, trapz, polarity){
   file_peaks <- file_peaks[order(file_peaks$rtmax),]
-  file_path <- paste("mzMLs", unique(file_peaks$file_name), sep = "/")
+  file_path <- paste("mzMLs", polarity, unique(file_peaks$file_name), sep = "/")
   file_data <- grabSingleFileData(file_path)
   file_data$rt <- xcms::adjustedRtime(xdata)[
     MSnbase::fromFile(xdata)==unique(file_peaks$sample)][factor(file_data$rt)]
@@ -494,11 +494,11 @@ message(Sys.time()-start_time)
 xdata_filled <- readRDS(file = paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
-is_peak_iso <- raw_peaks %>%
-  split(.$file_name) %>%
-  bplapply(FUN = isIsoAdduct, xdata=xdata_filled,
+is_peak_iso <- 
+  bplapply(split(raw_peaks, raw_peaks$file_name),
+           FUN = isIsoAdduct, xdata=xdata_filled,
            grabSingleFileData=grabSingleFileData, checkPeakCor=checkPeakCor, 
-           pmppm=pmppm, trapz=trapz) %>%
+           pmppm=pmppm, trapz=trapz, polarity=polarity) %>%
   do.call(what = rbind) %>% as.data.frame()
 write.csv(is_peak_iso, file = paste0(intermediate_folder, "is_peak_iso.csv"), row.names = FALSE)
 #6.5 minutes
@@ -554,7 +554,7 @@ complete_peaks <- raw_peaks %>%
   split(.$file_name) %>%
   bplapply(FUN = findIsoAdduct, xdata=xdata_filled,
            grabSingleFileData=grabSingleFileData, checkPeakCor=checkPeakCor, 
-           pmppm=pmppm, trapz=trapz) %>%
+           pmppm=pmppm, trapz=trapz, polarity=polarity) %>%
   do.call(what = rbind) %>% as.data.frame() %>% 
   `rownames<-`(NULL) %>% arrange(feature)
 
@@ -635,7 +635,7 @@ bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
 cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
-# Grab the internal standards from the internet and clean up a little
+# Grab the internal standards and clean up a little
 internal_stans <- read.csv("XCMS/falkor_stans.csv") %>%
   filter(Compound.Type=="Internal Standard") %>%
   filter(Fraction1==paste0("HILIC", paste0(toupper(substring(polarity, 1, 1)), 
@@ -704,7 +704,7 @@ BMIS <- pbsapply(unique(complete_peaks$feature), function(feature_num){
   initial_rsd <- sd(feature_pooled$bionorm_area)/mean(feature_pooled$bionorm_area)
   
   suppressMessages(
-    stan_data %>%
+    stan_improvements <- stan_data %>%
       do.call(what=rbind) %>%
       slice(grep(pattern = "Poo", file_name)) %>%
       select(file_name, stan_name, stan_bionorm_area=bionorm_area) %>%
@@ -718,9 +718,13 @@ BMIS <- pbsapply(unique(complete_peaks$feature), function(feature_num){
       mutate(initial_rsd=initial_rsd) %>%
       mutate(acceptable=improvement>cut.off) %>%
       rbind(c("None", initial_rsd, 0, initial_rsd, TRUE), .) %>%
-      filter(improvement==max(improvement, na.rm = TRUE)) %>%
-      pull(stan_name)
+      filter(improvement==max(improvement, na.rm = TRUE))
   )
+  if(nrow(stan_improvements)>1){
+    return("None")
+  } else {
+    return(stan_improvements$stan_name)
+  }
 }) %>%
   data.frame(feature=names(.), BMIS=.)
 

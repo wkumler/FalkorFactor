@@ -96,9 +96,17 @@ isIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       
       isos_to_check <- c(C13=-1.003355, X2C13=-2*1.003355, S34=-1.995796, S33=-0.999387,
                          N15=-0.997035, O18=-2.004244) + peak_row_data[["mz"]]
-      adducts_to_check <- c(Na=-22.98922+1.007276, NH4=-18.0338+1.007276,
-                            H2O_H=+18.0106, K=-38.963708+1.007276) + peak_row_data[["mz"]]
-      more_adducts <- c(X2H=peak_row_data[["mz"]]*2-2*1.007276+1.007276)
+      if(polarity=="pos"){
+        adducts_to_check <- c(Na=-22.98922+1.007276, NH4=-18.0338+1.007276,
+                              H2O_H=+18.0106, K=-38.963708+1.007276) + peak_row_data[["mz"]]
+        more_adducts <- c(X2H=peak_row_data[["mz"]]*2-2*1.007276+1.007276)
+      } else if(polarity=="neg"){
+        adducts_to_check <- c(Cl=-34.969402+1.007276, Ac=-59.013851+1.007276,
+                              H2O_H=-18.0106, Br=-78.918885+1.007276) + peak_row_data[["mz"]]
+        more_adducts <- c(X2H=peak_row_data[["mz"]]*2-2*1.007276-1.007276)
+      } else {
+        stop("Unrecognized polarity in adduct search, see function isIsoAdduct.")
+      }
       
       masses_to_check <- c(isos_to_check, adducts_to_check, more_adducts)
       
@@ -165,9 +173,17 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       
       isos_to_check <- c(C13=1.003355, X2C13=2*1.003355, S34=1.995796, S33=0.999387,
                          N15=0.997035, O18=2.004244) + peak_row_data[["mz"]]
-      adducts_to_check <- c(Na=22.98922-1.007276, NH4=18.0338-1.007276,
-                            H2O_H=-18.0106, K=38.963708-1.007276) + peak_row_data[["mz"]]
-      more_adducts <- c(X2H=peak_row_data[["mz"]]-1.007276+2*1.007276)/2
+      if(polarity=="pos"){
+        adducts_to_check <- c(Na=22.98922-1.007276, NH4=18.0338-1.007276,
+                              H2O_H=-18.0106, K=38.963708-1.007276) + peak_row_data[["mz"]]
+        more_adducts <- c(X2H=peak_row_data[["mz"]]-1.007276+2*1.007276)/2
+      } else if(polarity=="neg"){
+        adducts_to_check <- c(Cl=34.969402+1.007276, Ac=59.013851+1.007276,
+                              H2O_H=18.0106, Br=78.918885+1.007276) + peak_row_data[["mz"]]
+        more_adducts <- c(X2H=(peak_row_data[["mz"]]+1.007276)*2-2*1.007276)
+      } else {
+        stop("Unrecognized polarity in adduct search, see function findIsoAdduct.")
+      }
       
       masses_to_check <- c(isos_to_check, adducts_to_check, more_adducts)
       
@@ -195,7 +211,7 @@ fillChromPeaks_wkumler <- function(object, param){
   if (!hasFeatures(object, msLevel = msLevel)) 
     stop("No feature definitions for MS level ", 
          msLevel, " present. Please run 'groupChromPeaks' first.")
-  if (xcms:::.hasFilledPeaks(object)) 
+  if (xcms:::.hasFilledPeaks(object))
     message("Filled peaks already present, adding still missing", 
             " peaks.")
   if (xcms:::hasChromPeaks(object) & !xcms:::.has_chrom_peak_data(object)) 

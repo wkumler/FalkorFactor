@@ -11,3 +11,73 @@ library(pbapply)
 library(xcms)
 ```
 
+## Setup and metadata things
+
+The raw data is stored on the Synology drive in the Ingalls Lab as .raw file types. This data isn't super useful in its proprietary format, so it's easiest to convert those .raw files into .mzMLs with the "RunMsconvert.cmd" script in the project working directory. We write these files into the "mzMLs" folder in the working directory since they're also accessed by MSDIAL.
+
+File contents (as of June 24, 2020):
+
+```
+msconvert Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\*.raw --mzML --filter "peakPicking true 1-" --filter "polarity positive" -z -o mzMLs/pos/
+msconvert Z:\1_QEdata\LTC\DATA\HILIC\HILIC_2017\170706_Gradients2.0_CruiseFilters_2\170706_Blk_Blk0p2_?.raw --mzML --filter "peakPicking true 1-" --filter "polarity positive" -z -o mzMLs/pos/
+msconvert Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\MSMS\*DDApos*.raw --mzML --filter "peakPicking true 1-" --filter "polarity positive" -z -o mzMLs/pos/MSMS/
+msconvert Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\*.raw --mzML --filter "peakPicking true 1-" --filter "polarity negative" -z -o mzMLs/neg/
+msconvert Z:\1_QEdata\LTC\DATA\HILIC\HILIC_2017\170706_Gradients2.0_CruiseFilters_2\170706_Blk_Blk0p2_?.raw --mzML --filter "peakPicking true 1-" --filter "polarity negative" -z -o mzMLs/neg/
+msconvert Z:\1_QEdata\LTC\DATA\HILIC\190718_DepthProfiles_FK180310\MSMS\*DDAneg*.raw --mzML --filter "peakPicking true 1-" --filter "polarity negative" -z -o mzMLs/neg/MSMS/
+```
+
+The code above calls msconvert, a command-line utility from Proteowizard, to convert the files into mzML format. It also splits them into positive and negative mode and separates out the MSMS information into a sub-folder. Per Katherine's recommendation, I'm using blanks from her Gradients 2.0 project rather than the ones Laura added for me.
+
+We also need the metadata that goes with these files, containing information about treatment type, which are blanks, injection volume, etc. It's also good to pull down the standards file from the lab Github during this setup phase. The small script below does this by accessing the file names, the instrument-produced sample key, and the internet.
+
+```{r Raw datagrab}
+# Metadata
+ms_files <- "mzMLs" %>%
+  paste0("/pos") %>% #Same in both polarities, but gotta choose one!
+  list.files(pattern = ".mzML", full.names = TRUE) %>%
+  normalizePath() %>%
+  `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
+metadframe <- data.frame(
+  fileid=basename(ms_files),
+  depth=regmatches(regexpr(pattern = "Std|Poo|Blk|DCM|25m", ms_files), x = ms_files),
+  station=regmatches(regexpr(pattern = "Std|Poo|Blk|S62|S64|S77|S80", ms_files), 
+                     x = ms_files)
+)
+station_spindirs <- c(Blk="Blk", S62="Cyclone", S64="Cyclone", 
+                      S77="Anticyclone", S80="Anticyclone",
+                      Poo="Poo", Std="Std")
+metadframe$spindir=station_spindirs[metadframe$station]
+station_times <- c(Blk="Blk", S62="Morning", S64="Afternoon", 
+                   S77="Morning", S80="Afternoon",
+                   Poo="Poo", Std="Std")
+metadframe$time=station_times[metadframe$station]
+write.csv(x = metadframe, row.names = FALSE, file = "falkor_metadata.csv")
+
+# Sample key information
+sample_key <- read.csv(paste0("Z:\\1_QEdata\\LTC\\DATA\\HILIC\\190718_Depth",
+                              "Profiles_FK180310\\Sample.Key.HILIC.csv"),
+                       skip = 1)
+falkor_key <- sample_key %>%
+  filter(grepl(pattern = "FK|Std", sample_key$Sample.Name)) %>%
+  select(Sample.Name, Inj.vol) %>%
+  add_row(Sample.Name="170706_Blk_Blk0p2_1", Inj.vol=1) %>%
+  add_row(Sample.Name="170706_Blk_Blk0p2_2", Inj.vol=1) %>%
+  add_row(Sample.Name="190715_Blk_KM1906U14-Blk_C", Inj.vol=1) %>%
+  mutate(fileid=paste0(Sample.Name, ".mzML")) %>%
+  select(-Sample.Name, inj_vol=Inj.vol) %>%
+  arrange(fileid)
+write.csv(falkor_key, file = "falkor_sample_key.csv", row.names = FALSE)
+
+# Standards information
+raw_stans <- read.csv(paste0("https://raw.githubusercontent.com/",
+                             "IngallsLabUW/Ingalls_Standards/master/",
+                             "Ingalls_Lab_Standards_NEW.csv"))
+falkor_stans <- raw_stans %>%
+  filter(Column=="HILIC") %>%
+  mutate(polarity=tolower(gsub(pattern = "HILIC", "", .$Fraction1))) %>%
+  select(compound_type=Compound.Type, compound_name=Compound.Name, 
+         formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
+         charge=z, kegg_id=C0, polarity)
+write.csv(falkor_stans, file = "falkor_stans.csv", row.names = FALSE)
+```
+

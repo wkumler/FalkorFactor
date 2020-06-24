@@ -1,0 +1,13 @@
+---
+title: "Falkor Control Script"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+library(tidyverse)
+library(data.table)
+library(pbapply)
+library(xcms)
+```
+

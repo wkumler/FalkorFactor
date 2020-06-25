@@ -7,14 +7,15 @@
 
 
 # Read in the raw data ----
+message("Reading files...")
 start_time <- Sys.time()
 raw_data <- readMSData(files = normalizePath(paste("mzMLs", polarity, ms_files, sep = "/")), 
-                       msLevel. = 1, 
-                       verbose = TRUE, centroided. = TRUE, mode = "onDisk",
+                       msLevel. = 1, centroided. = TRUE, mode = "onDisk",
                        pdata = as(metadframe, "AnnotatedDataFrame"))
 message("Time to read in files: ", round(Sys.time()-start_time, digits = 2), " min")
 
 # Perform peakpicking ----
+message("Picking peaks...")
 start_time <- Sys.time()
 cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
                      snthresh = 1, prefilter = c(0, 10000), 
@@ -31,6 +32,7 @@ message("Time to perform peakpicking: ",
 # Assign new quality scores ----
 # speedyQscoreCalculator is custom function which should be in functions script
 # sourced by speedyQscoreCalculator
+message("Assigning quality scores...")
 start_time <- Sys.time()
 xcms_peakdf <- chromPeaks(xdata) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
@@ -55,6 +57,7 @@ message("Time to assign quality scores: ",
 
 
 # Other XCMS things (rtcor, group) ----
+message("Other XCMS things...")
 start_time <- Sys.time()
 obp <- ObiwarpParam(binSize = 0.1, centerSample = 4, 
                     response = 1, distFun = "cor_opt")

@@ -5,12 +5,16 @@ output: html_document
 
 ```{r setup, include=TRUE}
 knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 library(tidyverse)
 library(data.table)
 library(pbapply)
 library(xcms)
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
-source("scripts/functions.R")
+```
+
+```{r loadscripts}
+#Must be separate so that the chunk setting option can run first \o/
+source("XCMS/scripts/functions.R")
 ```
 
 ## Setup and metadata things
@@ -36,7 +40,7 @@ We also need the metadata that goes with these files, containing information abo
 polarity <- "pos"
 
 # Metadata
-ms_files <- "../mzMLs/" %>%
+ms_files <- "mzMLs/" %>%
   paste0(polarity) %>% #Same in both polarities, but gotta choose one!
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
@@ -55,7 +59,7 @@ station_times <- c(Blk="Blk", S62="Morning", S64="Afternoon",
                    S77="Morning", S80="Afternoon",
                    Poo="Poo", Std="Std")
 metadframe$time=station_times[metadframe$station]
-write.csv(x = metadframe, row.names = FALSE, file = "falkor_metadata.csv")
+write.csv(x = metadframe, row.names = FALSE, file = "XCMS/falkor_metadata.csv")
 knitr::kable(head(metadframe))
 
 
@@ -73,7 +77,7 @@ falkor_key <- sample_key %>%
   mutate(fileid=paste0(Sample.Name, ".mzML")) %>%
   select(-Sample.Name, inj_vol=Inj.vol) %>%
   arrange(fileid)
-write.csv(falkor_key, file = "falkor_sample_key.csv", row.names = FALSE)
+write.csv(falkor_key, file = "XCMS/falkor_sample_key.csv", row.names = FALSE)
 knitr::kable(head(falkor_key))
 
 
@@ -87,15 +91,18 @@ falkor_stans <- raw_stans %>%
   select(compound_type=Compound.Type, compound_name=Compound.Name, 
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
          charge=z, kegg_id=C0, polarity)
-write.csv(falkor_stans, file = "falkor_stans.csv", row.names = FALSE)
+write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
 knitr::kable(head(falkor_stans))
 
 
 # Create folders in which to store intermediate and final data
-pretty_folder <- paste0(polarity, "_pretty/")
+pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
 if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
-intermediate_folder <- paste0(polarity, "_intermediate/")
+intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
 if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
+
+# Start parallel processing
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 ```
 
 ## Peakpicking
@@ -105,11 +112,11 @@ if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
 It takes in the metadataframe created above as well as the list of paths to the .mzML files and returns a (rather large) data frame full of peaks. 
 
 ```{r Peakpicking}
-falkor_metadata <- read.csv("falkor_metadata.csv")
+falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 ms_files <- falkor_metadata$fileid
 qscore_threshold <- 25
 
-source("scripts/peakpicking.R")
+source("XCMS/scripts/peakpicking.R")
 
 saveRDS(xdata_filled, file = paste0(intermediate_folder, "current_xdata_filled.rds"))
 print(xdata_filled)

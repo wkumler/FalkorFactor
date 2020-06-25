@@ -8,7 +8,8 @@
 
 # Read in the raw data ----
 start_time <- Sys.time()
-raw_data <- readMSData(files = ms_files, msLevel. = 1, 
+raw_data <- readMSData(files = normalizePath(paste("mzMLs", polarity, ms_files, sep = "/")), 
+                       msLevel. = 1, 
                        verbose = TRUE, centroided. = TRUE, mode = "onDisk",
                        pdata = as(metadframe, "AnnotatedDataFrame"))
 message("Time to read in files: ", round(Sys.time()-start_time, digits = 2), " min")

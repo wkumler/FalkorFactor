@@ -10,6 +10,7 @@ library(data.table)
 library(pbapply)
 library(xcms)
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
+source("scripts/functions.R")
 ```
 
 ## Setup and metadata things

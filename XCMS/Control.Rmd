@@ -35,7 +35,7 @@ We also need the metadata that goes with these files, containing information abo
 polarity <- "pos"
 
 # Metadata
-ms_files <- "mzMLs" %>%
+ms_files <- "../mzMLs/" %>%
   paste0(polarity) %>% #Same in both polarities, but gotta choose one!
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
@@ -84,9 +84,9 @@ falkor_stans <- raw_stans %>%
 write.csv(falkor_stans, file = "falkor_stans.csv", row.names = FALSE)
 
 # Create folders in which to store intermediate and final data
-pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
+pretty_folder <- paste0(polarity, "_pretty/")
 if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
-intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
+intermediate_folder <- paste0(polarity, "_intermediate/")
 if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
 ```
 
@@ -98,5 +98,34 @@ It takes in the metadataframe created above as well as the list of paths to the 
 
 ```{r Peakpicking}
 falkor_metadata <- read.csv("falkor_metadata.csv")
+ms_files <- falkor_metadata$fileid
 
+source("peakpicking.R")
 ```
+
+## De-isotoping and de-adducting
+
+```{r deisoadduct}
+xdata_filled <- readRDS(file = paste0(intermediate_folder, "current_xdata_filled.rds"))
+raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
+
+source("deisoadduct.R")
+```
+
+## Finding B-MISs
+
+```{B-MIS}
+xdata_filled <- readRDS(paste0(intermediate_folder, "current_xdata_filled.rds"))
+raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
+addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
+is_peak_iso <- read.csv(paste0(intermediate_folder, "is_peak_iso.csv"))
+complete_peaks <- read.csv(paste0(intermediate_folder, "complete_peaks.csv"))
+bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
+  read.csv() %>%
+  select(file_name="ï..Sample.Name", norm_vol="Bio.Normalization")
+cut.off <- 0.4 #Necessary improvement for "acceptable"
+cut.off2 <- 0.1 #If RSD already below, skip B-MIS
+
+source("bmisscript.R")
+```
+

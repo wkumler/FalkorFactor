@@ -9,6 +9,7 @@ library(tidyverse)
 library(data.table)
 library(pbapply)
 library(xcms)
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 ```
 
 ## Setup and metadata things
@@ -31,9 +32,11 @@ The code above calls msconvert, a command-line utility from Proteowizard, to con
 We also need the metadata that goes with these files, containing information about treatment type, which are blanks, injection volume, etc. It's also good to pull down the standards file from the lab Github during this setup phase. The small script below does this by accessing the file names, the instrument-produced sample key, and the internet.
 
 ```{r Raw datagrab}
+polarity <- "pos"
+
 # Metadata
 ms_files <- "mzMLs" %>%
-  paste0("/pos") %>% #Same in both polarities, but gotta choose one!
+  paste0(polarity) %>% #Same in both polarities, but gotta choose one!
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
@@ -79,5 +82,21 @@ falkor_stans <- raw_stans %>%
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
          charge=z, kegg_id=C0, polarity)
 write.csv(falkor_stans, file = "falkor_stans.csv", row.names = FALSE)
+
+# Create folders in which to store intermediate and final data
+pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
+if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
+intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
+if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
 ```
 
+## Peakpicking
+
+**Obviously** the most important step, you can't do anything else without first finding things to look at and talk about. The script below, when sourced, runs XCMS's centWave peakpicking. It also calculates an improved signal-to-noise and metric of Gaussian-ness that seems to sift through the noise more accurately than the default signal-to-noise ratio, which has known bugs (https://doi.org/10.1021/acs.analchem.7b01069).
+
+It takes in the metadataframe created above as well as the list of paths to the .mzML files and returns a (rather large) data frame full of peaks. 
+
+```{r Peakpicking}
+falkor_metadata <- read.csv("falkor_metadata.csv")
+
+```

@@ -2,9 +2,14 @@
 # Called by Control.Rmd
 # Requires dev version of XCMS for improved peakpicking given settings
 
+# Read in the raw data ----
+# ms_files comes from Control.Rmd
 raw_data <- readMSData(files = ms_files, msLevel. = 1, 
                        verbose = TRUE, centroided. = TRUE, mode = "onDisk",
                        pdata = as(metadframe, "AnnotatedDataFrame"))
+
+
+# Perform peakpicking ----
 cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
                      snthresh = 1, prefilter = c(0, 10000), 
                      integrate = 2, mzCenterFun = "wMean", 
@@ -16,6 +21,10 @@ saveRDS(xdata, file = paste0(intermediate_folder, "current_xdata.rds"))
 message(Sys.time()-start_time)
 # 13 minutes
 
+
+# Assign new quality scores ----
+# speedyQscoreCalculator is custom function which should be in functions script
+# sourced by speedyQscoreCalculator
 xdata <- readRDS(file = paste0(intermediate_folder, "current_xdata.rds"))
 xcms_peakdf <- chromPeaks(xdata) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%

@@ -2,14 +2,19 @@
 # Called by Control.Rmd
 # Requires dev version of XCMS for improved peakpicking given settings
 
-# Read in the raw data ----
 # ms_files comes from Control.Rmd
+# qscore_threshold comes from Control.Rmd
+
+
+# Read in the raw data ----
+start_time <- Sys.time()
 raw_data <- readMSData(files = ms_files, msLevel. = 1, 
                        verbose = TRUE, centroided. = TRUE, mode = "onDisk",
                        pdata = as(metadframe, "AnnotatedDataFrame"))
-
+message("Time to read in files: ", round(Sys.time()-start_time, digits = 2), " min")
 
 # Perform peakpicking ----
+start_time <- Sys.time()
 cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
                      snthresh = 1, prefilter = c(0, 10000), 
                      integrate = 2, mzCenterFun = "wMean", 
@@ -17,15 +22,15 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
                      noise = 5000, firstBaselineCheck = FALSE, 
                      extendLengthMSW = TRUE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
-saveRDS(xdata, file = paste0(intermediate_folder, "current_xdata.rds"))
-message(Sys.time()-start_time)
+message("Time to perform peakpicking: ", 
+        round(Sys.time()-start_time, digits = 2), " min")
 # 13 minutes
 
 
 # Assign new quality scores ----
 # speedyQscoreCalculator is custom function which should be in functions script
 # sourced by speedyQscoreCalculator
-xdata <- readRDS(file = paste0(intermediate_folder, "current_xdata.rds"))
+start_time <- Sys.time()
 xcms_peakdf <- chromPeaks(xdata) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(filename=fileNames(xdata)[.[["sample"]]]) %>%
@@ -34,27 +39,22 @@ split_xcms_filedata <- split(xcms_peakdf, xcms_peakdf$filename)
 files_qscores <- bplapply(X = split_xcms_filedata, FUN = speedyQscoreCalculator,
                           grabSingleFileData, qscoreCalculator)
 
-threshold <- 25
 peakdf_qscored <- files_qscores %>%
   do.call(what = rbind) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%
-  filter(sn>threshold) %>%
+  filter(sn>qscore_threshold) %>%
   select(-filename) %>%
   arrange(sample, rtmin, rtmax) %>%
   as.matrix()
-write.csv(x = peakdf_qscored, row.names = FALSE,
-          file = paste0(intermediate_folder, "all_peaks_w_qscores.csv"))
 xdata_cleanpeak <- `chromPeaks<-`(xdata, peakdf_qscored)
-saveRDS(xdata_cleanpeak, 
-        file = paste0(intermediate_folder, "xdata_cleanpeak.rds"))
-message(Sys.time()-start_time)
+message("Time to assign quality scores: ", 
+        round(Sys.time()-start_time, digits = 2), " min")
 # 20 minutes
 
 
 
 # Other XCMS things (rtcor, group) ----
-xdata_cleanpeak <- readRDS(file = paste0(intermediate_folder, "xdata_cleanpeak.rds"))
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
+start_time <- Sys.time()
 obp <- ObiwarpParam(binSize = 0.1, centerSample = 4, 
                     response = 1, distFun = "cor_opt")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
@@ -81,10 +81,6 @@ raw_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%
   arrange(feature, sample)
 
-saveRDS(xdata_filled, file = paste0(intermediate_folder, "current_xdata_filled.rds"))
-write.csv(raw_peaks, file = paste0(intermediate_folder, "raw_peaks.csv"), row.names = FALSE)
-message(Sys.time()-start_time)
+message("Time for other XCMS things: ", 
+        round(Sys.time()-start_time, digits = 2), " min")
 # 30 minutes
-
-
-

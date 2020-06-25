@@ -56,6 +56,9 @@ station_times <- c(Blk="Blk", S62="Morning", S64="Afternoon",
                    Poo="Poo", Std="Std")
 metadframe$time=station_times[metadframe$station]
 write.csv(x = metadframe, row.names = FALSE, file = "falkor_metadata.csv")
+knitr::kable(head(metadframe))
+
+
 
 # Sample key information
 sample_key <- read.csv(paste0("Z:\\1_QEdata\\LTC\\DATA\\HILIC\\190718_Depth",
@@ -71,6 +74,8 @@ falkor_key <- sample_key %>%
   select(-Sample.Name, inj_vol=Inj.vol) %>%
   arrange(fileid)
 write.csv(falkor_key, file = "falkor_sample_key.csv", row.names = FALSE)
+knitr::kable(head(falkor_key))
+
 
 # Standards information
 raw_stans <- read.csv(paste0("https://raw.githubusercontent.com/",
@@ -83,6 +88,8 @@ falkor_stans <- raw_stans %>%
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
          charge=z, kegg_id=C0, polarity)
 write.csv(falkor_stans, file = "falkor_stans.csv", row.names = FALSE)
+knitr::kable(head(falkor_stans))
+
 
 # Create folders in which to store intermediate and final data
 pretty_folder <- paste0(polarity, "_pretty/")
@@ -93,15 +100,21 @@ if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
 
 ## Peakpicking
 
-**Obviously** the most important step, you can't do anything else without first finding things to look at and talk about. The script below, when sourced, runs XCMS's centWave peakpicking. It also calculates an improved signal-to-noise and metric of Gaussian-ness that seems to sift through the noise more accurately than the default signal-to-noise ratio, which has known bugs (https://doi.org/10.1021/acs.analchem.7b01069).
+**Obviously** the most important step, you can't do anything else without first finding things to look at and talk about. The script below, when sourced, runs XCMS's centWave peakpicking. It also calculates an improved signal-to-noise and metric of Gaussian-ness that seems to sift through the noise more accurately than the default signal-to-noise ratio, which has known bugs (https://doi.org/10.1021/acs.analchem.7b01069). Finally, it performs retention time correction and peak correspondence (grouping peaks across files).
 
 It takes in the metadataframe created above as well as the list of paths to the .mzML files and returns a (rather large) data frame full of peaks. 
 
 ```{r Peakpicking}
 falkor_metadata <- read.csv("falkor_metadata.csv")
 ms_files <- falkor_metadata$fileid
+qscore_threshold <- 25
 
-source("peakpicking.R")
+source("scripts/peakpicking.R")
+
+saveRDS(xdata_filled, file = paste0(intermediate_folder, "current_xdata_filled.rds"))
+print(xdata_filled)
+write.csv(raw_peaks, file = paste0(intermediate_folder, "raw_peaks.csv"), row.names = FALSE)
+knitr::kable(head(raw_peaks))
 ```
 
 ## De-isotoping and de-adducting
@@ -110,7 +123,7 @@ source("peakpicking.R")
 xdata_filled <- readRDS(file = paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
-source("deisoadduct.R")
+source("scripts/deisoadduct.R")
 ```
 
 ## Finding B-MISs
@@ -127,6 +140,6 @@ bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
 cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
-source("bmisscript.R")
+source("scripts/bmisscript.R")
 ```
 

@@ -3,8 +3,8 @@ title: "Falkor Control Script"
 output: html_document
 ---
 
-```{r setup, include=TRUE}
-knitr::opts_chunk$set(echo = TRUE, eval = FALSE, warning = FALSE, message = FALSE)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 library(tidyverse)
 library(data.table)
@@ -12,10 +12,14 @@ library(pbapply)
 library(xcms)
 ```
 
-```{r loadscripts}
-#Must be separate so that the chunk setting option can run first \o/
-source("XCMS/scripts/functions.R")
+```{r polarity}
+polarity <- "pos"
 ```
+
+```{r foldermaking}
+
+```
+
 
 ## Setup and metadata things
 
@@ -36,9 +40,7 @@ The code above calls msconvert, a command-line utility from Proteowizard, to con
 
 We also need the metadata that goes with these files, containing information about treatment type, which are blanks, injection volume, etc. It's also good to pull down the standards file from the lab Github during this setup phase. The small script below does this by accessing the file names, the instrument-produced sample key, and the internet.
 
-```{r Raw datagrab}
-polarity <- "pos"
-
+```{r datagrab, dependson="polarity"}
 # Metadata
 ms_files <- "mzMLs/" %>%
   paste0(polarity) %>% #Same in both polarities, but gotta choose one!
@@ -95,12 +97,6 @@ write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
 knitr::kable(head(falkor_stans))
 
 
-# Create folders in which to store intermediate and final data
-pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
-if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
-intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
-if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
-
 # Start parallel processing
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 ```
@@ -111,7 +107,10 @@ register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 It takes in the metadataframe created above as well as the list of paths to the .mzML files and returns a (rather large) data frame full of peaks. 
 
-```{r Peakpicking}
+```{r Peakpicking, eval=FALSE}
+source("XCMS/scripts/functions.R")
+
+# Run positive mode data
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 ms_files <- falkor_metadata$fileid
 qscore_threshold <- 25
@@ -126,16 +125,20 @@ knitr::kable(head(raw_peaks))
 
 ## De-isotoping and de-adducting
 
-```{r deisoadduct}
+After peaks have been identified, many of them will be isotopes and adducts of other peaks. Removing these is important to minimize pseudoreplication issues and data artifacts. I didn't like any of the packages I tried to do this, so I wrote my own code to process this more robustly.
+
+```{r deisoadduct, eval=FALSE}
 xdata_filled <- readRDS(file = paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
-source("scripts/deisoadduct.R")
+source("XCMS/scripts/deisoadduct.R")
+
+
 ```
 
 ## Finding B-MISs
 
-```{B-MIS}
+```{B-MIS, eval=FALSE}
 xdata_filled <- readRDS(paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
 addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))

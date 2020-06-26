@@ -1,6 +1,8 @@
 # Script to de-isotope and de-adduct XCMS-picked peaks
 # Called by Control.Rmd
 
+# Find peaks with isotopes ----
+# Looks +/- a certain m/z determined by the adduct table
 is_peak_iso <- 
   bplapply(split(raw_peaks, raw_peaks$file_name),
            FUN = isIsoAdduct, xdata=xdata_filled,

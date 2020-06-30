@@ -1,10 +1,10 @@
 ---
 title: "Falkor Control Script"
-output: html_document
+output: html_notebook
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 library(tidyverse)
 library(data.table)
@@ -12,14 +12,22 @@ library(pbapply)
 library(xcms)
 ```
 
-```{r polarity}
+```{r specific_setup}
 polarity <- "pos"
+
+pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
+if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
+intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
+if(!dir.exists(intermediate_folder)){dir.create(intermediate_folder)}
+
+source("XCMS/scripts/functions.R")
+
+ms_files <- "mzMLs/" %>%
+  paste0(polarity) %>%
+  list.files(pattern = ".mzML", full.names = TRUE) 
+
+register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 ```
-
-```{r foldermaking}
-
-```
-
 
 ## Setup and metadata things
 
@@ -40,18 +48,16 @@ The code above calls msconvert, a command-line utility from Proteowizard, to con
 
 We also need the metadata that goes with these files, containing information about treatment type, which are blanks, injection volume, etc. It's also good to pull down the standards file from the lab Github during this setup phase. The small script below does this by accessing the file names, the instrument-produced sample key, and the internet.
 
-```{r datagrab, dependson="polarity"}
+```{r metadatagrab}
 # Metadata
-ms_files <- "mzMLs/" %>%
-  paste0(polarity) %>% #Same in both polarities, but gotta choose one!
-  list.files(pattern = ".mzML", full.names = TRUE) %>%
+file_paths <- ms_files %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
 metadframe <- data.frame(
-  fileid=basename(ms_files),
-  depth=regmatches(regexpr(pattern = "Std|Poo|Blk|DCM|25m", ms_files), x = ms_files),
-  station=regmatches(regexpr(pattern = "Std|Poo|Blk|S62|S64|S77|S80", ms_files), 
-                     x = ms_files)
+  fileid=basename(file_paths),
+  depth=regmatches(regexpr(pattern = "Std|Poo|Blk|DCM|25m", file_paths), x = file_paths),
+  station=regmatches(regexpr(pattern = "Std|Poo|Blk|S62|S64|S77|S80", file_paths), 
+                     x = file_paths)
 )
 station_spindirs <- c(Blk="Blk", S62="Cyclone", S64="Cyclone", 
                       S77="Anticyclone", S80="Anticyclone",
@@ -95,10 +101,6 @@ falkor_stans <- raw_stans %>%
          charge=z, kegg_id=C0, polarity)
 write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
 knitr::kable(head(falkor_stans))
-
-
-# Start parallel processing
-register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 ```
 
 ## Peakpicking
@@ -108,15 +110,14 @@ register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 It takes in the metadataframe created above as well as the list of paths to the .mzML files and returns a (rather large) data frame full of peaks. 
 
 ```{r Peakpicking, eval=FALSE}
-source("XCMS/scripts/functions.R")
 
-# Run positive mode data
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 ms_files <- falkor_metadata$fileid
 qscore_threshold <- 25
 
 source("XCMS/scripts/peakpicking.R")
 
+saveRDS(xdata, file = paste0(intermediate_folder, "dirty_xdata.rds"))
 saveRDS(xdata_filled, file = paste0(intermediate_folder, "current_xdata_filled.rds"))
 print(xdata_filled)
 write.csv(raw_peaks, file = paste0(intermediate_folder, "raw_peaks.csv"), row.names = FALSE)
@@ -131,9 +132,25 @@ After peaks have been identified, many of them will be isotopes and adducts of o
 xdata_filled <- readRDS(file = paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
+# When removing peaks that are likely adducts...
+# How similar do the median peak and median adduct need to be to assume adduct?
+shape_remove_threshold <- 0.90
+# How good does the peak area ~ adduct area correlation across files need to be to assume adduct?
+area_remove_threshold <- 0.95
+
+# When finding adducts and isotopes of a given peak...
+# Typically lower than above because priors are better
+# How similar do the median peak and median adduct need to be to assume adduct?
+shape_find_threshold <- 0.8
+# How good does the peak area ~ adduct area correlation across files need to be to assume adduct?
+area_find_threshold <- 0.9
+
 source("XCMS/scripts/deisoadduct.R")
 
-
+write.csv(addiso_features, file = paste0(pretty_folder, "addiso_features.csv"), row.names = FALSE)
+knitr::kable(head(addiso_features))
+write.csv(complete_features, file = paste0(pretty_folder, "complete_features.csv"), row.names = FALSE)
+knitr::kable(head(complete_features))
 ```
 
 ## Finding B-MISs
@@ -142,14 +159,13 @@ source("XCMS/scripts/deisoadduct.R")
 xdata_filled <- readRDS(paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
 addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
-is_peak_iso <- read.csv(paste0(intermediate_folder, "is_peak_iso.csv"))
-complete_peaks <- read.csv(paste0(intermediate_folder, "complete_peaks.csv"))
+complete_peaks <- read.csv(paste0(pretty_folder, "complete_peaks.csv"))
 bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
   read.csv() %>%
   select(file_name="ï..Sample.Name", norm_vol="Bio.Normalization")
 cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
-source("scripts/bmisscript.R")
+source("XCMS/scripts/bmisscript.R")
 ```
 

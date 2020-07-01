@@ -31,7 +31,7 @@ message("Time to perform peakpicking: ",
 
 # Assign new quality scores ----
 # speedyQscoreCalculator is custom function which should be in functions script
-# sourced by speedyQscoreCalculator
+# sourced by Control.Rmd
 message("Assigning quality scores...")
 start_time <- Sys.time()
 xcms_peakdf <- chromPeaks(xdata) %>%

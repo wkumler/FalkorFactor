@@ -139,18 +139,25 @@ shape_remove_threshold <- 0.90
 area_remove_threshold <- 0.95
 
 # When finding adducts and isotopes of a given peak...
-# Typically lower than above because priors are better
 # How similar do the median peak and median adduct need to be to assume adduct?
+# Typically lower than above because priors are better
 shape_find_threshold <- 0.8
 # How good does the peak area ~ adduct area correlation across files need to be to assume adduct?
 area_find_threshold <- 0.9
 
 source("XCMS/scripts/deisoadduct.R")
 
-write.csv(addiso_features, file = paste0(pretty_folder, "addiso_features.csv"), row.names = FALSE)
-knitr::kable(head(addiso_features))
-write.csv(complete_features, file = paste0(pretty_folder, "complete_features.csv"), row.names = FALSE)
-knitr::kable(head(complete_features))
+# Write out data frame containing all adducts and isotopes
+write.csv(addiso_peaks, file = paste0(pretty_folder, "addiso_features.csv"), row.names = FALSE)
+knitr::kable(head(addiso_peaks))
+
+# Write out data frame containing all "real" peaks
+write.csv(real_peaks, file = paste0(pretty_folder, "addiso_features.csv"), row.names = FALSE)
+knitr::kable(head(real_peaks))
+
+# Write out summary data frame containing deconvoluted MS1 information
+write.csv(real_features, file = paste0(pretty_folder, "complete_features.csv"), row.names = FALSE)
+knitr::kable(head(real_features))
 ```
 
 ## Finding B-MISs

@@ -66,8 +66,8 @@ message("Time to remove isotopes and adducts: ",
 
 message("Finding isotopes and adducts for remaining peaks... ")
 start_time <- Sys.time()
-complete_peaks <- raw_peaks %>%
-  filter(!feature%in%addiso_features$feature) %>%
+real_peaks <- raw_peaks %>%
+  filter(!feature%in%unique(addiso_peaks$feature)) %>%
   split(.$file_name) %>%
   bplapply(FUN = findIsoAdduct, xdata=xdata_filled,
            grabSingleFileData=grabSingleFileData, checkPeakCor=checkPeakCor, 
@@ -76,15 +76,15 @@ complete_peaks <- raw_peaks %>%
   `rownames<-`(NULL) %>% arrange(feature)
 
 # Calculate median cor for each FEATURE from the various peak cors
-peak_cors <- complete_peaks %>%
+peak_cors <- real_peaks %>%
   group_by(feature) %>%
   summarise(across(contains("match"), median)) %>%
   pivot_longer(cols = -c("feature"), names_to = "addiso", values_to = "cor") %>%
   mutate(addiso=gsub("_match", "", addiso))
 # For each feature, plot adduct/iso areas against OG peak areas
 # Run lm() to get best fit line slope and R-squared
-peak_slope_R2 <- lapply(unique(complete_peaks$feature), function(i){
-  feature_areas <- complete_peaks[complete_peaks$feature==i,]
+peak_slope_R2 <- lapply(unique(real_peaks$feature), function(i){
+  feature_areas <- real_peaks[real_peaks$feature==i,]
   area_cols <- grep(pattern = "area$", names(feature_areas), value = TRUE)[-1]
   area_outputs <- lapply(area_cols, function(x){
     lmoutput <- lm(feature_areas[[x]]~feature_areas$M_area)
@@ -98,7 +98,7 @@ peak_slope_R2 <- lapply(unique(complete_peaks$feature), function(i){
 }) %>% 
   do.call(what=rbind) %>% `[<-`(is.na(.), 0) %>% 
   as.data.frame(stringsAsFactors=FALSE) %>%
-  mutate(feature=unique(complete_peaks$feature)) %>%
+  mutate(feature=unique(real_peaks$feature)) %>%
   select(feature, everything()) %>%
   arrange(feature)
 # Separate out R-squareds and slopes (easier to do here than after merging)
@@ -116,7 +116,7 @@ peak_slopes <- peak_slope_R2 %>%
 # If above threshold, return peak area as relative intensity
 # If below, return nothing
 # Essentially produces a cleaned up MS1 spectrum with only adducts/isotopes
-complete_features <- complete_peaks %>% 
+real_features <- real_peaks %>% 
   left_join(peak_cors, by="feature") %>%
   left_join(peak_R2s, by=c("feature", "addiso")) %>%
   left_join(peak_slopes, by=c("feature", "addiso")) %>%

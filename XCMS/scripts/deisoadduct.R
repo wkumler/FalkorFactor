@@ -117,6 +117,7 @@ peak_slopes <- peak_slope_R2 %>%
 # If below, return nothing
 # Essentially produces a cleaned up MS1 spectrum with only adducts/isotopes
 real_features <- real_peaks %>% 
+  
   left_join(peak_cors, by="feature") %>%
   left_join(peak_R2s, by=c("feature", "addiso")) %>%
   left_join(peak_slopes, by=c("feature", "addiso")) %>%

@@ -157,11 +157,6 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
     eic_many <- file_data_table[rt>min(i$rtmin)&rt<max(i$rtmax)]
     individual_peaks <- split(i, seq_len(nrow(i)))
     iso_matches <- lapply(individual_peaks, function(peak_row_data){
-      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
-                             rt%between%c(peak_row_data["rtmin"], peak_row_data["rtmax"])]
-      init_area <- trapz(init_eic$rt, init_eic$int)
-      
-      
       isos_to_check <- c(C13=1.003355, X2C13=2*1.003355, S34=1.995796, S33=0.999387,
                          N15=0.997035, O18=2.004244) + peak_row_data[["mz"]]
       if(polarity=="pos"){
@@ -175,8 +170,10 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       } else {
         stop("Unrecognized polarity in adduct search, see function findIsoAdduct.")
       }
-      
       masses_to_check <- c(isos_to_check, adducts_to_check, more_adducts)
+      
+      init_eic <- eic_many[mz%between%pmppm(peak_row_data["mz"], ppm = 5) & 
+                             rt%between%c(peak_row_data["rtmin"], peak_row_data["rtmax"])]
       
       output <- lapply(masses_to_check, checkPeakCor, rtmin=peak_row_data["rtmin"], 
                        rtmax=peak_row_data["rtmax"], init_eic = init_eic, 
@@ -184,6 +181,8 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       linear_output <- do.call(c, output)
       names(linear_output) <- paste0(rep(names(masses_to_check), each=2), 
                                      c("_match", "_area"))
+      
+      init_area <- trapz(init_eic$rt, init_eic$int)
       linear_output <- c(M_area=init_area, linear_output)
       return(linear_output)
     })

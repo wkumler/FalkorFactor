@@ -48,10 +48,10 @@ likely_addisos$adduct_type <- likely_addisos %>%
 }, USE.NAMES = FALSE) %>%
   gsub(pattern = "_area", replacement = "")
 
-addiso_features <- raw_peaks %>%
+addiso_peaks <- raw_peaks %>%
   left_join(likely_addisos[,c("feature", "adduct_type")], by = "feature") %>%
-  group_by(feature, adduct_type) %>%
-  summarise(mzmed=median(mz), rtmed=median(rt), avginto=mean(into, na.rm=TRUE)) %>%
+  left_join(is_peak_iso %>% select(feature, file_name, M_area), 
+            by = c("feature", "file_name")) %>%
   filter(!is.na(adduct_type)) %>%
   as.data.frame()
 
@@ -117,14 +117,12 @@ peak_slopes <- peak_slope_R2 %>%
 # If below, return nothing
 # Essentially produces a cleaned up MS1 spectrum with only adducts/isotopes
 complete_features <- complete_peaks %>% 
-  group_by(feature) %>%
-  summarize(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area)) %>%
   left_join(peak_cors, by="feature") %>%
   left_join(peak_R2s, by=c("feature", "addiso")) %>%
   left_join(peak_slopes, by=c("feature", "addiso")) %>%
   mutate(rel_int=ifelse(cor>shape_find_threshold&
                           R2>area_find_threshold, 
-                        round(slope*avgarea), 0)) %>%
+                        round(slope*M_area), 0)) %>%
   select(-c("cor", "R2", "slope")) %>%
   pivot_wider(names_from = addiso, values_from = rel_int)
 

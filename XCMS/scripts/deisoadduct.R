@@ -117,13 +117,14 @@ peak_slopes <- peak_slope_R2 %>%
 # If below, return nothing
 # Essentially produces a cleaned up MS1 spectrum with only adducts/isotopes
 real_features <- real_peaks %>% 
-  
+  group_by(feature) %>%
+  summarize(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area)) %>%
   left_join(peak_cors, by="feature") %>%
   left_join(peak_R2s, by=c("feature", "addiso")) %>%
   left_join(peak_slopes, by=c("feature", "addiso")) %>%
   mutate(rel_int=ifelse(cor>shape_find_threshold&
                           R2>area_find_threshold, 
-                        round(slope*M_area), 0)) %>%
+                        round(slope*avgarea), 0)) %>%
   select(-c("cor", "R2", "slope")) %>%
   pivot_wider(names_from = addiso, values_from = rel_int)
 

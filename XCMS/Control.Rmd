@@ -158,8 +158,8 @@ knitr::kable(head(complete_features))
 ```{B-MIS, eval=FALSE}
 xdata_filled <- readRDS(paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
-addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
 complete_peaks <- read.csv(paste0(pretty_folder, "complete_peaks.csv"))
+falkor_stans <- read.csv("falkor_stans.csv")
 bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
   read.csv() %>%
   select(file_name="ï..Sample.Name", norm_vol="Bio.Normalization")

@@ -1,20 +1,10 @@
 # Script to find the B-MIS for each standard in the untargeted data set
 # Called by Control.Rmd
 
-# Normalize to the best internal standard ----
-xdata_filled <- readRDS(paste0(intermediate_folder, "current_xdata_filled.rds"))
-raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
-addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
-is_peak_iso <- read.csv(paste0(intermediate_folder, "is_peak_iso.csv"))
-complete_peaks <- read.csv(paste0(intermediate_folder, "complete_peaks.csv"))
-bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
-  read.csv() %>%
-  select(file_name="ï..Sample.Name", norm_vol="Bio.Normalization")
-cut.off <- 0.4 #Necessary improvement for "acceptable"
-cut.off2 <- 0.1 #If RSD already below, skip B-MIS
+# 
 
 # Grab the internal standards and clean up a little
-internal_stans <- read.csv("XCMS/falkor_stans.csv") %>%
+internal_stans <- falkor_stans %>%
   filter(Compound.Type=="Internal Standard") %>%
   filter(Fraction1==paste0("HILIC", paste0(toupper(substring(polarity, 1, 1)), 
                                            substring(polarity, 2)))) %>%

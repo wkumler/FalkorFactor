@@ -128,6 +128,10 @@ knitr::kable(head(raw_peaks))
 
 After peaks have been identified, many of them will be isotopes and adducts of other peaks. Removing these is important to minimize pseudoreplication issues and data artifacts. I didn't like any of the packages I tried to do this, so I wrote my own code to process this more robustly.
 
+This script does two things. First, it identifies peaks that are likely isotopes or adducts of other peaks in the data set. It does this by assuming that every single peak is an isotope/adduct of another peak. If a peak is an adduct/isotope, there will be another peak that looks very similar but is separated by a very specific mass difference. For example, if we find a peak at 140.06875, we "guess" that it's an adduct or isotope and check all the places where the M+H would be found, depending on the isotope or adduct. If we suspect it of being a 13C isotope of another peak, we'd look for a peak at 140.06875-1.003355. If we suspect it of being a sodium isotope, we'd look for a peak at 140.06875-22.99787+1.007276. In this case, we would indeed find a signal at the M+H peak if we assume sodium, but no peak at the M+H if we assume a 13C isotope - allowing us to conclude tentatively that this is actually an adduct.
+
+However, simply finding data at the expected mass isn't specific enough because we'll often stumble upon noise or a different peak in the general area. Thus, we check for peak similarity before assuming that there's real signal there. The general theory is that isotopes and adducts will be similar to the base peak in two ways. First, the individual x/y (rt/intensity) data points should match up almost exactly, as adducts and isotopes elute at the same time as the base peak. We can check this with a Pearson correlation - simply, how nicely do the two peaks correlate with each other? This method is quite sensitive to even small differences in retention time. Second, we can compare peak ratios across files. Here, we run a similar correlation but check x/y as base peak/isotope peak. This works because a compound will always create similarly stable adducts (some will love M+H, others M+Na) and will always have a fixed isotope abundance. Across the files, then, the correlation between these should be very strong (and is, in fact, usually stronger than the first method).
+
 ```{r deisoadduct, eval=FALSE}
 xdata_filled <- readRDS(file = paste0(intermediate_folder, "current_xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
@@ -152,7 +156,7 @@ write.csv(addiso_peaks, file = paste0(pretty_folder, "addiso_features.csv"), row
 knitr::kable(head(addiso_peaks))
 
 # Write out data frame containing all "real" peaks
-write.csv(real_peaks, file = paste0(pretty_folder, "addiso_features.csv"), row.names = FALSE)
+write.csv(real_peaks, file = paste0(intermediate_folder, "real_peaks.csv"), row.names = FALSE)
 knitr::kable(head(real_peaks))
 
 # Write out summary data frame containing deconvoluted MS1 information
@@ -162,10 +166,12 @@ knitr::kable(head(real_features))
 
 ## Finding B-MISs
 
-```{B-MIS, eval=FALSE}
-xdata_filled <- readRDS(paste0(intermediate_folder, "current_xdata_filled.rds"))
-raw_peaks <- read.csv(paste0(intermediate_folder, "raw_peaks.csv"))
-complete_peaks <- read.csv(paste0(pretty_folder, "complete_peaks.csv"))
+```{r B-MIS, eval=FALSE}
+addiso_peaks <- read.csv(paste0(pretty_folder, "addiso_peaks.csv"))
+real_peaks <- read.csv(paste0(pretty_folder, "real_peaks.csv"))
+all_peaks <- cbind(addiso_peaks, real_peaks) %>%
+  arrange("feature", "file_name")
+
 falkor_stans <- read.csv("falkor_stans.csv")
 bionorm_values <- "XCMS/Sample.Key.Falkor.Manual.csv" %>%
   read.csv() %>%

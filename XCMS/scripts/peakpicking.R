@@ -66,8 +66,8 @@ plotAdjustedRtime(xdata_rt, col = c("green", "red", "blue", "black", "black")[
   factor(metadframe$depth)])
 
 pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
-                        bw = 5, minFraction = 0.5, 
-                        binSize = 0.002, minSamples = 2)
+                        bw = 10, minFraction = 0.5, 
+                        binSize = 0.005, minSamples = 2)
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 
 fpp <- FillChromPeaksParam()

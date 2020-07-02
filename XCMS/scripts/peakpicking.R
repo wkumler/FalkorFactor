@@ -66,7 +66,7 @@ plotAdjustedRtime(xdata_rt, col = c("green", "red", "blue", "black", "black")[
   factor(metadframe$depth)])
 
 pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
-                        bw = 10, minFraction = 0.5, 
+                        bw = 10, minFraction = 0, 
                         binSize = 0.005, minSamples = 2)
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 
@@ -75,7 +75,7 @@ xdata_filled <- suppressMessages(fillChromPeaks_wkumler(xdata_cor, param = fpp))
 
 feature_defs <- featureDefinitions(xdata_filled)
 raw_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
-  cbind(feature=sprintf("FT%03d", i), 
+  cbind(feature=sprintf("FT%04d", i), 
         peak_id=unlist(feature_defs$peakidx[i]))
 }) %>% 
   do.call(what=rbind) %>% 

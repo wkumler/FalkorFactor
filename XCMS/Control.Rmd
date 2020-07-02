@@ -113,7 +113,7 @@ It takes in the metadataframe created above as well as the list of paths to the 
 
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 ms_files <- falkor_metadata$fileid
-qscore_threshold <- 25
+qscore_threshold <- 50
 
 source("XCMS/scripts/peakpicking.R")
 

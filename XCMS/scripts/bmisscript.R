@@ -1,32 +1,30 @@
 # Script to find the B-MIS for each standard in the untargeted data set
 # Called by Control.Rmd
 
-# 
+# all_peaks, falkor_stans, polarity, pmppm all defined in Control.Rmd
+
 
 # Grab the internal standards and clean up a little
 internal_stans <- falkor_stans %>%
-  filter(Compound.Type=="Internal Standard") %>%
-  filter(Fraction1==paste0("HILIC", paste0(toupper(substring(polarity, 1, 1)), 
-                                           substring(polarity, 2)))) %>%
-  mutate(m.z=as.numeric(m.z)) %>%
-  mutate(lower_mz_bound=lapply(m.z, pmppm, ppm=5) %>% sapply(`[`, 1)) %>%
-  mutate(upper_mz_bound=lapply(m.z, pmppm, ppm=5) %>% sapply(`[`, 2)) %>%
-  mutate(RT_sec=RT..min.*60) %>%
-  select(Compound.Name, Emperical.Formula, RT_sec, 
-         m.z, lower_mz_bound, upper_mz_bound)
+  filter(compound_type=="Internal Standard") %>%
+  filter(.$polarity==!!polarity) %>% #!! makes sure it's the string being referred to
+  mutate(mz=as.numeric(mz)) %>%
+  mutate(lower_mz_bound=lapply(mz, pmppm, ppm=10) %>% sapply(`[`, 1)) %>%
+  mutate(upper_mz_bound=lapply(mz, pmppm, ppm=10) %>% sapply(`[`, 2)) %>%
+  mutate(rt_sec=rt*60)
 
 # For each IS, look in the picked peaks and see if one matches mz & rt
 found_stans <- internal_stans %>%
   split(seq_len(nrow(.))) %>%
   lapply(function(i){
     suppressMessages(
-      raw_peaks %>%
+      all_peaks %>%
         group_by(feature) %>%
         summarize(mzmed=median(mz), rtmed=median(rt)) %>%
         filter(mzmed%between%c(i$lower_mz_bound,i$upper_mz_bound)) %>%
-        mutate(stan=i$Compound.Name) %>%
-        mutate(ppm_diff=(abs(i$m.z-.$mzmed)/.$mzmed)*1000000) %>%
-        mutate(rt_diff=i$RT_sec-.$rtmed) %>%
+        mutate(stan=i$compound_name) %>%
+        mutate(ppm_diff=(abs(i$mz-.$mzmed)/.$mzmed)*1000000) %>%
+        mutate(rt_diff=i$rt_sec-.$rtmed) %>%
         select(feature, stan, mzmed, ppm_diff, rtmed, rt_diff)
     )
   }) %>% do.call(what="rbind") %>% as.data.frame()

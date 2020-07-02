@@ -11,18 +11,12 @@ message("Reading files...")
 start_time <- Sys.time()
 raw_data <- readMSData(files = normalizePath(paste("mzMLs", polarity, ms_files, sep = "/")), 
                        msLevel. = 1, centroided. = TRUE, mode = "onDisk",
-                       pdata = as(metadframe, "AnnotatedDataFrame"))
+                       pdata = as(falkor_metadata, "AnnotatedDataFrame"))
 message("Time to read in files: ", round(Sys.time()-start_time, digits = 2), " min")
 
 # Perform peakpicking ----
 message("Picking peaks...")
 start_time <- Sys.time()
-cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
-                     snthresh = 1, prefilter = c(0, 10000), 
-                     integrate = 2, mzCenterFun = "wMean", 
-                     mzdiff = 0.001, fitgauss = FALSE, 
-                     noise = 5000, firstBaselineCheck = FALSE, 
-                     extendLengthMSW = TRUE)
 xdata <- suppressMessages(findChromPeaks(raw_data, param = cwp))
 message("Time to perform peakpicking: ", 
         round(Sys.time()-start_time, digits = 2), " min")
@@ -59,23 +53,17 @@ message("Time to assign quality scores: ",
 # Other XCMS things (rtcor, group) ----
 message("Other XCMS things...")
 start_time <- Sys.time()
-obp <- ObiwarpParam(binSize = 0.1, centerSample = 4, 
-                    response = 1, distFun = "cor_opt")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
 plotAdjustedRtime(xdata_rt, col = c("green", "red", "blue", "black", "black")[
-  factor(metadframe$depth)])
+  factor(falkor_metadata$depth)])
 
-pdp <- PeakDensityParam(sampleGroups = xdata_rt$depth, 
-                        bw = 10, minFraction = 0, 
-                        binSize = 0.005, minSamples = 2)
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 
-fpp <- FillChromPeaksParam()
 xdata_filled <- suppressMessages(fillChromPeaks_wkumler(xdata_cor, param = fpp))
 
 feature_defs <- featureDefinitions(xdata_filled)
 raw_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
-  cbind(feature=sprintf("FT%04d", i), 
+  cbind(feature=sprintf("FT%03d", i), 
         peak_id=unlist(feature_defs$peakidx[i]))
 }) %>% 
   do.call(what=rbind) %>% 

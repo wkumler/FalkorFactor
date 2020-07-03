@@ -1,7 +1,13 @@
 # Functions called by Control.Rmd or scripts within
 # Should be sourced every time!
 
-pmppm <- function(mass, ppm=4){c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))}
+pmppm <- function(mass, ppm=4){
+  if(mass<200){
+    c(200*(1-ppm/1000000), 200*(1+ppm/1000000))
+  } else {
+    c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))
+  }
+}
 grabSingleFileData <- function(filename){
   msdata <- mzR:::openMSfile(filename)
   fullhd <- mzR::header(msdata)

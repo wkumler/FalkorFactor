@@ -3,7 +3,7 @@
 
 pmppm <- function(mass, ppm=4){
   if(mass<200){
-    mass+(c(-ppm, ppm)*200/1000000)
+    as.numeric(mass)+(c(-ppm, ppm)*200/1000000)
   } else {
     c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))
   }

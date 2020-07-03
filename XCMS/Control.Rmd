@@ -13,7 +13,7 @@ library(xcms)
 ```
 
 ```{r specific_setup}
-polarity <- "pos"
+polarity <- "neg"
 
 pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
 if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
@@ -187,7 +187,7 @@ knitr::kable(head(real_features))
 
 ## Finding B-MISs
 
-```{r B-MIS, eval=FALSE}
+```{r B-MIS}
 addiso_peaks <- read.csv(paste0(pretty_folder, "addiso_peaks.csv")) %>%
   select(feature, mz, rt, into, file_name, M_area)
 real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv")) %>%
@@ -209,3 +209,20 @@ write.csv(BMISed_feature_peaks,
 message(Sys.time()-start_time)
 ```
 
+## Combining positive and negative modes
+
+```{r comb, eval=FALSE}
+
+```
+
+## Assign formulae and structures
+
+```{r assign}
+
+```
+
+## Data analysis!
+
+```{r analysis}
+
+```

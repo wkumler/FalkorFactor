@@ -3,7 +3,7 @@
 
 pmppm <- function(mass, ppm=4){
   if(mass<200){
-    c(200*(1-ppm/1000000), 200*(1+ppm/1000000))
+    mass+(c(-ppm, ppm)*200/1000000)
   } else {
     c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))
   }
@@ -111,8 +111,11 @@ isIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       linear_output <- do.call(c, output)
       names(linear_output) <- paste0(rep(names(masses_to_check), each=2), 
                                      c("_match", "_area"))
-      
-      init_area <- trapz(init_eic$rt, init_eic$int)
+      if(!nrow(init_eic)){
+        stop("Something gone wrong - can't find the original peak area in isIsoAdduct")
+      } else {
+        init_area <- trapz(init_eic$rt, init_eic$int)
+      }
       linear_output <- c(M_area=init_area, linear_output)
       return(linear_output)
     })
@@ -188,7 +191,12 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       names(linear_output) <- paste0(rep(names(masses_to_check), each=2), 
                                      c("_match", "_area"))
       
-      init_area <- trapz(init_eic$rt, init_eic$int)
+      if(!nrow(init_eic)){
+        stop("Something gone wrong - can't find the original peak area in isIsoAdduct")
+      } else {
+        init_area <- trapz(init_eic$rt, init_eic$int)
+      }
+      
       linear_output <- c(M_area=init_area, linear_output)
       return(linear_output)
     })

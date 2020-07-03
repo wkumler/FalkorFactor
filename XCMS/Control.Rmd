@@ -128,7 +128,7 @@ obp <- ObiwarpParam(binSize = 0.1, centerSample = 5,
                     response = 1, distFun = "cor_opt")
 # Define the correspondence parameters
 pdp <- PeakDensityParam(sampleGroups = falkor_metadata$depth, 
-                        bw = 10, minFraction = 0.25, 
+                        bw = 10, minFraction = 0.5, 
                         binSize = 0.005, minSamples = 2)
 # Use the default peak filling parameters (no mz/rt expansion)
 fpp <- FillChromPeaksParam()

@@ -9,8 +9,8 @@ internal_stans <- falkor_stans %>%
   filter(compound_type=="Internal Standard") %>%
   filter(.$polarity==!!polarity) %>% #!! makes sure it's the string being referred to
   mutate(mz=as.numeric(mz)) %>%
-  mutate(lower_mz_bound=lapply(mz, pmppm, ppm=10) %>% sapply(`[`, 1)) %>%
-  mutate(upper_mz_bound=lapply(mz, pmppm, ppm=10) %>% sapply(`[`, 2)) %>%
+  mutate(lower_mz_bound=lapply(mz, pmppm, ppm=5) %>% sapply(`[`, 1)) %>%
+  mutate(upper_mz_bound=lapply(mz, pmppm, ppm=5) %>% sapply(`[`, 2)) %>%
   mutate(rt_sec=rt*60)
 
 # For each IS, look in the picked peaks and see if one matches mz & rt
@@ -37,7 +37,7 @@ found_stans <- found_stans[
 facet_labels <- found_stans %>%
   split(found_stans$feature) %>%
   sapply(function(i){paste(i$stan, i$feature, sep=": ")})
-is_peak_iso %>%
+all_peaks %>%
   filter(feature%in%found_stans$feature) %>%
   ggplot() +
   geom_bar(aes(x=file_name, y=M_area), stat = "identity") +

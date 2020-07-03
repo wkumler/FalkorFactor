@@ -83,8 +83,8 @@ falkor_key <- sample_key %>%
   add_row(Sample.Name="170706_Blk_Blk0p2_2", Inj.vol=1) %>%
   add_row(Sample.Name="190715_Blk_KM1906U14-Blk_C", Inj.vol=1) %>%
   mutate(fileid=paste0(Sample.Name, ".mzML")) %>%
-  select(-Sample.Name, inj_vol=Inj.vol) %>%
-  arrange(fileid)
+  select(-Sample.Name, inj_vol=Inj.vol, file_name=fileid) %>%
+  arrange(file_name)
 write.csv(falkor_key, file = "XCMS/falkor_sample_key.csv", row.names = FALSE)
 knitr::kable(head(falkor_key))
 
@@ -201,5 +201,11 @@ cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
 source("XCMS/scripts/bmisscript.R")
+
+# Write out peak and feature lists ----
+write.csv(BMISed_feature_peaks, 
+          file = paste0(pretty_folder, "BMISed_feature_peaks.csv"), 
+          row.names = FALSE)
+message(Sys.time()-start_time)
 ```
 

@@ -52,22 +52,28 @@ ggsave(filename = paste0(pretty_folder, "internal_stan_values.pdf"),
 # Step 1: Grab the peak areas from the pooled sample(s) & normalize to injection volume
 stan_data <- lapply(found_stans$feature, function(feature_num){
   stan_name <- found_stans[found_stans$feature==feature_num, "stan"]
-  is_peak_iso %>%
+  all_peaks %>%
     filter(feature==feature_num) %>%
     mutate(stan_name=stan_name) %>%
     select(stan_name, feature, mz, rt, M_area, file_name) %>%
     left_join(bionorm_values, by="file_name") %>%
-    mutate(bionorm_area=M_area/norm_vol)
+    mutate(bionorm_area=M_area/inj_vol)
 })
 
 # Step 2: compare every feature to every standard and calculate min CV
-BMIS <- pbsapply(unique(complete_peaks$feature), function(feature_num){
-  feature_pooled <- complete_peaks %>%
+BMIS <- pbsapply(unique(all_peaks$feature), function(feature_num){
+  feature_pooled <- all_peaks %>%
     filter(feature==feature_num) %>%
     slice(grep(pattern = "Poo", file_name)) %>%
     left_join(bionorm_values, by="file_name") %>%
-    mutate(bionorm_area=M_area/norm_vol)
+    mutate(bionorm_area=M_area/inj_vol)
+  if(nrow(feature_pooled)<2){
+    return("None")
+  }
   initial_rsd <- sd(feature_pooled$bionorm_area)/mean(feature_pooled$bionorm_area)
+  if(initial_rsd<cut.off2){
+    return("None")
+  }
   
   suppressMessages(
     stan_improvements <- stan_data %>%
@@ -99,28 +105,11 @@ stan_df <- stan_data %>%
   do.call(what = rbind) %>%
   select("BMIS"=stan_name, file_name, bionorm_area) %>%
   rbind(data.frame(BMIS="None", file_name=unique(.$file_name), bionorm_area=1))
-BMISed_feature_peaks <- complete_peaks %>%
+BMISed_feature_peaks <- real_peaks %>%
   left_join(BMIS, by="feature") %>%
   left_join(stan_df, by=c("BMIS", "file_name")) %>%
   arrange(feature) %>%
   group_by(feature) %>%
   mutate(BMISed_area=(M_area/bionorm_area)*mean(bionorm_area, na.rm=TRUE)) %>%
   ungroup() %>%
-  select(-bionorm_area) %>%
-  filter(!feature%in%found_stans$feature)
-BMISed_features <- BMISed_feature_peaks %>%
-  group_by(feature) %>%
-  summarise(mzmed=median(mz), rtmed=median(rt), BMIS=unique(BMIS), BMIS_avg=mean(BMISed_area, na.rm=TRUE))
-write.csv(BMISed_feature_peaks, 
-          file = paste0(intermediate_folder, "BMISed_feature_peaks.csv"), 
-          row.names = FALSE)
-
-
-
-# Write out peak and feature lists ----
-write.csv(file = paste0(pretty_folder, "final_features.csv"),
-          BMISed_features, row.names = FALSE)
-write.csv(file = paste0(pretty_folder, "final_peaks.csv"), 
-          BMISed_feature_peaks, row.names = FALSE)
-unique(warnings())
-message(Sys.time()-start_time)
+  select(-bionorm_area)

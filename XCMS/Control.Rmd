@@ -13,7 +13,7 @@ library(xcms)
 ```
 
 ```{r specific_setup}
-polarity <- "neg"
+polarity <- "pos"
 
 pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
 if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
@@ -202,7 +202,8 @@ cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
 source("XCMS/scripts/bmisscript.R")
 
-# Write out peak and feature lists ----
+write.csv(found_stans, file = paste0(intermediate_folder, "found_stans.csv"), 
+          row.names = FALSE)
 write.csv(BMISed_feature_peaks, 
           file = paste0(pretty_folder, "BMISed_peaks.csv"), 
           row.names = FALSE)
@@ -224,5 +225,36 @@ message(Sys.time()-start_time)
 ## Data analysis!
 
 ```{r analysis}
-final_peaks <- read.csv(file = "XCMS/data_pretty/BMISed_peaks.csv")
+
+final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv"))
+found_stans <- read.csv(file = paste0(intermediate_folder, "found_stans.csv"))
+final_peaks <- final_peaks %>% filter(!feature%in%found_stans$feature)
+
+diffreport <- function(peaks, pattern_a, pattern_b){
+  split(peaks, peaks$feature) %>%
+    lapply(function(x){
+      DCM_areas <- x$BMISed_area[grep(pattern = pattern_a, x$file_name)]
+      m25_areas <- x$BMISed_area[grep(pattern = pattern_b, x$file_name)]
+      if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0, 1))
+      c(pval=t.test(DCM_areas, m25_areas)$p.value, 
+        diff=mean(DCM_areas)/mean(m25_areas))
+    }) %>% do.call(what = rbind) %>% as.data.frame() %>%
+    mutate(feature=rownames(.)) %>%
+    mutate(p_adj=p.adjust(pval, method = "BH")) %>%
+    filter(p_adj<0.05) %>%
+    arrange(p_adj) %>%
+    mutate(which_enriched=c(pattern_a, pattern_b)[as.numeric(diff>1)+1])
+}
+
+# Depth data!
+diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
+  left_join(final_peaks %>% group_by(feature) %>%
+              summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
+
+# Diel data!
+diffreport(final_peaks, pattern_a = "62|77", pattern_b = "64|80")
+
+# Direction data!
+diffreport(final_peaks, pattern_a = "62|64", pattern_b = "77|80")
+
 ```

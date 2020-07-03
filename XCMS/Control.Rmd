@@ -1,6 +1,6 @@
 ---
 title: "Falkor Control Script"
-output: html_notebook
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -204,7 +204,7 @@ source("XCMS/scripts/bmisscript.R")
 
 # Write out peak and feature lists ----
 write.csv(BMISed_feature_peaks, 
-          file = paste0(pretty_folder, "BMISed_feature_peaks.csv"), 
+          file = paste0(pretty_folder, "BMISed_peaks.csv"), 
           row.names = FALSE)
 message(Sys.time()-start_time)
 ```
@@ -224,5 +224,5 @@ message(Sys.time()-start_time)
 ## Data analysis!
 
 ```{r analysis}
-
+final_peaks <- read.csv(file = "XCMS/data_pretty/BMISed_peaks.csv")
 ```

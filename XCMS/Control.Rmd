@@ -13,7 +13,7 @@ library(xcms)
 ```
 
 ```{r specific_setup}
-polarity <- "pos"
+polarity <- "neg"
 
 pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
 if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
@@ -255,6 +255,8 @@ diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
 diffreport(final_peaks, pattern_a = "62|77", pattern_b = "64|80")
 
 # Direction data!
-diffreport(final_peaks, pattern_a = "62|64", pattern_b = "77|80")
+diffreport(final_peaks, pattern_a = "62|64", pattern_b = "77|80") %>%
+  left_join(final_peaks %>% group_by(feature) %>%
+              summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
 
 ```

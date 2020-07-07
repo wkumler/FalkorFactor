@@ -13,7 +13,7 @@ library(xcms)
 ```
 
 ```{r specific_setup}
-polarity <- "neg"
+polarity <- "pos"
 
 pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
 if(!dir.exists(pretty_folder)){dir.create(pretty_folder)}
@@ -52,6 +52,10 @@ station_spindirs <- c(Blk="Blk", S62="Cyclone", S64="Cyclone",
                       L1="Cyclone", L2="Anticyclone",
                       Poo="Poo", Std="Std")
 metadframe$spindir=station_spindirs[metadframe$station]
+cruise_type <- c(S62="Falkor", S77="Falkor", S64="Falkor", S80="Falkor",
+                 L1="Mesoscope", L2="Mesoscope", Poo="Poo", Std="Std",
+                 Blk="Blk")
+metadframe$cruise=cruise_type[metadframe$station]
 write.csv(x = metadframe, row.names = FALSE, file = "XCMS/falkor_metadata.csv")
 knitr::kable(head(metadframe))
 
@@ -128,9 +132,9 @@ qscore_threshold <- 25
 obp <- ObiwarpParam(binSize = 0.1, centerSample = 5, 
                     response = 1, distFun = "cor_opt")
 # Define the correspondence parameters
-pdp <- PeakDensityParam(sampleGroups = falkor_metadata$depth, 
-                        bw = 5, minFraction = 0.5, 
-                        binSize = 0.002, minSamples = 2)
+pdp <- PeakDensityParam(sampleGroups = falkor_metadata$spindir, 
+                        bw = 5, minFraction = 0, 
+                        binSize = 0.001, minSamples = 4)
 # Use the default peak filling parameters (no mz/rt expansion)
 fpp <- FillChromPeaksParam()
 
@@ -255,7 +259,7 @@ diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
 diffreport(final_peaks, pattern_a = "62|77", pattern_b = "64|80")
 
 # Direction data!
-diffreport(final_peaks, pattern_a = "62|64", pattern_b = "77|80") %>%
+diffreport(final_peaks, pattern_a = "62|64|L1", pattern_b = "77|80|L2") %>%
   left_join(final_peaks %>% group_by(feature) %>%
               summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
 

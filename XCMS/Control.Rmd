@@ -113,7 +113,7 @@ knitr::kable(head(falkor_stans))
 
 It takes in the metadataframe created above as well as the list of paths to the .mzML files and returns a (rather large) data frame full of peaks. 
 
-```{r Peakpicking}
+```{r Peakpicking, error=TRUE}
 
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 ms_files <- falkor_metadata$fileid
@@ -133,7 +133,7 @@ obp <- ObiwarpParam(binSize = 0.1, centerSample = 5,
                     response = 1, distFun = "cor_opt")
 # Define the correspondence parameters
 pdp <- PeakDensityParam(sampleGroups = falkor_metadata$spindir, 
-                        bw = 5, minFraction = 0, 
+                        bw = 10, minFraction = 0, 
                         binSize = 0.001, minSamples = 4)
 # Use the default peak filling parameters (no mz/rt expansion)
 fpp <- FillChromPeaksParam()

@@ -43,7 +43,7 @@ file_paths <- ms_files %>%
   normalizePath() %>%
   `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
 metadframe <- data.frame(
-  fileid=basename(file_paths),
+  file_name=basename(file_paths),
   station=regmatches(regexpr(pattern = "Std|Poo|Blk|S62|S64|S77|S80|L1|L2", file_paths), 
                      x = file_paths)
 )
@@ -102,9 +102,11 @@ falkor_stans <- raw_stans %>%
   mutate(polarity=tolower(gsub(pattern = "HILIC", "", .$Fraction1))) %>%
   select(compound_type=Compound.Type, compound_name=Compound.Name, 
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
-         charge=z, kegg_id=C0, polarity)
-write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
-knitr::kable(head(falkor_stans))
+         charge=z, kegg_id=C0, polarity, date_added=Date.added)
+meso_stans <- falkor_stans %>%
+  filter(date_added<190000)
+write.csv(meso_stans, file = "XCMS/meso_stans.csv", row.names = FALSE)
+knitr::kable(head(meso_stans))
 ```
 
 ## Peakpicking
@@ -199,7 +201,7 @@ real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv")) %>%
 all_peaks <- rbind(addiso_peaks, real_peaks) %>%
   arrange("feature", "file_name")
 
-falkor_stans <- read.csv("XCMS/falkor_stans.csv")
+meso_stans <- read.csv("XCMS/meso_stans.csv")
 bionorm_values <- read.csv("XCMS/falkor_sample_key.csv")
 cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
@@ -229,19 +231,28 @@ message(Sys.time()-start_time)
 ## Data analysis!
 
 ```{r analysis}
-
-final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv"))
+falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 found_stans <- read.csv(file = paste0(intermediate_folder, "found_stans.csv"))
-final_peaks <- final_peaks %>% filter(!feature%in%found_stans$feature)
+final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv")) %>%
+  left_join(falkor_metadata)
+std_only <- final_peaks %>% 
+  group_by(feature) %>% 
+  summarize(all_stan=all(station=="Std")) %>%
+  filter(all_stan)
+
+final_peaks <- final_peaks %>% 
+  filter(!feature%in%found_stans$feature) %>%
+  filter(!feature%in%std_only$feature)
 
 diffreport <- function(peaks, pattern_a, pattern_b){
   split(peaks, peaks$feature) %>%
     lapply(function(x){
       DCM_areas <- x$BMISed_area[grep(pattern = pattern_a, x$file_name)]
       m25_areas <- x$BMISed_area[grep(pattern = pattern_b, x$file_name)]
+      if(all(DCM_areas==0)&all(m25_areas==0))return(c(1, 1))
       if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0, 1))
       c(pval=t.test(DCM_areas, m25_areas)$p.value, 
-        diff=mean(DCM_areas)/mean(m25_areas))
+        diff=mean(DCM_areas, na.rm=TRUE)/mean(m25_areas, na.rm=TRUE))
     }) %>% do.call(what = rbind) %>% as.data.frame() %>%
     mutate(feature=rownames(.)) %>%
     mutate(p_adj=p.adjust(pval, method = "BH")) %>%

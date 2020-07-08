@@ -1,11 +1,11 @@
 # Script to find the B-MIS for each standard in the untargeted data set
 # Called by Control.Rmd
 
-# all_peaks, falkor_stans, polarity, pmppm all defined in Control.Rmd
+# all_peaks, meso_stans, polarity, pmppm all defined in Control.Rmd
 
 
 # Grab the internal standards and clean up a little
-internal_stans <- falkor_stans %>%
+internal_stans <- meso_stans %>%
   filter(compound_type=="Internal Standard") %>%
   filter(.$polarity==!!polarity) %>% #!! makes sure it's the string being referred to
   mutate(mz=as.numeric(mz)) %>%
@@ -45,7 +45,7 @@ all_peaks %>%
   facet_wrap(~feature, ncol = 1, scales = "free_y",
              labeller = as_labeller(facet_labels))
 ggsave(filename = paste0(pretty_folder, "internal_stan_values.pdf"), 
-       device = "pdf", height = 15, width = 7.5)
+       device = "pdf", height = 15, width = 10)
 
 
 
@@ -70,6 +70,9 @@ BMIS <- pbsapply(unique(all_peaks$feature), function(feature_num){
   if(nrow(feature_pooled)<2){
     return("None")
   }
+  if(all(feature_pooled$M_area==0)){
+    return("None")
+  }
   initial_rsd <- sd(feature_pooled$bionorm_area)/mean(feature_pooled$bionorm_area)
   if(initial_rsd<cut.off2){
     return("None")
@@ -90,6 +93,7 @@ BMIS <- pbsapply(unique(all_peaks$feature), function(feature_num){
       mutate(initial_rsd=initial_rsd) %>%
       mutate(acceptable=improvement>cut.off) %>%
       rbind(c("None", initial_rsd, 0, initial_rsd, TRUE), .) %>%
+      filter(acceptable==TRUE) %>%
       filter(improvement==max(improvement, na.rm = TRUE))
   )
   if(nrow(stan_improvements)>1){

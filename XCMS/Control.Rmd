@@ -4,7 +4,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = TRUE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 library(tidyverse)
 library(data.table)
@@ -262,5 +262,4 @@ diffreport(final_peaks, pattern_a = "62|77", pattern_b = "64|80")
 diffreport(final_peaks, pattern_a = "62|64|L1", pattern_b = "77|80|L2") %>%
   left_join(final_peaks %>% group_by(feature) %>%
               summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
-
 ```

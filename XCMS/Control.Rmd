@@ -213,6 +213,11 @@ write.csv(found_stans, file = paste0(intermediate_folder, "found_stans.csv"),
 write.csv(BMISed_feature_peaks, 
           file = paste0(pretty_folder, "BMISed_peaks.csv"), 
           row.names = FALSE)
+
+BMISed_feature_peaks %>%
+  group_by(feature) %>%
+  summarize(BMIS=unique(BMIS)) %>%
+  pull(BMIS) %>% table()
 message(Sys.time()-start_time)
 ```
 
@@ -270,7 +275,21 @@ diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
 diffreport(final_peaks, pattern_a = "62|77", pattern_b = "64|80")
 
 # Direction data!
-diffreport(final_peaks, pattern_a = "62|64|L1", pattern_b = "77|80|L2") %>%
+dir_diffs <- diffreport(final_peaks, pattern_a = "62|64|L1", pattern_b = "77|80|L2") %>%
   left_join(final_peaks %>% group_by(feature) %>%
               summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
+dir_diffs$feature %>%
+  lapply(function(feature_num){
+    gp_df <- final_peaks %>%
+      filter(feature==feature_num) %>%
+      filter(spindir%in%c("Cyclone", "Anticyclone")) %>%
+      select(`Sample type`=spindir, everything())
+    gp <- gp_df %>%
+      ggplot() + geom_boxplot(aes(x=`Sample type`, y=BMISed_area, color=`Sample type`), varwidth = TRUE) +
+      theme_bw() + theme(legend.position = "none") + ylab("BMIS-normalized peak area") +
+      annotate(geom = "label", x=Inf, y=Inf, label=unique(gp_df$feature), hjust=1, vjust=1) +
+      annotate(geom = "label", x=-Inf, y=Inf, label=median(gp_df$mz), hjust=0, vjust=1)
+    print(gp)
+  })
+
 ```

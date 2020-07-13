@@ -53,12 +53,14 @@ message("Time to assign quality scores: ",
 # Other XCMS things (rtcor, group) ----
 message("Other XCMS things...")
 start_time <- Sys.time()
+message("Retention time correction...")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
-plotAdjustedRtime(xdata_rt, col = c("red", "#00FFFF", "blue", "green", "black")[
+plotAdjustedRtime(xdata_rt, col = c("red", "blue", "#00FFFF", "green", "black")[
   factor(falkor_metadata$cruise)])
 
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 
+message("Filling peaks...")
 xdata_filled <- suppressMessages(fillChromPeaks_wkumler(xdata_cor, param = fpp))
 
 feature_defs <- featureDefinitions(xdata_filled)

@@ -105,6 +105,7 @@ falkor_stans <- raw_stans %>%
          charge=z, kegg_id=C0, polarity, date_added=Date.added)
 meso_stans <- falkor_stans %>%
   filter(date_added<190000)
+write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
 write.csv(meso_stans, file = "XCMS/meso_stans.csv", row.names = FALSE)
 knitr::kable(head(meso_stans))
 ```
@@ -118,7 +119,7 @@ It takes in the metadataframe created above as well as the list of paths to the 
 ```{r Peakpicking, error=TRUE}
 
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
-ms_files <- falkor_metadata$fileid
+ms_files <- falkor_metadata$file_name
 
 # Define the peakpicking parameters
 cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15), 
@@ -202,6 +203,7 @@ all_peaks <- rbind(addiso_peaks, real_peaks) %>%
   arrange("feature", "file_name")
 
 meso_stans <- read.csv("XCMS/meso_stans.csv")
+meso_stans <- read.csv("XCMS/falkor_stans.csv")
 bionorm_values <- read.csv("XCMS/falkor_sample_key.csv")
 cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
@@ -247,11 +249,12 @@ std_only <- final_peaks %>%
 
 final_peaks <- final_peaks %>% 
   filter(!feature%in%found_stans$feature) %>%
-  filter(!feature%in%std_only$feature)
+  filter(cruise%in%c("Mesoscope", "Falkor", "Blk"))
 
 diffreport <- function(peaks, pattern_a, pattern_b){
   split(peaks, peaks$feature) %>%
     lapply(function(x){
+      dput(x)
       DCM_areas <- x$BMISed_area[grep(pattern = pattern_a, x$file_name)]
       m25_areas <- x$BMISed_area[grep(pattern = pattern_b, x$file_name)]
       if(all(DCM_areas==0)&all(m25_areas==0))return(c(1, 1))
@@ -285,8 +288,12 @@ dir_diffs$feature %>%
       filter(spindir%in%c("Cyclone", "Anticyclone")) %>%
       select(`Sample type`=spindir, everything())
     gp <- gp_df %>%
-      ggplot() + geom_boxplot(aes(x=`Sample type`, y=BMISed_area, color=`Sample type`), varwidth = TRUE) +
-      theme_bw() + theme(legend.position = "none") + ylab("BMIS-normalized peak area") +
+      ggplot() + 
+      geom_boxplot(
+        aes(x=`Sample type`, y=BMISed_area, color=`Sample type`), 
+        varwidth = TRUE) +
+      theme_bw() + theme(legend.position = "none") + 
+      ylab("BMIS-normalized peak area") +
       annotate(geom = "label", x=Inf, y=Inf, label=unique(gp_df$feature), hjust=1, vjust=1) +
       annotate(geom = "label", x=-Inf, y=Inf, label=median(gp_df$mz), hjust=0, vjust=1)
     print(gp)

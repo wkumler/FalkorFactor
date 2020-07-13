@@ -54,8 +54,8 @@ message("Time to assign quality scores: ",
 message("Other XCMS things...")
 start_time <- Sys.time()
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
-plotAdjustedRtime(xdata_rt, col = c("green", "red", "blue", "black", "black")[
-  factor(falkor_metadata$depth)])
+plotAdjustedRtime(xdata_rt, col = c("red", "#00FFFF", "blue", "green", "black")[
+  factor(falkor_metadata$cruise)])
 
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)
 

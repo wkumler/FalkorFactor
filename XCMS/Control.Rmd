@@ -33,7 +33,7 @@ register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 
 The raw data is stored on the Synology drive in the Ingalls Lab as .raw file types. This data isn't super useful in its proprietary format, so it's easiest to convert those .raw files into .mzMLs with the "RunMsconvert.cmd" script in the project working directory. We write these files into the "mzMLs" folder in the working directory since they're also accessed by MSDIAL.
 
-The code above calls msconvert, a command-line utility from Proteowizard, to convert the files into mzML format. It also splits them into positive and negative mode and separates out the MSMS information into a sub-folder. Per Katherine's recommendation, I'm using blanks from her Gradients 2.0 project rather than the ones Laura added for me.
+The code calls msconvert, a command-line utility from Proteowizard, to convert the files into mzML format. It also splits them into positive and negative mode and separates out the MSMS information into a sub-folder. Per Katherine's recommendation, I'm using blanks from her Gradients 2.0 project rather than the ones Laura added for me.
 
 We also need the metadata that goes with these files, containing information about treatment type, which are blanks, injection volume, etc. It's also good to pull down the standards file from the lab Github during this setup phase. The small script below does this by accessing the file names, the instrument-produced sample key, and the internet.
 
@@ -41,7 +41,9 @@ We also need the metadata that goes with these files, containing information abo
 # Metadata
 file_paths <- ms_files %>%
   normalizePath() %>%
-  `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .))
+  `[`(!grepl("Fullneg|Fullpos|QC-KM1906", x = .)) %>%
+  `[`(!grepl("DDApos", x = .)) %>%
+  `[`(!grepl("180205", x = .))
 metadframe <- data.frame(
   file_name=basename(file_paths),
   station=regmatches(regexpr(pattern = "Std|Poo|Blk|S62|S64|S77|S80|L1|L2", file_paths), 
@@ -57,7 +59,7 @@ cruise_type <- c(S62="Falkor", S77="Falkor", S64="Falkor", S80="Falkor",
                  Blk="Blk")
 metadframe$cruise=cruise_type[metadframe$station]
 write.csv(x = metadframe, row.names = FALSE, file = "XCMS/falkor_metadata.csv")
-knitr::kable(head(metadframe))
+head(metadframe)
 
 
 
@@ -90,7 +92,7 @@ meso_key <- sample_key_meso %>%
   arrange(file_name)
 falkor_key <- rbind(falkor_key, meso_key)
 write.csv(falkor_key, file = "XCMS/falkor_sample_key.csv", row.names = FALSE)
-knitr::kable(head(falkor_key))
+head(falkor_key)
 
 
 # Standards information
@@ -107,7 +109,7 @@ meso_stans <- falkor_stans %>%
   filter(date_added<190000)
 write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
 write.csv(meso_stans, file = "XCMS/meso_stans.csv", row.names = FALSE)
-knitr::kable(head(meso_stans))
+head(meso_stans)
 ```
 
 ## Peakpicking
@@ -149,7 +151,7 @@ saveRDS(xdata, file = paste0(intermediate_folder, "dirty_xdata.rds"))
 saveRDS(xdata_filled, file = paste0(intermediate_folder, "xdata_filled.rds"))
 print(xdata_filled)
 write.csv(raw_peaks, file = paste0(intermediate_folder, "raw_peaks.csv"), row.names = FALSE)
-knitr::kable(head(raw_peaks))
+head(raw_peaks)
 ```
 
 ## De-isotoping and de-adducting
@@ -181,15 +183,15 @@ source("XCMS/scripts/deisoadduct.R")
 
 # Write out data frame containing all adducts and isotopes
 write.csv(addiso_peaks, file = paste0(pretty_folder, "addiso_peaks.csv"), row.names = FALSE)
-knitr::kable(head(addiso_peaks))
+head(addiso_peaks)
 
 # Write out data frame containing all "real" peaks
 write.csv(real_peaks, file = paste0(intermediate_folder, "real_peaks.csv"), row.names = FALSE)
-knitr::kable(head(real_peaks))
+head(real_peaks)
 
 # Write out summary data frame containing deconvoluted MS1 information
 write.csv(real_features, file = paste0(pretty_folder, "complete_features.csv"), row.names = FALSE)
-knitr::kable(head(real_features))
+head(real_features)
 ```
 
 ## Finding B-MISs
@@ -254,11 +256,10 @@ final_peaks <- final_peaks %>%
 diffreport <- function(peaks, pattern_a, pattern_b){
   split(peaks, peaks$feature) %>%
     lapply(function(x){
-      dput(x)
       DCM_areas <- x$BMISed_area[grep(pattern = pattern_a, x$file_name)]
       m25_areas <- x$BMISed_area[grep(pattern = pattern_b, x$file_name)]
       if(all(DCM_areas==0)&all(m25_areas==0))return(c(1, 1))
-      if(length(DCM_areas)<3|length(m25_areas)<3)return(c(0, 1))
+      if(length(DCM_areas)<3|length(m25_areas)<3)return(c(1, 1))
       c(pval=t.test(DCM_areas, m25_areas)$p.value, 
         diff=mean(DCM_areas, na.rm=TRUE)/mean(m25_areas, na.rm=TRUE))
     }) %>% do.call(what = rbind) %>% as.data.frame() %>%
@@ -270,7 +271,7 @@ diffreport <- function(peaks, pattern_a, pattern_b){
 }
 
 # Depth data!
-diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
+depth_diffs <- diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
   left_join(final_peaks %>% group_by(feature) %>%
               summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
 
@@ -281,7 +282,8 @@ diffreport(final_peaks, pattern_a = "62|77", pattern_b = "64|80")
 dir_diffs <- diffreport(final_peaks, pattern_a = "62|64|L1", pattern_b = "77|80|L2") %>%
   left_join(final_peaks %>% group_by(feature) %>%
               summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
-dir_diffs$feature %>%
+
+depth_diffs$feature %>%
   lapply(function(feature_num){
     gp_df <- final_peaks %>%
       filter(feature==feature_num) %>%

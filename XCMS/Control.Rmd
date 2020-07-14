@@ -46,6 +46,7 @@ file_paths <- ms_files %>%
   `[`(!grepl("180205", x = .))
 metadframe <- data.frame(
   file_name=basename(file_paths),
+  depth=regmatches(regexpr(pattern = "Std|Poo|Blk|DCM|25m", file_paths), x = file_paths),
   station=regmatches(regexpr(pattern = "Std|Poo|Blk|S62|S64|S77|S80|L1|L2", file_paths), 
                      x = file_paths)
 )
@@ -234,7 +235,17 @@ message(Sys.time()-start_time)
 ## Assign formulae and structures
 
 ```{r assign}
+falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
+final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv")) %>%
+  left_join(falkor_metadata, by="file_name")
+sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
 
+MSMS_files <- paste0("mzMLs/", polarity, "/MSMS/") %>%
+  list.files(pattern = ".mzML", full.names = TRUE) %>%
+  normalizePath() %>%
+  `[`(grepl("pos", x = .))
+
+register(BPPARAM = SnowParam(tasks = length(MSMS_files)+1, progressbar = TRUE))
 ```
 
 ## Data analysis!
@@ -244,14 +255,9 @@ falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 found_stans <- read.csv(file = paste0(intermediate_folder, "found_stans.csv"))
 final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv")) %>%
   left_join(falkor_metadata)
-std_only <- final_peaks %>% 
-  group_by(feature) %>% 
-  summarize(all_stan=all(station=="Std")) %>%
-  filter(all_stan)
 
 final_peaks <- final_peaks %>% 
-  filter(!feature%in%found_stans$feature) %>%
-  filter(cruise%in%c("Mesoscope", "Falkor", "Blk"))
+  filter(!feature%in%found_stans$feature)
 
 diffreport <- function(peaks, pattern_a, pattern_b){
   split(peaks, peaks$feature) %>%
@@ -287,8 +293,9 @@ depth_diffs$feature %>%
   lapply(function(feature_num){
     gp_df <- final_peaks %>%
       filter(feature==feature_num) %>%
-      filter(spindir%in%c("Cyclone", "Anticyclone")) %>%
-      select(`Sample type`=spindir, everything())
+      filter(depth%in%c("25m", "DCM")) %>%
+      #filter(spindir%in%c("Cyclone", "Anticyclone")) %>%
+      select(`Sample type`=depth, everything())
     gp <- gp_df %>%
       ggplot() + 
       geom_boxplot(
@@ -300,5 +307,4 @@ depth_diffs$feature %>%
       annotate(geom = "label", x=-Inf, y=Inf, label=median(gp_df$mz), hjust=0, vjust=1)
     print(gp)
   })
-
 ```

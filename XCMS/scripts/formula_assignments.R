@@ -4,171 +4,41 @@
 # Isotope checking expects a peak list (usually created by peakpicking.R)
 # Needs bugtesting after WD restructuring
 
+register()
+xdata_MSMS <- readMSData(files = c(MSMS_files), verbose = TRUE,
+                         msLevel. = 1, centroided. = TRUE, mode = "onDisk")
+xdata <- findChromPeaks(xdata_MSMS, CentWaveParam(prefilter = c(5, 1000000)))
+pdp <- PeakDensityParam(sampleGroups = numeric(12), bw = 2)
+xdata_cor <- groupChromPeaks(xdata, param = pdp)
 
-#Only for RScript running
-setwd(r"(G:\My Drive\FalkorFactor)")
-
-
-
-# Setup things ----
-library(tidyverse)
-library(data.table)
-library(pbapply)
-# Requires mzR to load MSMS data
-final_features <- read.csv(file = "XCMS/data_pretty/final_features.csv")
-final_peaks <- read.csv(file = "XCMS/data_pretty/final_peaks.csv")
-sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
-
-
-
-
-# Functions ----
-pmppm <- function(mass, ppm=4){c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))}
-formula2elements <- function(formula_vec){
-  split_formulas <- formula_vec %>%
-    gregexpr(pattern = "[A-Z][a-z]*[0-9]*") %>%
-    regmatches(x = formula_vec)
-  elements_in <- lapply(split_formulas, gsub, pattern = "[0-9]", replacement = "")
-  element_counts <- lapply(split_formulas, gsub, pattern = "[A-z]", replacement = "")
-  element_counts <- lapply(element_counts, function(x){
-    x[!nchar(x)]<-1
-    return(as.numeric(x))
-  })
-  mapply(`names<-`, element_counts, elements_in, SIMPLIFY = FALSE)
-}
-grabSingleFileMS2 <- function(filename){
-  msdata <- mzR::openMSfile(filename)
-  fullhd <- mzR::header(msdata)
-  ms2rows <- seq_len(nrow(fullhd))[fullhd$msLevel>1]
-  spectra_list <- lapply(ms2rows, function(x){
-    rtime <- fullhd[x, "retentionTime"]
-    premz <- fullhd[x, "precursorMZ"]
-    fragments <- mzR::peaks(msdata, x)
-    return(cbind(rtime, premz, fragments))
-  })
-  all_data <- `names<-`(as.data.frame(do.call(rbind, spectra_list)), 
-                        c("rt", "premz", "fragmz", "int"))
-  return(all_data)
-}
-mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
-  if(!nrow(ms2)){
-    outtext <- c("BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=1",
-                 "CHARGE=1+",
-                 apply(ms1, 1, paste, collapse=" "),
-                 "END IONS",
-                 "")
-  } else {
-    outtext <- c("BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=1",
-                 "CHARGE=1+",
-                 apply(ms1, 1, paste, collapse=" "),
-                 "END IONS",
-                 "",
-                 "BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=2",
-                 "CHARGE=1+",
-                 apply(ms2[ms2$voltage==20, c("fragmz", "int")], 
-                       1, paste, collapse=" "),
-                 "END IONS",
-                 "",
-                 "BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=2",
-                 "CHARGE=1+",
-                 apply(ms2[ms2$voltage==35, c("fragmz", "int")], 
-                       1, paste, collapse=" "),
-                 "END IONS",
-                 "BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=2",
-                 "CHARGE=1+",
-                 apply(ms2[ms2$voltage==50, c("fragmz", "int")], 
-                       1, paste, collapse=" "),
-                 "END IONS")
-  }
-  writeLines(outtext, con = output_file)
-}
-isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
-  ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
-    select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area, S33_area) %>%
-    pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
-  
-  if(printplot){
-    gp <- ggplot(ft_isodata, aes(x=M_area, y=value)) + 
-      geom_point() + 
-      geom_smooth(method = "lm") +
-      facet_wrap(~name, scales = "free_y") +
-      ggtitle(feature_num)
-    print(gp)
-  }
-  
-  lmoutput <- split(ft_isodata, ft_isodata$name) %>%
-    lapply(lm, formula=value~M_area) %>%
-    lapply(summary)
-  
-  count_ests <- mapply(checkbinom, lminput=lmoutput, n_atoms=c(1,1,1,1,1,2), 
-                       prob=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011))
-  return(count_ests)
-}
-checkbinom <- function(lminput, n_atoms, prob){
-  rsquared <- lminput$r.squared
-  if(is.na(rsquared))return(NA)
-  if(rsquared<0.99)return(NA)
-  coefs <- lminput$coefficients
-  norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
-  pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
-  est_slope <- coefs["M_area", "Estimate"]
-  (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
-}
-rdisop_check <- function(feature_num, final_features, database_formulae){
-  feature_msdata <- final_features[final_features$feature==feature_num, ]
-  ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
-               c(feature_msdata$mzmed+1.003355, feature_msdata$C13),
-               c(feature_msdata$mzmed+1.003355*2, feature_msdata$X2C13),
-               c(feature_msdata$mzmed+1.995796, feature_msdata$S34),
-               c(feature_msdata$mzmed+0.997035, feature_msdata$N15),
-               c(feature_msdata$mzmed+2.004244, feature_msdata$O18))
-  ms1 <- ms1[ms1[,2]!=0, , drop=FALSE]
-  ms1[,1] <- ms1[,1]-1.007276
-  rdoutput <- Rdisop::decomposeIsotopes(masses = ms1[,1], intensities = ms1[,2], 
-                                        ppm = ifelse(ms1[1,1]<200, 5*200/ms1[1,1], 5), 
-                                        maxisotopes = 2)
-  if(is.null(rdoutput)){return(NA)}
-  rd_df <- rdoutput %>%
-    `[[<-`("isotopes", NULL) %>%
-    do.call(what = cbind) %>% 
-    as.data.frame(stringsAsFactors=FALSE) %>%
-    filter(valid=="Valid"&DBE>=-1) %>%
-    filter(formula%chin%database_formulae)
-  if(!nrow(rd_df)){return(NA)}
-  rd_df %>% slice(1) %>%
-    pull(formula) %>%
-    unlist()
-}
-
+obp <- ObiwarpParam(binSize = 1, centerSample = 5, 
+                    response = 1, distFun = "cor_opt")
+#obp <- PeakGroupsParam(span = 10, minFraction = 0, smooth = "loess")
+xdata_rt <- adjustRtime(xdata_cor, param = obp)
+plotAdjustedRtime(xdata_rt, col = rainbow(12))
+chr_raw <- chromatogram(xdata_rt, mz = pmppm(118.0865))
+plot(chr_raw, col = rainbow(12))
+legend("topright", basename(MSMS_files), col = rainbow(12), pch=1)
 
 
 
 # Grab MSMS data ----
-MSMS_files <- "mzMLs/MSMS/" %>%
-  list.files(pattern = ".mzML", full.names = TRUE) %>%
-  normalizePath() %>%
-  `[`(grepl("pos", x = .))
-raw_MSMS_data <- lapply(MSMS_files, grabSingleFileMS2) %>%
-  mapply(FUN = cbind, as.numeric(gsub(".*DDApos|.mzML", "", MSMS_files)), 
-         SIMPLIFY = FALSE) %>%
-  lapply(`names<-`, c("rt", "premz", "fragmz", "int", "voltage")) %>%
+message("Reading in MSMS files...")
+raw_MS_data <- pblapply(MSMS_files, grabSingleFileData) %>%
+  mapply(FUN = cbind, basename(MSMS_files), SIMPLIFY = FALSE) %>%
+  lapply(`names<-`, c("rt", "mz", "int", "file_name")) %>%
   do.call(what = rbind) %>% as.data.table()
-has_msms <- final_features %>%
+raw_MSMS_data <- pblapply(MSMS_files, grabSingleFileMS2) %>%
+  mapply(FUN = cbind, basename(MSMS_files), SIMPLIFY = FALSE) %>%
+  lapply(`names<-`, c("rt", "premz", "fragmz", "int", "file")) %>%
+  do.call(what = rbind) %>% as.data.table()
+has_msms <- final_peaks %>%
+  group_by(feature) %>%
+  summarize(mzmed=median(mz), rtmed=median(rt)) %>%
   split(.$feature) %>%
-  sapply(function(x){
-    raw_MSMS_data %>%
-      filter(premz%between%pmppm(x$mzmed, ppm = 5)&
-               rt%between%(x$rtmed+c(-20, 20))) %>%
+  pbsapply(function(x){
+    raw_MSMS_data[premz%between%pmppm(x$mzmed, ppm = 5)] %>%
+      filter(rt%between%(x$rtmed+c(-50, 50))) %>%
       nrow() %>%
       as.logical()
   })

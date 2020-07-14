@@ -391,3 +391,128 @@ fillChromPeaks_wkumler <- function(object, param){
   object <- xcms:::addProcessHistory(object, ph)
   object
 }
+formula2elements <- function(formula_vec){
+  split_formulas <- formula_vec %>%
+    gregexpr(pattern = "[A-Z][a-z]*[0-9]*") %>%
+    regmatches(x = formula_vec)
+  elements_in <- lapply(split_formulas, gsub, pattern = "[0-9]", replacement = "")
+  element_counts <- lapply(split_formulas, gsub, pattern = "[A-z]", replacement = "")
+  element_counts <- lapply(element_counts, function(x){
+    x[!nchar(x)]<-1
+    return(as.numeric(x))
+  })
+  mapply(`names<-`, element_counts, elements_in, SIMPLIFY = FALSE)
+}
+grabSingleFileMS2 <- function(filename){
+  msdata <- mzR::openMSfile(filename)
+  fullhd <- mzR::header(msdata)
+  ms2rows <- seq_len(nrow(fullhd))[fullhd$msLevel>1]
+  spectra_list <- lapply(ms2rows, function(x){
+    rtime <- fullhd[x, "retentionTime"]
+    premz <- fullhd[x, "precursorMZ"]
+    fragments <- mzR::peaks(msdata, x)
+    return(cbind(rtime, premz, fragments))
+  })
+  all_data <- `names<-`(as.data.frame(do.call(rbind, spectra_list)), 
+                        c("rt", "premz", "fragmz", "int"))
+  return(all_data)
+}
+mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
+  if(!nrow(ms2)){
+    outtext <- c("BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=1",
+                 "CHARGE=1+",
+                 apply(ms1, 1, paste, collapse=" "),
+                 "END IONS",
+                 "")
+  } else {
+    outtext <- c("BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=1",
+                 "CHARGE=1+",
+                 apply(ms1, 1, paste, collapse=" "),
+                 "END IONS",
+                 "",
+                 "BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=2",
+                 "CHARGE=1+",
+                 apply(ms2[ms2$voltage==20, c("fragmz", "int")], 
+                       1, paste, collapse=" "),
+                 "END IONS",
+                 "",
+                 "BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=2",
+                 "CHARGE=1+",
+                 apply(ms2[ms2$voltage==35, c("fragmz", "int")], 
+                       1, paste, collapse=" "),
+                 "END IONS",
+                 "BEGIN IONS",
+                 paste0("PEPMASS=", feature_msdata$mzmed),
+                 "MSLEVEL=2",
+                 "CHARGE=1+",
+                 apply(ms2[ms2$voltage==50, c("fragmz", "int")], 
+                       1, paste, collapse=" "),
+                 "END IONS")
+  }
+  writeLines(outtext, con = output_file)
+}
+isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
+  ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
+    select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area, S33_area) %>%
+    pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
+  
+  if(printplot){
+    gp <- ggplot(ft_isodata, aes(x=M_area, y=value)) + 
+      geom_point() + 
+      geom_smooth(method = "lm") +
+      facet_wrap(~name, scales = "free_y") +
+      ggtitle(feature_num)
+    print(gp)
+  }
+  
+  lmoutput <- split(ft_isodata, ft_isodata$name) %>%
+    lapply(lm, formula=value~M_area) %>%
+    lapply(summary)
+  
+  count_ests <- mapply(checkbinom, lminput=lmoutput, n_atoms=c(1,1,1,1,1,2), 
+                       prob=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011))
+  return(count_ests)
+}
+checkbinom <- function(lminput, n_atoms, prob){
+  rsquared <- lminput$r.squared
+  if(is.na(rsquared))return(NA)
+  if(rsquared<0.99)return(NA)
+  coefs <- lminput$coefficients
+  norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
+  pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
+  est_slope <- coefs["M_area", "Estimate"]
+  (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
+}
+rdisop_check <- function(feature_num, final_features, database_formulae){
+  feature_msdata <- final_features[final_features$feature==feature_num, ]
+  ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
+               c(feature_msdata$mzmed+1.003355, feature_msdata$C13),
+               c(feature_msdata$mzmed+1.003355*2, feature_msdata$X2C13),
+               c(feature_msdata$mzmed+1.995796, feature_msdata$S34),
+               c(feature_msdata$mzmed+0.997035, feature_msdata$N15),
+               c(feature_msdata$mzmed+2.004244, feature_msdata$O18))
+  ms1 <- ms1[ms1[,2]!=0, , drop=FALSE]
+  ms1[,1] <- ms1[,1]-1.007276
+  rdoutput <- Rdisop::decomposeIsotopes(masses = ms1[,1], intensities = ms1[,2], 
+                                        ppm = ifelse(ms1[1,1]<200, 5*200/ms1[1,1], 5), 
+                                        maxisotopes = 2)
+  if(is.null(rdoutput)){return(NA)}
+  rd_df <- rdoutput %>%
+    `[[<-`("isotopes", NULL) %>%
+    do.call(what = cbind) %>% 
+    as.data.frame(stringsAsFactors=FALSE) %>%
+    filter(valid=="Valid"&DBE>=-1) %>%
+    filter(formula%chin%database_formulae)
+  if(!nrow(rd_df)){return(NA)}
+  rd_df %>% slice(1) %>%
+    pull(formula) %>%
+    unlist()
+}

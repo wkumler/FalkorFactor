@@ -1,11 +1,11 @@
 # Script to find the B-MIS for each standard in the untargeted data set
 # Called by Control.Rmd
 
-# all_peaks, meso_stans, polarity, pmppm all defined in Control.Rmd
+# all_peaks, stan_list, polarity, pmppm all defined in Control.Rmd
 
 
 # Grab the internal standards and clean up a little
-internal_stans <- meso_stans %>%
+internal_stans <- stan_list %>%
   filter(compound_type=="Internal Standard") %>%
   filter(.$polarity==!!polarity) %>% #!! makes sure it's the string being referred to
   mutate(mz=as.numeric(mz)) %>%

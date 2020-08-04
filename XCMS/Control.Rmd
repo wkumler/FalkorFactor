@@ -205,8 +205,8 @@ real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv")) %>%
 all_peaks <- rbind(addiso_peaks, real_peaks) %>%
   arrange("feature", "file_name")
 
-meso_stans <- read.csv("XCMS/meso_stans.csv")
-meso_stans <- read.csv("XCMS/falkor_stans.csv")
+stan_list <- read.csv("XCMS/meso_stans.csv")
+stan_list <- read.csv("XCMS/falkor_stans.csv")
 bionorm_values <- read.csv("XCMS/falkor_sample_key.csv")
 cut.off <- 0.4 #Necessary improvement for "acceptable"
 cut.off2 <- 0.1 #If RSD already below, skip B-MIS
@@ -251,7 +251,7 @@ register(BPPARAM = SnowParam(tasks = length(MSMS_files)+1, progressbar = TRUE))
 ## Data analysis!
 
 ```{r analysis}
-falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
+falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")
 found_stans <- read.csv(file = paste0(intermediate_folder, "found_stans.csv"))
 final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv")) %>%
   left_join(falkor_metadata)
@@ -293,7 +293,7 @@ depth_diffs$feature %>%
   lapply(function(feature_num){
     gp_df <- final_peaks %>%
       filter(feature==feature_num) %>%
-      filter(depth%in%c("25m", "DCM")) %>%
+      #filter(depth%in%c("25m", "DCM")) %>%
       #filter(spindir%in%c("Cyclone", "Anticyclone")) %>%
       select(`Sample type`=depth, everything())
     gp <- gp_df %>%

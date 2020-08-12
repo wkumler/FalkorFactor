@@ -4,23 +4,6 @@
 # Isotope checking expects a peak list (usually created by peakpicking.R)
 # Needs bugtesting after WD restructuring
 
-register()
-xdata_MSMS <- readMSData(files = c(MSMS_files), verbose = TRUE,
-                         msLevel. = 1, centroided. = TRUE, mode = "onDisk")
-xdata <- findChromPeaks(xdata_MSMS, CentWaveParam(prefilter = c(5, 1000000)))
-pdp <- PeakDensityParam(sampleGroups = numeric(12), bw = 2)
-xdata_cor <- groupChromPeaks(xdata, param = pdp)
-
-obp <- ObiwarpParam(binSize = 1, centerSample = 5, 
-                    response = 1, distFun = "cor_opt")
-#obp <- PeakGroupsParam(span = 10, minFraction = 0, smooth = "loess")
-xdata_rt <- adjustRtime(xdata_cor, param = obp)
-plotAdjustedRtime(xdata_rt, col = rainbow(12))
-chr_raw <- chromatogram(xdata_rt, mz = pmppm(118.0865))
-plot(chr_raw, col = rainbow(12))
-legend("topright", basename(MSMS_files), col = rainbow(12), pch=1)
-
-
 
 # Grab MSMS data ----
 message("Reading in MSMS files...")
@@ -42,8 +25,11 @@ has_msms <- final_peaks %>%
       nrow() %>%
       as.logical()
   })
-final_features <- mutate(final_features, has_msms=has_msms)
-final_features %>% 
+final_peaks %>% 
+  group_by(feature) %>%
+  summarize(mzmed=median(mz), rtmed=median(rt), 
+            avgarea=mean(M_area)) %>%
+  mutate(has_msms=has_msms) %>%
   select(c("feature", "mzmed", "rtmed", "avgarea", "has_msms")) %>%
   as.data.frame() %>% 
   head(20)

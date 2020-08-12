@@ -229,6 +229,8 @@ BMISed_feature_peaks %>%
   group_by(feature) %>%
   summarize(BMIS=unique(BMIS)) %>%
   pull(BMIS) %>% table()
+
+
 message(Sys.time()-start_time)
 ```
 
@@ -244,6 +246,7 @@ message(Sys.time()-start_time)
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv")) %>%
   left_join(falkor_metadata, by="file_name")
+
 sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
 
 MSMS_files <- paste0("mzMLs/", polarity, "/MSMS/") %>%
@@ -251,7 +254,9 @@ MSMS_files <- paste0("mzMLs/", polarity, "/MSMS/") %>%
   normalizePath() %>%
   `[`(grepl("pos", x = .))
 
-register(BPPARAM = SnowParam(tasks = length(MSMS_files)+1, progressbar = TRUE))
+source("XCMS/scripts/formula_assignments.R")
+
+register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 ```
 
 ## Data analysis!

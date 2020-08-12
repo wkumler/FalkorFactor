@@ -96,11 +96,7 @@ BMIS <- pbsapply(unique(all_peaks$feature), function(feature_num){
       filter(acceptable==TRUE) %>%
       filter(improvement==max(improvement, na.rm = TRUE))
   )
-  if(nrow(stan_improvements)>1){
-    return("None")
-  } else {
-    return(stan_improvements$stan_name)
-  }
+  return(stan_improvements$stan_name)
 }) %>%
   data.frame(feature=names(.), BMIS=.)
 
@@ -117,3 +113,43 @@ BMISed_feature_peaks <- real_peaks %>%
   mutate(BMISed_area=(M_area/bionorm_area)*mean(bionorm_area, na.rm=TRUE)) %>%
   ungroup() %>%
   select(-bionorm_area)
+
+
+# Check internal stans against internal stans
+rsd <- function(vec, na.rm=TRUE)sd(vec, na.rm = na.rm)/mean(vec, na.rm=na.rm)
+
+BMIS_stans <- lapply(stan_data, function(x){
+  matched_stan_df <- stan_data %>%
+    lapply(left_join, x, by="file_name") %>%
+    do.call(what = rbind)
+  
+  init_rsd <- x %>%
+    slice(grep(pattern = "Poo", .$file_name)) %>%
+    summarize(RSD_init=rsd(bionorm_area)) %>%
+    pull(RSD_init)
+  
+  rsd_df <- matched_stan_df %>%
+    slice(grep(pattern = "Smp", .$file_name)) %>%
+    mutate(normed_area=bionorm_area.x/bionorm_area.y) %>%
+    group_by(stan_name.x) %>%
+    summarize(RSD_all=rsd(normed_area))
+  
+  rsd_df_poo <- matched_stan_df %>%
+    slice(grep(pattern = "Poo", .$file_name)) %>%
+    mutate(normed_area=bionorm_area.x/bionorm_area.y) %>%
+    group_by(stan_name.x) %>%
+    summarize(RSD_pooled=rsd(normed_area))
+  
+  left_join(rsd_df, rsd_df_poo) %>%
+    cbind(init_rsd) %>%
+    mutate(acceptable=RSD_pooled<0.6*init_rsd) %>%
+    mutate(stan_name = unique(x$stan_name))
+}) %>% do.call(what = rbind)
+
+
+gp <- ggplot(BMIS_stans) +
+  geom_point(aes(x=RSD_pooled, y=RSD_all, color=acceptable, label=stan_name.x)) +
+  geom_vline(aes(xintercept = init_rsd)) +
+  geom_vline(aes(xintercept = init_rsd*0.6), lty=2) +
+  facet_wrap(~stan_name, scales = "free")
+ggplotly(gp)

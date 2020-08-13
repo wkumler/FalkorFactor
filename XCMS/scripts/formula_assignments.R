@@ -14,10 +14,12 @@ raw_MS_data <- pblapply(MSMS_files, grabSingleFileData) %>%
 raw_MSMS_data <- pblapply(MSMS_files, grabSingleFileMS2) %>%
   mapply(FUN = cbind, basename(MSMS_files), SIMPLIFY = FALSE) %>%
   lapply(`names<-`, c("rt", "premz", "fragmz", "int", "file")) %>%
-  do.call(what = rbind) %>% as.data.table()
-has_msms <- final_peaks %>%
-  group_by(feature) %>%
-  summarize(mzmed=median(mz), rtmed=median(rt)) %>%
+  do.call(what = rbind) %>% as.data.table() %>%
+  mutate(voltage=str_extract(.$file, pattern = "pos\\d+")) %>%
+  mutate(voltage=gsub(pattern = "pos", "", .$voltage))
+
+
+has_msms <- final_features %>%
   split(.$feature) %>%
   pbsapply(function(x){
     raw_MSMS_data[premz%between%pmppm(x$mzmed, ppm = 5)] %>%
@@ -25,10 +27,7 @@ has_msms <- final_peaks %>%
       nrow() %>%
       as.logical()
   })
-final_peaks %>% 
-  group_by(feature) %>%
-  summarize(mzmed=median(mz), rtmed=median(rt), 
-            avgarea=mean(M_area)) %>%
+final_features %>%
   mutate(has_msms=has_msms) %>%
   select(c("feature", "mzmed", "rtmed", "avgarea", "has_msms")) %>%
   as.data.frame() %>% 
@@ -104,7 +103,7 @@ sirius_formulas <- read.table(paste0(sirius_project_dir, "/output_dir/formula_",
 # Run Rdisop ----
 rdisop_formulas <- final_features$feature %>%
   pbsapply(rdisop_check, final_features = final_features, 
-           database_formulae=readRDS("XCMS/data_raw/unique_formulae.rds")) %>%
+           database_formulae=readRDS("XCMS/unique_formulae.rds")) %>%
   unlist() %>%
   cbind(feature=final_features$feature) %>%
   as.data.frame(stringsAsFactors=FALSE) %>%

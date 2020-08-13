@@ -449,6 +449,7 @@ mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
                  apply(ms2[ms2$voltage==35, c("fragmz", "int")], 
                        1, paste, collapse=" "),
                  "END IONS",
+                 "",
                  "BEGIN IONS",
                  paste0("PEPMASS=", feature_msdata$mzmed),
                  "MSLEVEL=2",

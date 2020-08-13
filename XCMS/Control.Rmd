@@ -244,15 +244,15 @@ message(Sys.time()-start_time)
 
 ```{r assign}
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
-final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv")) %>%
-  left_join(falkor_metadata, by="file_name")
+final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
 
-sirius_project_dir <- "XCMS/data_intermediate/sirius_project"
+sirius_project_dir <- paste0(intermediate_folder, "/sirius_project")
 
 MSMS_files <- paste0("mzMLs/", polarity, "/MSMS/") %>%
   list.files(pattern = ".mzML", full.names = TRUE) %>%
   normalizePath() %>%
-  `[`(grepl("pos", x = .))
+  `[`(grepl("pos", x = .)) %>%
+  `[`(!grepl("180205", x = .))
 
 source("XCMS/scripts/formula_assignments.R")
 

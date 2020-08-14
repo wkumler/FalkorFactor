@@ -175,14 +175,14 @@ raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
 # When removing peaks that are likely adducts...
 # How similar do the median peak and median adduct need to be to assume adduct?
-shape_remove_threshold <- 0.90
+shape_remove_threshold <- 0.8
 # How good does the peak area ~ adduct area correlation across files need to be to assume adduct?
-area_remove_threshold <- 0.95
+area_remove_threshold <- 0.99
 
 # When finding adducts and isotopes of a given peak...
 # How similar do the median peak and median adduct need to be to assume adduct?
 # Typically lower than above because priors are better
-shape_find_threshold <- 0.8
+shape_find_threshold <- 0.75
 # How good does the peak area ~ adduct area correlation across files need to be to assume adduct?
 area_find_threshold <- 0.9
 
@@ -245,6 +245,7 @@ message(Sys.time()-start_time)
 ```{r assign}
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
 final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
+final_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
 
 sirius_project_dir <- paste0(intermediate_folder, "/sirius_project")
 

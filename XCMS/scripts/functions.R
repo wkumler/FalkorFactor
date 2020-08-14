@@ -510,10 +510,11 @@ rdisop_check <- function(feature_num, final_features, database_formulae){
     `[[<-`("isotopes", NULL) %>%
     do.call(what = cbind) %>% 
     as.data.frame(stringsAsFactors=FALSE) %>%
-    filter(valid=="Valid"&DBE>=-1) %>%
+    #filter(valid=="Valid"&DBE>=-1) %>%
     filter(formula%chin%database_formulae)
   if(!nrow(rd_df)){return(NA)}
-  rd_df %>% slice(1) %>%
+  rd_df %>% #slice(1) %>%
     pull(formula) %>%
-    unlist()
+    #unlist()
+    as.list()
 }

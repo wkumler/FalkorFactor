@@ -418,45 +418,29 @@ grabSingleFileMS2 <- function(filename){
   return(all_data)
 }
 mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
+  ms1_to_write <- paste("BEGIN IONS",
+                         paste0("PEPMASS=", feature_msdata$mzmed),
+                         "MSLEVEL=1",
+                         "CHARGE=1+",
+                         apply(ms1, 1, paste, collapse=" "),
+                         "END IONS",
+                         "", sep = "\n")
+  
   if(!nrow(ms2)){
-    outtext <- c("BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=1",
-                 "CHARGE=1+",
-                 apply(ms1, 1, paste, collapse=" "),
-                 "END IONS",
-                 "")
+    outtext <- ms1_to_write
   } else {
-    outtext <- c("BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=1",
-                 "CHARGE=1+",
-                 apply(ms1, 1, paste, collapse=" "),
-                 "END IONS",
-                 "",
-                 "BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=2",
-                 "CHARGE=1+",
-                 apply(ms2[ms2$voltage==20, c("fragmz", "int")], 
-                       1, paste, collapse=" "),
-                 "END IONS",
-                 "",
-                 "BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=2",
-                 "CHARGE=1+",
-                 apply(ms2[ms2$voltage==35, c("fragmz", "int")], 
-                       1, paste, collapse=" "),
-                 "END IONS",
-                 "",
-                 "BEGIN IONS",
-                 paste0("PEPMASS=", feature_msdata$mzmed),
-                 "MSLEVEL=2",
-                 "CHARGE=1+",
-                 apply(ms2[ms2$voltage==50, c("fragmz", "int")], 
-                       1, paste, collapse=" "),
-                 "END IONS")
+    ms2_to_write <- lapply(unique(ms2$voltage), function(volt_i){
+      paste0(c("BEGIN IONS",
+             paste0("PEPMASS=", feature_msdata$mzmed),
+             "MSLEVEL=2",
+             "CHARGE=1+",
+             paste0(apply(ms2[ms2$voltage==volt_i, c("fragmz", "int")], 
+                   1, paste, collapse=" "), collapse="\n"),
+             "END IONS",
+             ""), collapse="\n")
+    })
+    
+    outtext <- paste0(ms1_to_write, "\n", paste0(unlist(ms2_to_write), collapse = "\n"))
   }
   writeLines(outtext, con = output_file)
 }

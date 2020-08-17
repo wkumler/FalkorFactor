@@ -254,10 +254,11 @@ MSMS_files <- paste0("mzMLs/", polarity, "/MSMS/") %>%
   normalizePath() %>%
   `[`(grepl("pos", x = .)) %>%
   `[`(!grepl("180205", x = .))
+register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 
 source("XCMS/scripts/formula_assignments.R")
 
-register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
+write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
 ```
 
 ## Data analysis!

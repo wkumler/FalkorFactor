@@ -87,27 +87,29 @@ tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
 sum(!file.rename(csv_names, tsv_names))
 
 # Read in SIRIUS data ----
-sirius_formulas <- read.table(paste0(sirius_project_dir, "/output_dir/formula_",
-                                     "identifications.tsv"), sep = "\t",
-                              row.names = NULL, header = TRUE, 
-                              stringsAsFactors = FALSE) %>%
-  `names<-`(c(names(.)[-1], "drop")) %>%
-  select(-last_col()) %>%
-  mutate(feature=sub(pattern = "_FEATURE1", replacement = "", x = .$id)) %>%
-  mutate(feature=sub(pattern = ".*_", replacement = "", x = .$feature)) %>%
-  arrange(feature) %>%
-  select(feature, sirius_formula=molecularFormula)
+sirius_formulas <- sirius_project_dir %>%
+  paste0("/output_dir") %>%
+  dir(pattern = "formula_candidates", recursive = TRUE, full.names = TRUE) %>%
+  pbsapply(read.table, sep = "\t", row.names=NULL, header=TRUE, simplify = FALSE) %>%
+  imap(.f = function(x, y){
+    cbind(x, feature_num=str_extract(y, "FT\\d+"))
+  }) %>%
+  lapply(`[[`, "molecularFormula")
+names(sirius_formulas) <- str_extract(names(sirius_formulas), "FT\\d+")
 
 
 
 # Run Rdisop ----
+database_formulae=readRDS("XCMS/unique_formulae.rds")
 rdisop_formulas <- final_features$feature %>%
   pbsapply(rdisop_check, final_features = final_features, 
-           database_formulae=readRDS("XCMS/unique_formulae.rds")) %>%
-  unlist() %>%
-  cbind(feature=final_features$feature) %>%
-  as.data.frame(stringsAsFactors=FALSE) %>%
-  `names<-`(c("rdisop_formula", "feature"))
+           database_formulae = database_formulae)
+rdisop_formulas %>%
+  imap(.f = function(x, y){
+    cbind(formula=x, feature_num=y)
+  }) %>%
+  do.call(what=rbind) %>%
+  as.data.frame()
 
 
 
@@ -118,27 +120,23 @@ iso_formulas <- final_features$feature %>%
   as.data.frame(stringsAsFactors=FALSE) %>% 
   cbind(feature=final_features$feature, stringsAsFactors=FALSE) %>%
   select(paste0(c("C13", "N15", "O18", "S34"), "_area"), "feature") %>%
-  `names<-`(c("C", "N", "O", "S", "feature"))
+  `names<-`(c("C", "N", "O", "S", "feature")) %>%
+  `rownames<-`(final_features$feature)
 
-isocheck(feature_num = "FT100", final_peaks = final_peaks, printplot = TRUE)
+isocheck(feature_num = "FT003", final_peaks = final_peaks, printplot = TRUE)
 
 
 
 # Assemble formulas, remove disagreeing ones and duplicates ----
-feature_formulas <- final_features %>%
-  left_join(sirius_formulas, by="feature") %>%
-  left_join(rdisop_formulas, by="feature") %>%
-  left_join(iso_formulas, by="feature") %>%
-  select(feature, mzmed, rtmed, avgarea, 
-         sirius_formula, rdisop_formula, 
-         C, N, O, S)
+inter_formulas <- sapply(names(rdisop_formulas), function(feature_num){
+  intersect(rdisop_formulas[[feature_num]], sirius_formulas[[feature_num]])
+}, simplify=FALSE)
 
-element_formulas <- formula2elements(feature_formulas$sirius_formula)
-iso_mismatches <- sapply(c("C", "N", "O", "S"), function(element){
-  elem_match <- sapply(seq_along(element_formulas), function(i){
-    element_formulas[[i]][element]==feature_formulas[i,][[element]]
-  })}) %>% 
-  `!`() %>% rowSums(na.rm = TRUE)
+iso_mismatches <- lapply(names(inter_formulas), function(feature_num){
+  possible_formulas <- inter_formulas[[feature_num]]
+  possible_isodata <- iso_formulas[feature_num, ]
+})
+
 
 best_formulas <- feature_formulas %>%
   filter(rdisop_formula==sirius_formula&!iso_mismatches) %>%
@@ -155,4 +153,4 @@ duped_features <- lapply(seq_len(nrow(best_formulas)), function(i){
   do.call(what = rbind) %>% `[`(duplicated(.),)
 
 best_formulas <- anti_join(x = best_formulas, y=duped_features, by="feature")
-write.csv(x = best_formulas, file = "XCMS/data_pretty/feature_formulas.csv")
+

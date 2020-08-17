@@ -485,7 +485,7 @@ isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
 checkbinom <- function(lminput, n_atoms, prob){
   rsquared <- lminput$r.squared
   if(is.na(rsquared))return(NA)
-  if(rsquared<0.99)return(NA)
+  if(rsquared<0.99|rsquared==1)return(NA)
   coefs <- lminput$coefficients
   norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
   pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
@@ -516,5 +516,5 @@ rdisop_check <- function(feature_num, final_features, database_formulae){
   rd_df %>% #slice(1) %>%
     pull(formula) %>%
     #unlist()
-    as.list()
+    list()
 }

@@ -279,7 +279,7 @@ diffreport <- function(peaks, pattern_a, pattern_b){
       m25_areas <- x$BMISed_area[grep(pattern = pattern_b, x$file_name)]
       if(all(DCM_areas==0)&all(m25_areas==0))return(c(1, 1))
       if(length(DCM_areas)<3|length(m25_areas)<3)return(c(1, 1))
-      c(pval=pvalue(independence_test(DCM_areas~m25_areas)), 
+      c(pval=t.test(DCM_areas, m25_areas)$p.value, 
         diff=mean(DCM_areas, na.rm=TRUE)/mean(m25_areas, na.rm=TRUE))
     }) %>% do.call(what = rbind) %>% as.data.frame() %>%
     mutate(feature=rownames(.)) %>%
@@ -290,7 +290,7 @@ diffreport <- function(peaks, pattern_a, pattern_b){
 }
 
 # Depth data!
-depth_diffs_coin <- diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
+depth_diffs <- diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
   left_join(final_peaks %>% group_by(feature) %>%
               summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
 

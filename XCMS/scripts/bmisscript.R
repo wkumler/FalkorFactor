@@ -152,4 +152,5 @@ gp <- ggplot(BMIS_stans) +
   geom_vline(aes(xintercept = init_rsd)) +
   geom_vline(aes(xintercept = init_rsd*0.6), lty=2) +
   facet_wrap(~stan_name, scales = "free")
-ggplotly(gp)
+gp
+#ggplotly(gp)

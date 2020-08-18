@@ -140,13 +140,16 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
 
 # Set the new quality threshold
 qscore_threshold <- 25
+
 # Define the retention time correction parameters
 obp <- ObiwarpParam(binSize = 0.1, centerSample = 5, 
                     response = 1, distFun = "cor_opt")
+
 # Define the correspondence parameters
 pdp <- PeakDensityParam(sampleGroups = falkor_metadata$spindir, 
-                        bw = 10, minFraction = 0, 
-                        binSize = 0.001, minSamples = 4)
+                        bw = 10, minFraction = 0.1, 
+                        binSize = 0.001, minSamples = 2)
+
 # Use the default peak filling parameters (no mz/rt expansion)
 fpp <- FillChromPeaksParam()
 

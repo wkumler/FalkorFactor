@@ -111,7 +111,7 @@ falkor_stans <- raw_stans %>%
   mutate(polarity=tolower(gsub(pattern = "HILIC", "", .$Fraction1))) %>%
   select(compound_type=Compound.Type, compound_name=Compound.Name, 
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
-         charge=z, kegg_id=C0, polarity, date_added=Date.added)
+         charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix)
 meso_stans <- falkor_stans %>%
   filter(date_added<190000)
 write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)

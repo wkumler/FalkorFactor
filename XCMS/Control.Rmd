@@ -224,15 +224,13 @@ source("XCMS/scripts/bmisscript.R")
 
 write.csv(found_stans, file = paste0(intermediate_folder, "found_stans.csv"), 
           row.names = FALSE)
-write.csv(BMISed_feature_peaks, 
-          file = paste0(pretty_folder, "BMISed_peaks.csv"), 
+write.csv(BMISed_feature_peaks, file = paste0(pretty_folder, "BMISed_peaks.csv"), 
           row.names = FALSE)
 
 BMISed_feature_peaks %>%
   group_by(feature) %>%
   summarize(BMIS=unique(BMIS)) %>%
   pull(BMIS) %>% table()
-
 
 message(Sys.time()-start_time)
 ```
@@ -262,7 +260,7 @@ register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 source("XCMS/scripts/formula_assignments.R")
 
 all_stans <- read.csv("XCMS/falkor_stans.csv") %>% filter(polarity=="pos")
-source("XCMS/scripts/standard_assignments.R")
+#source("XCMS/scripts/standard_assignments.R")
 
 write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
 ```

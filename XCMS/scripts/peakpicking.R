@@ -65,12 +65,13 @@ message("Filling peaks...")
 xdata_filled <- suppressMessages(fillChromPeaks_wkumler(xdata_cor, param = fpp))
 
 feature_defs <- featureDefinitions(xdata_filled)
+max_features <- unique(nchar(rownames(feature_defs)))-2
 raw_peaks <- lapply(seq_len(nrow(feature_defs)), function(i){
-  cbind(feature=sprintf("FT%03d", i), 
+  cbind(feature=sprintf(paste0("FT%0", max_features, "d"), i),
         peak_id=unlist(feature_defs$peakidx[i]))
-}) %>% 
-  do.call(what=rbind) %>% 
-  as.data.frame(stringsAsFactors=FALSE) %>% 
+}) %>%
+  do.call(what=rbind) %>%
+  as.data.frame(stringsAsFactors=FALSE) %>%
   mutate(peak_id=as.numeric(peak_id)) %>%
   cbind(chromPeaks(xdata_filled)[.$peak_id, ]) %>%
   mutate(file_name=basename(fileNames(xdata_filled))[sample]) %>%

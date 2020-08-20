@@ -139,7 +139,7 @@ cwp <- CentWaveParam(ppm = 2.5, peakwidth = c(15, 15),
                      extendLengthMSW = TRUE)
 
 # Set the new quality threshold
-qscore_threshold <- 25
+qscore_threshold <- 20
 
 # Define the retention time correction parameters
 obp <- ObiwarpParam(binSize = 0.1, centerSample = 5, 
@@ -260,7 +260,7 @@ register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 source("XCMS/scripts/formula_assignments.R")
 
 all_stans <- read.csv("XCMS/falkor_stans.csv") %>% filter(polarity=="pos")
-#source("XCMS/scripts/standard_assignments.R")
+# source("XCMS/scripts/standard_assignments.R")
 
 write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
 ```

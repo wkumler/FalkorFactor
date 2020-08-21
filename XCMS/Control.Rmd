@@ -176,6 +176,14 @@ However, simply finding data at the expected mass isn't specific enough because 
 xdata_filled <- readRDS(file = paste0(intermediate_folder, "xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
+not_addisos <- list("Glutamine"=c(mz=147.076968, rt=620))
+safe_peaks <- lapply(not_addisos, function(safe_data){
+  filter(raw_peaks, mz%between%pmppm(safe_data["mz"], 5)&
+           rt%between%(safe_data["rt"]+c(-75, 75)))
+}) %>% do.call(what = rbind)
+raw_peaks <- anti_join(raw_peaks, safe_peaks)
+
+
 # When removing peaks that are likely adducts...
 # How similar do the median peak and median adduct need to be to assume adduct?
 shape_remove_threshold <- 0.8

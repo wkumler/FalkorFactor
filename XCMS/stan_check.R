@@ -12,10 +12,10 @@ pmppm <- function(mass, ppm=4){
 
 
 polarity <- "pos"
-pretty_folder <- paste0("XCMS/", polarity, "_pretty/")
-intermediate_folder <- paste0("XCMS/", polarity, "_intermediate/")
+pretty_folder <- paste0(polarity, "_pretty/")
+intermediate_folder <- paste0(polarity, "_intermediate/")
 
-falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")
+falkor_metadata <- read.csv(file = "falkor_metadata.csv")
 all_stans <- read.csv("https://raw.githubusercontent.com/IngallsLabUW/Ingalls_Standards/master/Ingalls_Lab_Standards_NEW.csv")
 found_stans <- read.csv(file = paste0(intermediate_folder, "found_stans.csv")) %>%
   left_join(all_stans, by=c(stan="Compound.Name")) %>%
@@ -29,7 +29,7 @@ real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv")) %>%
 all_peaks <- rbind(addiso_peaks, real_peaks) %>%
   arrange("feature", "file_name")
 
-quant <- read.csv("C:/Users/willi/Downloads/IS_HILIC-POS_Falkor.csv")
+quant <- read.csv("IS_HILIC-POS_Falkor.csv")
 peaks_xcms <- found_stans %>%
   left_join(all_peaks, by="feature") %>%
   mutate(file_name=gsub(".mzML", "", .$file_name)) %>%

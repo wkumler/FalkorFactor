@@ -267,7 +267,8 @@ register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 
 source("XCMS/scripts/formula_assignments.R")
 
-all_stans <- read.csv("XCMS/falkor_stans.csv") %>% filter(polarity=="pos")
+all_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
+  filter(polarity=="pos") %>% filter(!is.na(mix))
 # source("XCMS/scripts/standard_assignments.R")
 
 write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))

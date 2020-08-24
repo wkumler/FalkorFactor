@@ -47,6 +47,13 @@ likely_addisos$adduct_type <- likely_addisos %>%
   names(which.max(i[-1]))
 }, USE.NAMES = FALSE) %>%
   gsub(pattern = "_area", replacement = "")
+safe_features <- sapply(not_addisos, function(safe_data){
+  filter(raw_peaks, mz%between%pmppm(safe_data["mz"], 5)&
+           rt%between%(safe_data["rt"]+c(-50, 50))) %>%
+    pull(feature) %>% unique()
+})
+likely_addisos <- filter(likely_addisos, !feature%in%safe_peaks)
+
 
 addiso_peaks <- raw_peaks %>%
   left_join(likely_addisos[,c("feature", "adduct_type")], by = "feature") %>%

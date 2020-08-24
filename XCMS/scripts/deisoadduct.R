@@ -52,7 +52,7 @@ safe_features <- sapply(not_addisos, function(safe_data){
            rt%between%(safe_data["rt"]+c(-50, 50))) %>%
     pull(feature) %>% unique()
 })
-likely_addisos <- filter(likely_addisos, !feature%in%safe_peaks)
+likely_addisos <- filter(likely_addisos, !feature%in%safe_features)
 
 
 addiso_peaks <- raw_peaks %>%

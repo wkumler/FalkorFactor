@@ -177,7 +177,8 @@ xdata_filled <- readRDS(file = paste0(intermediate_folder, "xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
 not_addisos <- list("Glutamine"=c(mz=147.076968, rt=620),
-                    "Citrulline"=c(mz=176.103517, rt=645))
+                    "Citrulline"=c(mz=176.103517, rt=645),
+                    "Guanine"=c(mz=152.0567, rt=400))
 
 
 # When removing peaks that are likely adducts...

@@ -147,7 +147,7 @@ obp <- ObiwarpParam(binSize = 0.1, centerSample = 5,
 
 # Define the correspondence parameters
 pdp <- PeakDensityParam(sampleGroups = falkor_metadata$spindir, 
-                        bw = 5, minFraction = 0.1, 
+                        bw = 7.5, minFraction = 0.1, 
                         binSize = 0.001, minSamples = 2)
 
 # Use the default peak filling parameters (no mz/rt expansion)
@@ -199,6 +199,7 @@ source("XCMS/scripts/deisoadduct.R")
 # Write out data frame containing all adducts and isotopes
 write.csv(addiso_peaks, file = paste0(pretty_folder, "addiso_peaks.csv"), row.names = FALSE)
 head(addiso_peaks)
+addiso_peaks %>% filter(adduct_type=="NH4") %>% group_by(feature) %>% summarize(medmz=median(mz), medrt=median(rt), adduct_type=unique(adduct_type)) %>% as.data.frame() %>% head()
 
 # Write out data frame containing all "real" peaks
 write.csv(real_peaks, file = paste0(intermediate_folder, "real_peaks.csv"), row.names = FALSE)

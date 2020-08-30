@@ -350,7 +350,7 @@ library(git2r)
 repo <- repository()
 files_to_commit <- c("BMISed_peaks.csv", "addiso_peaks.csv", 
                      "complete_features.csv", "internal_stan_values.pdf")
-add(repo, files_to_commit)
+add(repo, paste0(pretty_folder, files_to_commit))
 commit(repo, "Daily build")
 ```
 

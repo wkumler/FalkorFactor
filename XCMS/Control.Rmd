@@ -147,7 +147,7 @@ obp <- ObiwarpParam(binSize = 0.1, centerSample = 5,
 
 # Define the correspondence parameters
 pdp <- PeakDensityParam(sampleGroups = falkor_metadata$spindir, 
-                        bw = 5, minFraction = 0.1, 
+                        bw = 10, minFraction = 0.1, 
                         binSize = 0.001, minSamples = 2)
 
 # Use the default peak filling parameters (no mz/rt expansion)

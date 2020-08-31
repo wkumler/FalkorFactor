@@ -56,8 +56,8 @@ message("Other XCMS things:")
 start_time <- Sys.time()
 message("Retention time correction (double progress bar)...")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
-plotAdjustedRtime(xdata_rt, col = c("red", "blue", "#00FFFF", "green", "black")[
-  factor(falkor_metadata$cruise)])
+# plotAdjustedRtime(xdata_rt, col = c("red", "blue", "#00FFFF", "green", "black")[
+#   factor(falkor_metadata$cruise)])
 
 message("Grouping...")
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)

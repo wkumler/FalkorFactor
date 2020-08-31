@@ -12,6 +12,7 @@ start_time <- Sys.time()
 raw_data <- readMSData(files = normalizePath(paste("mzMLs", polarity, ms_files, sep = "/")), 
                        msLevel. = 1, centroided. = TRUE, mode = "onDisk",
                        pdata = as(falkor_metadata, "AnnotatedDataFrame"))
+raw_data <- filterRt(raw_data, c(60, 10000))
 message("Time to read in files: ", round(Sys.time()-start_time, digits = 2), " min")
 
 # Perform peakpicking ----

@@ -12,6 +12,7 @@ start_time <- Sys.time()
 raw_data <- readMSData(files = normalizePath(paste("mzMLs", polarity, ms_files, sep = "/")), 
                        msLevel. = 1, centroided. = TRUE, mode = "onDisk",
                        pdata = as(falkor_metadata, "AnnotatedDataFrame"))
+raw_data <- filterRt(raw_data, c(60, 10000))
 message("Time to read in files: ", round(Sys.time()-start_time, digits = 2), " min")
 
 # Perform peakpicking ----
@@ -55,8 +56,8 @@ message("Other XCMS things:")
 start_time <- Sys.time()
 message("Retention time correction (double progress bar)...")
 xdata_rt <- suppressMessages(adjustRtime(xdata_cleanpeak, param = obp))
-plotAdjustedRtime(xdata_rt, col = c("red", "blue", "#00FFFF", "green", "black")[
-  factor(falkor_metadata$cruise)])
+# plotAdjustedRtime(xdata_rt, col = c("red", "blue", "#00FFFF", "green", "black")[
+#   factor(falkor_metadata$cruise)])
 
 message("Grouping...")
 xdata_cor <- groupChromPeaks(xdata_rt, param = pdp)

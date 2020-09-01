@@ -109,16 +109,20 @@ rdisop_formulas %>%
 
 
 # Check isotope matches ----
-iso_formulas <- final_features$feature %>%
+iso_abundance_table <- data.frame(
+  isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"),
+  abundance=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011),
+  n_atoms=c(1,1,1,1,1,2)
+)
+iso_formulas <- final_features$feature %>% 
   pblapply(isocheck, final_peaks=final_peaks) %>%
-  do.call(what=rbind) %>% 
-  as.data.frame(stringsAsFactors=FALSE) %>% 
-  cbind(feature=final_features$feature, stringsAsFactors=FALSE) %>%
-  select(paste0(c("C13", "N15", "O18", "S34"), "_area"), "feature") %>%
-  `names<-`(c("C", "N", "O", "S", "feature")) %>%
-  `rownames<-`(final_features$feature)
+  c(list(data.frame(isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"))), .) %>%
+  purrr::reduce(.f=left_join, by="isotope") %>%
+  t() %>% as.data.frame() %>% mutate(feature=rownames(.)) %>%
+  `colnames<-`(slice(., 1) %>% `[`(-length(.)) %>% c("feature")) %>% 
+  slice(-1) %>% select(feature, everything())
 
-isocheck(feature_num = "FT079", final_peaks = final_peaks, printplot = TRUE)
+isocheck(feature_num = "FT001", final_peaks = final_peaks, printplot = TRUE)
 
 
 
@@ -149,22 +153,9 @@ isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
     sapply(abs)
   best_formula <- inter_formulas[[feature_num]][which(formula_agreements==min(formula_agreements))]
   return(best_formula)
-})
-
-
-best_formulas <- inter_formulas %>%
-  filter(rdisop_formula==sirius_formula&!iso_mismatches) %>%
-  select(feature, mzmed, rtmed, avgarea, formula=sirius_formula) %>%
-  as.data.frame()
-
-duped_features <- lapply(seq_len(nrow(best_formulas)), function(i){
-  feature_data <- best_formulas[i,]
-  dup_candidates <- best_formulas[
-    best_formulas$mzmed%between%pmppm(feature_data$mzmed, ppm = 5)&
-      best_formulas$rtmed%between%(feature_data$rtmed+c(-10, 10)),]
-  return(dup_candidates[-c(which.max(dup_candidates$avgarea)),])
-}) %>% 
-  do.call(what = rbind) %>% `[`(duplicated(.),)
-
-best_formulas <- anti_join(x = best_formulas, y=duped_features, by="feature")
-
+}) %>% `names<-`(names(inter_formulas))
+  
+final_formulas <- data.frame(feature=names(isochecked_formulas), 
+           formula=sapply(isochecked_formulas, paste, collapse="; ")) %>%
+  left_join(final_features, by="feature") %>%
+  select(feature, mzmed, rtmed, avgarea, formula)

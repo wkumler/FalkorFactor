@@ -27,11 +27,6 @@ has_msms <- final_features %>%
       nrow() %>%
       as.logical()
   })
-final_features %>%
-  mutate(has_msms=has_msms) %>%
-  select(c("feature", "mzmed", "rtmed", "avgarea", "has_msms")) %>%
-  as.data.frame() %>% 
-  head(20)
 
 
 
@@ -123,7 +118,7 @@ iso_formulas <- final_features$feature %>%
   `names<-`(c("C", "N", "O", "S", "feature")) %>%
   `rownames<-`(final_features$feature)
 
-isocheck(feature_num = "FT003", final_peaks = final_peaks, printplot = TRUE)
+isocheck(feature_num = "FT079", final_peaks = final_peaks, printplot = TRUE)
 
 
 
@@ -132,13 +127,32 @@ inter_formulas <- sapply(names(rdisop_formulas), function(feature_num){
   intersect(rdisop_formulas[[feature_num]], sirius_formulas[[feature_num]])
 }, simplify=FALSE)
 
-iso_mismatches <- lapply(names(inter_formulas), function(feature_num){
-  possible_formulas <- inter_formulas[[feature_num]]
-  possible_isodata <- iso_formulas[feature_num, ]
+isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
+  isodata <- iso_formulas[feature_num, ]
+  if(!length(inter_formulas[[feature_num]])){
+    return(character(0))
+  }
+  formula_agreements <- inter_formulas[[feature_num]] %>% 
+    formula2elements() %>%
+    sapply(function(elem_table){
+      empty_elements <- c("C", "N", "O", "S")[!c("C", "N", "O", "S")%in%names(elem_table)]
+      empty_elements <- `names<-`(numeric(length(empty_elements)), empty_elements)
+      elem_table <- c(elem_table, empty_elements)
+      c(
+        C=elem_table[["C"]]-isodata[["C"]],
+        N=elem_table[["N"]]-isodata[["N"]],
+        O=elem_table[["O"]]-isodata[["O"]],
+        S=elem_table[["S"]]-isodata[["S"]]
+      )
+  }, simplify = FALSE) %>%
+    sapply(sum, na.rm=TRUE) %>%
+    sapply(abs)
+  best_formula <- inter_formulas[[feature_num]][which(formula_agreements==min(formula_agreements))]
+  return(best_formula)
 })
 
 
-best_formulas <- feature_formulas %>%
+best_formulas <- inter_formulas %>%
   filter(rdisop_formula==sirius_formula&!iso_mismatches) %>%
   select(feature, mzmed, rtmed, avgarea, formula=sirius_formula) %>%
   as.data.frame()

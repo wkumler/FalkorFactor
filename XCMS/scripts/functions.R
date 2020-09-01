@@ -447,34 +447,49 @@ mgf_maker <- function(feature_msdata, ms1, ms2, output_file){
 isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
   ft_isodata <- final_peaks %>% filter(feature==feature_num) %>%
     select(M_area, C13_area, N15_area, O18_area, X2C13_area, S34_area, S33_area) %>%
-    pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")))
+    pivot_longer(cols = starts_with(c("C", "X", "N", "O", "S")), names_to="isotope") %>%
+    filter(value!=0) %>%
+    mutate(isotope=gsub(pattern = "_area", replacement = "", x = .$isotope))
+  
+  if(all(is.na(ft_isodata))){
+    return(data.frame(
+      isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"),
+      count=NA
+      ) %>% `colnames<-`(c("isotope", feature_num)))
+  }
+  
+  count_ests <- split(ft_isodata, ft_isodata$isotope) %>%
+    map(lm, formula=value~M_area) %>%
+    map(summary) %>%
+    imap(function(x, y){
+      iso_abundance <- iso_abundance_table %>%
+        filter(isotope==y)
+      
+      rsquared <- x$r.squared
+      if(is.na(rsquared))return(NA)
+      if(rsquared<0.99|rsquared==1)return(NA)
+      coefs <- x$coefficients
+      norm_factor <- sapply(0:10, dbinom, x=0, 
+                            prob=iso_abundance$abundance)
+      pred_values <- sapply(0:10, dbinom, x=iso_abundance$n_atoms, 
+                            prob=iso_abundance$abundance)
+      est_slope <- coefs["M_area", "Estimate"]
+      (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
+    })
+  count_ests <- data.frame(names(count_ests), unlist(count_ests)) %>%
+    `rownames<-`(NULL) %>% `colnames<-`(c("isotope", feature_num))
+  
   
   if(printplot){
     gp <- ggplot(ft_isodata, aes(x=M_area, y=value)) + 
       geom_point() + 
       geom_smooth(method = "lm") +
-      facet_wrap(~name, scales = "free_y") +
+      facet_wrap(~isotope, scales = "free") +
       ggtitle(feature_num)
     print(gp)
   }
   
-  lmoutput <- split(ft_isodata, ft_isodata$name) %>%
-    lapply(lm, formula=value~M_area) %>%
-    lapply(summary)
-  
-  count_ests <- mapply(checkbinom, lminput=lmoutput, n_atoms=c(1,1,1,1,1,2), 
-                       prob=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011))
   return(count_ests)
-}
-checkbinom <- function(lminput, n_atoms, prob){
-  rsquared <- lminput$r.squared
-  if(is.na(rsquared))return(NA)
-  if(rsquared<0.99|rsquared==1)return(NA)
-  coefs <- lminput$coefficients
-  norm_factor <- sapply(0:10, dbinom, x=0, prob=prob)
-  pred_values <- sapply(0:10, dbinom, x=n_atoms, prob=prob)
-  est_slope <- coefs["M_area", "Estimate"]
-  (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
 }
 rdisop_check <- function(feature_num, final_features, database_formulae){
   feature_msdata <- final_features[final_features$feature==feature_num, ]

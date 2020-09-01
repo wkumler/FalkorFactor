@@ -112,7 +112,7 @@ isIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
       names(linear_output) <- paste0(rep(names(masses_to_check), each=2), 
                                      c("_match", "_area"))
       if(!nrow(init_eic)){
-        init_area <- NA
+        stop("Something gone wrong - can't find the original peak area in isIsoAdduct")
       } else {
         init_area <- trapz(init_eic$rt, init_eic$int)
       }
@@ -192,7 +192,7 @@ findIsoAdduct <- function(file_peaks, xdata, grabSingleFileData,
                                      c("_match", "_area"))
       
       if(!nrow(init_eic)){
-        init_area <- NA
+        stop("Something gone wrong - can't find the original peak area in isIsoAdduct")
       } else {
         init_area <- trapz(init_eic$rt, init_eic$int)
       }

@@ -37,15 +37,13 @@ found_stans <- found_stans[
 facet_labels <- found_stans %>%
   split(found_stans$feature) %>%
   sapply(function(i){paste(i$stan, i$feature, sep=": ")})
-all_peaks %>%
+internal_stan_ggplot <- all_peaks %>%
   filter(feature%in%found_stans$feature) %>%
   ggplot() +
   geom_bar(aes(x=file_name, y=M_area), stat = "identity") +
   theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
   facet_wrap(~feature, ncol = 1, scales = "free_y",
              labeller = as_labeller(facet_labels))
-ggsave(filename = paste0(pretty_folder, "internal_stan_values.pdf"), 
-       device = "pdf", height = 15, width = 10)
 
 
 
@@ -147,10 +145,8 @@ BMIS_stans <- lapply(stan_data, function(x){
 }) %>% do.call(what = rbind)
 
 
-gp <- ggplot(BMIS_stans) +
+stan_v_stan_gp <- ggplot(BMIS_stans) +
   geom_point(aes(x=RSD_pooled, y=RSD_all, color=acceptable, label=stan_name.x)) +
   geom_vline(aes(xintercept = init_rsd)) +
   geom_vline(aes(xintercept = init_rsd*0.6), lty=2) +
   facet_wrap(~stan_name, scales = "free")
-gp
-#ggplotly(gp)

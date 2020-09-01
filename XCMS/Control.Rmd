@@ -237,6 +237,10 @@ cut.off2 <- 0.1 #If RSD already below, skip B-MIS
 
 source("XCMS/scripts/bmisscript.R")
 
+ggsave(internal_stan_ggplot, device = "pdf", height = 15, width = 10, 
+       filename = paste0(pretty_folder, "internal_stan_values.pdf"))
+ggsave(stan_v_stan_gp, device = "pdf", height = 8, width = 10, 
+       filename = paste0(pretty_folder, "stan_v_stan.pdf"))
 write.csv(found_stans, file = paste0(intermediate_folder, "found_stans.csv"), 
           row.names = FALSE)
 write.csv(BMISed_feature_peaks, file = paste0(pretty_folder, "final_peaks.csv"), 
@@ -347,8 +351,9 @@ depth_diffs$feature[1] %>%
 ```{r}
 library(git2r)
 repo <- repository()
-files_to_commit <- c("final_peaks.csv", "addiso_peaks.csv", 
-                     "complete_features.csv", "internal_stan_values.pdf")
+files_to_commit <- c("final_peaks.csv", "addiso_features.csv", 
+                     "complete_features.csv", "internal_stan_values.pdf",
+                     "stan_v_stan.pdf")
 add(repo, paste0(pretty_folder, files_to_commit))
 commit(repo, "Daily build")
 ```

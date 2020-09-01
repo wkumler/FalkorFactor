@@ -195,9 +195,13 @@ area_find_threshold <- 0.9
 source("XCMS/scripts/deisoadduct.R")
 
 # Write out data frame containing all adducts and isotopes
-write.csv(addiso_peaks, file = paste0(pretty_folder, "addiso_peaks.csv"), row.names = FALSE)
+write.csv(addiso_peaks, file = paste0(intermediate_folder, "addiso_peaks.csv"), row.names = FALSE)
+addiso_features <- addiso_peaks %>% 
+  group_by(feature) %>% 
+  summarize(mzmed=median(mz), rtmed=median(rt), adduct_type=unique(adduct_type)) %>% 
+  as.data.frame()
+write.csv(addiso_features, file = paste0(pretty_folder, "addiso_features.csv"), row.names = FALSE)
 head(addiso_peaks)
-addiso_peaks %>% group_by(feature) %>% summarize(medmz=median(mz), medrt=median(rt), adduct_type=unique(adduct_type)) %>% as.data.frame()
 
 # Write out data frame containing all "real" peaks
 write.csv(real_peaks, file = paste0(intermediate_folder, "real_peaks.csv"), row.names = FALSE)
@@ -208,17 +212,25 @@ write.csv(real_features, file = paste0(pretty_folder, "complete_features.csv"), 
 head(real_features)
 ```
 
+=======
+## Unit test peaks picked
+
+```{r}
+real_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
+addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
+all_features <- bind_rows(real_features, addiso_features)
+```
+
 ## Finding B-MISs
 
 ```{r B-MIS}
-addiso_peaks <- read.csv(paste0(pretty_folder, "addiso_peaks.csv")) %>%
+addiso_peaks <- read.csv(paste0(intermediate_folder, "addiso_peaks.csv")) %>%
   select(feature, mz, rt, into, file_name, M_area)
 real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv")) %>%
   select(feature, mz, rt, into, file_name, M_area)
 all_peaks <- rbind(addiso_peaks, real_peaks) %>%
   arrange("feature", "file_name")
 
-stan_list <- read.csv("XCMS/meso_stans.csv")
 stan_list <- read.csv("XCMS/falkor_stans.csv")
 bionorm_values <- read.csv("XCMS/falkor_sample_key.csv")
 cut.off <- 0.4 #Necessary improvement for "acceptable"
@@ -228,7 +240,7 @@ source("XCMS/scripts/bmisscript.R")
 
 write.csv(found_stans, file = paste0(intermediate_folder, "found_stans.csv"), 
           row.names = FALSE)
-write.csv(BMISed_feature_peaks, file = paste0(pretty_folder, "BMISed_peaks.csv"), 
+write.csv(BMISed_feature_peaks, file = paste0(pretty_folder, "final_peaks.csv"), 
           row.names = FALSE)
 
 BMISed_feature_peaks %>%
@@ -275,7 +287,7 @@ write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"
 ```{r analysis}
 falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")
 found_stans <- read.csv(file = paste0(intermediate_folder, "found_stans.csv"))
-final_peaks <- read.csv(file = paste0(pretty_folder, "BMISed_peaks.csv")) %>%
+final_peaks <- read.csv(file = paste0(pretty_folder, "final_peaks.csv")) %>%
   left_join(falkor_metadata)
 
 final_peaks <- final_peaks %>% 
@@ -336,7 +348,7 @@ depth_diffs$feature[1] %>%
 ```{r}
 library(git2r)
 repo <- repository()
-files_to_commit <- c("BMISed_peaks.csv", "addiso_peaks.csv", 
+files_to_commit <- c("final_peaks.csv", "addiso_peaks.csv", 
                      "complete_features.csv", "internal_stan_values.pdf")
 add(repo, paste0(pretty_folder, files_to_commit))
 commit(repo, "Daily build")

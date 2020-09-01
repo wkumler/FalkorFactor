@@ -212,7 +212,6 @@ write.csv(real_features, file = paste0(pretty_folder, "complete_features.csv"), 
 head(real_features)
 ```
 
-=======
 ## Unit test peaks picked
 
 ```{r}

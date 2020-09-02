@@ -122,7 +122,7 @@ iso_formulas <- final_features$feature %>%
   `colnames<-`(slice(., 1) %>% `[`(-length(.)) %>% c("feature")) %>% 
   slice(-1) %>% select(feature, everything())
 
-isocheck(feature_num = "FT001", final_peaks = final_peaks, printplot = TRUE)
+isocheck(feature_num = "FT865", final_peaks = final_peaks, printplot = TRUE)
 
 
 
@@ -132,7 +132,7 @@ inter_formulas <- sapply(names(rdisop_formulas), function(feature_num){
 }, simplify=FALSE)
 
 isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
-  isodata <- iso_formulas[feature_num, ]
+  isodata <- filter(iso_formulas, feature==feature_num)
   if(!length(inter_formulas[[feature_num]])){
     return(character(0))
   }
@@ -143,10 +143,10 @@ isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
       empty_elements <- `names<-`(numeric(length(empty_elements)), empty_elements)
       elem_table <- c(elem_table, empty_elements)
       c(
-        C=elem_table[["C"]]-isodata[["C"]],
-        N=elem_table[["N"]]-isodata[["N"]],
-        O=elem_table[["O"]]-isodata[["O"]],
-        S=elem_table[["S"]]-isodata[["S"]]
+        C=elem_table[["C"]]-as.numeric(isodata[["C13"]]),
+        N=elem_table[["N"]]-as.numeric(isodata[["N15"]]),
+        O=elem_table[["O"]]-as.numeric(isodata[["O18"]]),
+        S=elem_table[["S"]]-as.numeric(isodata[["S34"]])
       )
   }, simplify = FALSE) %>%
     sapply(sum, na.rm=TRUE) %>%

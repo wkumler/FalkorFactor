@@ -6,11 +6,13 @@ duplicate_masses <- all_stans %>%
 
 stan_assignments <- all_stans %>%
   split(.$compound_name) %>%
-  pblapply(function(stan_data){
-    dput(stan_data)
+  pbsapply(function(stan_data){
     possible_stan_features <- all_features %>%
       filter(mzmed%between%pmppm(as.numeric(stan_data["mz"]))) %>%
       arrange(rtmed)
+    if(!nrow(possible_stan_features)){
+      return("No features found")
+    }
     
     # If the compound has an isotopologue, use RT matching
     isotopologue <- stan_data$compound_name %>%
@@ -20,7 +22,7 @@ stan_assignments <- all_stans %>%
       isotopo_data <- all_stans %>% 
         filter(compound_name==isotopologue)
       isotopo_features <- all_features %>%
-        filter(mzmed%between%pmppm(isotopo_data$mz, 5))
+        filter(mzmed%between%pmppm(as.numeric(isotopo_data$mz), 5))
       if(nrow(isotopo_features)==1){
         isotope_choice <- possible_stan_features %>% 
           mutate(rtdiff=abs(rtmed-isotopo_features$rtmed)) %>%
@@ -38,10 +40,14 @@ stan_assignments <- all_stans %>%
     if(is.na(stan_data$mix)){
       mix_choice <- NA
     } else {
-      stan_pvals <- real_peaks %>%
+      stan_peaks <- real_peaks %>%
         filter(feature%in%possible_stan_features$feature) %>%
         select(feature, mz, rt, into, file_name, M_area) %>%
-        filter(grepl("Std", .$file_name)) %>%
+        filter(grepl("Std", .$file_name)) 
+      if(!nrow(stan_peaks)){
+        return(NA)
+      }
+      stan_pvals <- stan_peaks %>%
         mutate(correct_mix=grepl(file_name, pattern = stan_data["mix"])) %>%
         mutate(stan_type=str_extract(file_name, "InH2O|InMatrix|H2OinMatrix")) %>%
         split(.$feature) %>%
@@ -67,4 +73,20 @@ stan_assignments <- all_stans %>%
       arrange(rtdiff) %>%
       slice(1) %>%
       pull(feature)
+    
+    if(!is.na(isotope_choice)){
+      return(paste("Isotope validated:", isotope_choice))
+    } else if(!length(mix_choice)){
+      return(paste("No mix info: possibly", rt_choice))
+    } else if(is.na(mix_choice)){
+      return(paste("No mix info: possibly", rt_choice))
+    } else if(!length(mix_choice)|is.na(rt_choice)){
+      return(paste("No rt info: possibly", mix_choice))
+    } else if(is.na(mix_choice)|is.na(rt_choice)){
+      return(paste("No rt info: possibly", mix_choice))
+    } else if(mix_choice==rt_choice){
+      return(paste("RT and mix agree:", mix_choice))
+    } else {
+      return(paste("Disputed:", mix_choice, "or", rt_choice))
+    }
   })

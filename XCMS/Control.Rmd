@@ -6,6 +6,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = TRUE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+options(dplyr.summarise.inform=F)
 library(tidyverse)
 library(data.table)
 library(pbapply)

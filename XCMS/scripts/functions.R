@@ -1,9 +1,13 @@
 # Functions called by Control.Rmd or scripts within
 # Should be sourced every time!
 
-pmppm <- function(mass, ppm=4){
+pmppm <- function(mass, ppm=4, warn=TRUE){
+  if(!is.numeric(mass)&warn){
+    warning(paste0("Mass is of class ", class(mass), ": converting to numeric"))
+    mass <- as.numeric(mass)
+  }
   if(mass<200){
-    as.numeric(mass)+(c(-ppm, ppm)*200/1000000)
+    mass+(c(-ppm, ppm)*200/1000000)
   } else {
     c(mass*(1-ppm/1000000), mass*(1+ppm/1000000))
   }

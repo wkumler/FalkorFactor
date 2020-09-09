@@ -265,17 +265,32 @@ message(Sys.time()-start_time)
 
 ```{r assign}
 falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
+all_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
+  filter(polarity=="pos") %>%
+  mutate(mz=as.numeric(mz)) %>%
+  add_row(compound_type="Custom", 
+          compound_name="Pyroglutamic acid from glutamine",
+          formula="C5H7NO3", rt=10, mz=129.042593+1.007276,
+          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
+          polarity="pos", date_added=NA, mix="Mix1") %>%
+  add_row(compound_type="Custom", 
+          compound_name="Pyroglutamic acid from glutamate",
+          formula="C5H7NO3", rt=11, mz=129.042593+1.007276,
+          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
+          polarity="pos", date_added=NA, mix="Mix1")
+
+
 final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
 addiso_peaks <- read.csv(paste0(intermediate_folder, "addiso_peaks.csv")) %>%
   select(feature, mz, rt, into, file_name, M_area)
 real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv")) %>%
   select(feature, mz, rt, into, file_name, M_area)
-all_features <- rbind(addiso_peaks, real_peaks) %>%
-  arrange("feature", "file_name") %>%
+all_peaks <- rbind(addiso_peaks, real_peaks) %>%
+  arrange("feature", "file_name")
+all_features <- all_peaks %>%
   group_by(feature) %>%
   summarise(mzmed=median(mz), rtmed=median(rt))
-all_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
-  filter(polarity=="pos")
+
 
 sirius_project_dir <- paste0(intermediate_folder, "/sirius_project")
 

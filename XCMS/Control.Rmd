@@ -281,11 +281,11 @@ all_stans <- read.csv("XCMS/falkor_stans.csv") %>%
 
 
 final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
-addiso_peaks <- read.csv(paste0(intermediate_folder, "addiso_peaks.csv")) %>%
-  select(feature, mz, rt, into, file_name, M_area)
-real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv")) %>%
-  select(feature, mz, rt, into, file_name, M_area)
-all_peaks <- rbind(addiso_peaks, real_peaks) %>%
+addiso_peaks <- read.csv(paste0(intermediate_folder, "addiso_peaks.csv"))
+real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
+all_peaks <- real_peaks %>%
+  select(feature, mz, rt, into, file_name, M_area) %>%
+  rbind(addiso_peaks %>% select(feature, mz, rt, into, file_name, M_area)) %>%
   arrange("feature", "file_name")
 all_features <- all_peaks %>%
   group_by(feature) %>%
@@ -303,7 +303,9 @@ register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 
 source("XCMS/scripts/formula_assignments.R")
 
-# source("XCMS/scripts/standard_assignments.R")
+source("XCMS/scripts/standard_assignments.R")
+
+write.csv(stan_assignments, paste0(pretty_folder, "stan_annotations.csv"))
 
 write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
 ```

@@ -115,14 +115,14 @@ iso_abundance_table <- data.frame(
   n_atoms=c(1,1,1,1,1,2)
 )
 iso_formulas <- final_features$feature %>% 
-  pblapply(isocheck, final_peaks=real_peaks) %>%
+  pblapply(isocheck, real_peaks=real_peaks) %>%
   c(list(data.frame(isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"))), .) %>%
   purrr::reduce(.f=left_join, by="isotope") %>%
   t() %>% as.data.frame() %>% mutate(feature=rownames(.)) %>%
   `colnames<-`(slice(., 1) %>% `[`(-length(.)) %>% c("feature")) %>% 
   slice(-1) %>% select(feature, everything())
 
-isocheck(feature_num = "FT865", final_peaks = real_peaks, printplot = TRUE)
+isocheck(feature_num = "FT865", real_peaks = real_peaks, printplot = TRUE)
 
 
 

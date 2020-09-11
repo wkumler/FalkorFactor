@@ -264,8 +264,7 @@ message(Sys.time()-start_time)
 
 ## Assign formulae and structures
 
-```{r assign}
-falkor_metadata <- read.csv("XCMS/falkor_metadata.csv")
+```{r targeted}
 all_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
   filter(polarity=="pos") %>%
   mutate(mz=as.numeric(mz)) %>%
@@ -280,8 +279,6 @@ all_stans <- read.csv("XCMS/falkor_stans.csv") %>%
           ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
           polarity="pos", date_added=NA, mix="Mix1")
 
-
-final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
 addiso_peaks <- read.csv(paste0(intermediate_folder, "addiso_peaks.csv"))
 real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
 all_peaks <- real_peaks %>%
@@ -290,8 +287,16 @@ all_peaks <- real_peaks %>%
   arrange("feature", "file_name")
 all_features <- all_peaks %>%
   group_by(feature) %>%
-  summarise(mzmed=median(mz), rtmed=median(rt))
+  summarise(mzmed=median(mz), rtmed=median(rt), avgarea=mean(M_area))
 
+source("XCMS/scripts/standard_assignments.R")
+
+write.csv(stan_assignments, paste0(pretty_folder, "stan_annotations.csv"))
+```
+
+```{r untargeted}
+final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
+real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
 
 sirius_project_dir <- paste0(intermediate_folder, "/sirius_project")
 
@@ -303,10 +308,6 @@ MSMS_files <- paste0("mzMLs/", polarity, "/MSMS/") %>%
 register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 
 source("XCMS/scripts/formula_assignments.R")
-
-source("XCMS/scripts/standard_assignments.R")
-
-write.csv(stan_assignments, paste0(pretty_folder, "stan_annotations.csv"))
 
 write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
 ```

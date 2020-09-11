@@ -213,3 +213,41 @@ stan_assignments %>%
   left_join(all_stans) %>%
   arrange(as.numeric(mz), as.numeric(rt)) %>%
   select(compound_name, best_guess, 1:6)
+
+# Manual assignments
+leucine_data <- all_stans %>% filter(compound_name=="L-Leucine")
+leucine <- all_features %>%
+  filter(mzmed%between%pmppm(leucine_data$mz, 5)) %>%
+  arrange(rtmed) %>%
+  slice(2)
+stan_assignments[stan_assignments$compound_name=="L-Leucine",] <- 
+  c("L-Leucine", leucine$feature, rep("Manual", ncol(stan_assignments)-2))
+
+N6_lysine_data <- all_stans %>% filter(compound_name=="N6-Acetyl-L-lysine")
+N6_lysine <- all_features %>%
+  filter(mzmed%between%pmppm(N6_lysine_data$mz, 5)) %>%
+  arrange(desc(avgarea)) %>%
+  slice(1)
+stan_assignments[stan_assignments$compound_name=="N6-Acetyl-L-lysine",] <- 
+  c("N6-Acetyl-L-lysine", N6_lysine$feature, rep("Manual", ncol(stan_assignments)-2))
+
+allopurinol_data <- all_stans %>% filter(compound_name=="Allopurinol")
+allopurinol <- all_features %>%
+  filter(mzmed%between%pmppm(allopurinol_data$mz, 5)) %>%
+  arrange(desc(avgarea)) %>%
+  slice(1)
+hypoxanthine <- all_features %>%
+  filter(mzmed%between%pmppm(allopurinol_data$mz, 5)) %>%
+  arrange(desc(avgarea)) %>%
+  slice(2)
+stan_assignments[stan_assignments$compound_name=="Allopurinol",] <- 
+  c("Allopurinol", allopurinol$feature, rep("Manual", ncol(stan_assignments)-2))
+stan_assignments[stan_assignments$compound_name=="Hypoxanthine",] <- 
+  c("Hypoxanthine", hypoxanthine$feature, rep("Manual", ncol(stan_assignments)-2))
+
+
+GABA_data <- all_stans %>% filter(compound_name=="beta-Glutamic acid")
+GABA <- all_features %>%
+  filter(mzmed%between%pmppm(GABA_data$mz, 5)) %>%
+  arrange(desc(avgarea)) %>%
+  slice(1)

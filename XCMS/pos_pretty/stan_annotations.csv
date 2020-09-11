@@ -12,7 +12,7 @@
 "11","Adenine","FT0393","FT0393",NA,"FT0393","FT0393","FT0393"
 "12","Adenine, 15N2","FT0422","FT0422",NA,NA,"FT0422","FT0422"
 "13","Adenosine","FT1200",NA,NA,"FT1199; FT1200","FT1200","FT1200"
-"14","Allopurinol","FT0402",NA,NA,"FT0400; FT0401; FT0403","FT0402","FT0400"
+"14","Allopurinol","FT0400","Manual","Manual","Manual","Manual","Manual"
 "15","Anserine","FT1093",NA,"FT1093","FT1093","FT1093","FT1093"
 "16","Arsenobetaine","FT0755","FT0755","FT0755","FT0755","FT0755","FT0755"
 "17","Arsenobetaine, 13C2","FT0774","FT0774","FT0774",NA,"FT0774",NA
@@ -61,7 +61,7 @@
 "60","Hydroxyisoleucine","FT0522",NA,NA,"FT0522","FT0522","FT0522"
 "61","Hydroxyproline","FT0346",NA,NA,"FT0346","FT0346","FT0346"
 "62","Hypotaurine","FT0178",NA,"FT0178","FT0178","FT0178","FT0178"
-"63","Hypoxanthine","FT0400; FT0401",NA,NA,"FT0400; FT0401; FT0403","FT0401","FT0400"
+"63","Hypoxanthine","FT0401","Manual","Manual","Manual","Manual","Manual"
 "64","Inosine","FT1204",NA,"FT1204","FT1204","FT1204","FT1204"
 "65","L-Alanine","FT0088","FT0088","FT0088","","FT0087",NA
 "66","L-Arginine","FT0728",NA,"FT0728","FT0728","FT0728","FT0728"
@@ -82,7 +82,7 @@
 "81","L-Isoleucine","FT0349",NA,NA,"FT0349","FT0351","FT0351"
 "82","L-Isoleucine, 15N","FT0365","FT0365",NA,NA,"FT0365","FT0364"
 "83","L-Kynurenine",NA,NA,NA,NA,NA,NA
-"84","L-Leucine","FT0349",NA,NA,"FT0349","FT0351","FT0351"
+"84","L-Leucine","FT0352","Manual","Manual","Manual","Manual","Manual"
 "85","L-Lysine","FT0510",NA,"FT0510","FT0510","FT0510","FT0510"
 "86","L-Methionine","FT0537","FT0537","FT0537","FT0537","FT0537","FT0537"
 "87","L-Methionine S-oxide","FT0664",NA,"FT0664","FT0664","FT0664","FT0664"
@@ -100,7 +100,7 @@
 "99","N-Acetyl-L-glutamic acid","FT0840",NA,"FT0840","FT0840","FT0840","FT0840"
 "100","N-Acetylmuramic acid","FT1292",NA,"FT1292","FT1292","FT1292","FT1292"
 "101","N-Methyltaurine","FT0442",NA,NA,"FT0442; FT0443","FT0442","FT0442"
-"102","N6-Acetyl-L-lysine","FT0835; FT0836",NA,NA,"FT0835; FT0836","FT0836","FT0835"
+"102","N6-Acetyl-L-lysine","FT0835","Manual","Manual","Manual","Manual","Manual"
 "103","N6-Methyladenine","FT0539",NA,NA,"FT0538; FT0539","FT0539","FT0539"
 "104","N6,N6,N6-Trimethyl-L-lysine","FT0837",NA,"FT0837","FT0837","FT0837","FT0837"
 "105","Nicotinic acid","FT0287",NA,"FT0287","FT0287","FT0287","FT0287"

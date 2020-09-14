@@ -1,4 +1,23 @@
 
+
+
+
+
+
+# Custom function that tries to resolve discrepancies between various metrics
+# Basically a bunch of if/else statements
+# Highest priority: isotope validated (isotope_choice)
+# Next highest: if two peaks are found and two standards should be found, use RT
+#               ordering to match them up (match_choice)
+# Next highest: if peaks are dramatically larger in the correct mix and smaller
+#               in the other mix, assume it's the larger one (mix_choice)
+#               sometimes produces multiple, thus later area and RT matching
+# Next highest: if one peak is larger than the others, assume it's the
+#               standard (area_choice)
+# Lowest: RT matching based on the number in the standards list
+#
+# Returns a character vector, usually a single peak but can be multiple or none
+# concatenated with a semicolon
 stan_guesser <- function(isotope_choice, mix_choice, match_choice, area_choice, rt_choice){
   if(all(is.na(c(isotope_choice, mix_choice, match_choice, area_choice, rt_choice)))){
     return("No peaks found")
@@ -38,6 +57,33 @@ stan_guesser <- function(isotope_choice, mix_choice, match_choice, area_choice, 
     return(rt_choice)
   }
 }
+
+# For each standard
+# Grab all the features that it could be based on 5ppm m/z window
+# If there aren't any features, return NA for everything
+
+# If there are features, calculate 5 metrics for each one:
+# Isotope choice:
+#   If the compound has an isotope, use the peak closest to the isotope peak in RT
+#     (i.e. another compound exists with the same name + C13, N15, or O18)
+#   If the compound IS an isotope (i.e. has C13, N15, or O18 in the name)
+#     find the two peaks closest in RT and assume those are the isotopologues
+#   Otherwise, NA
+# Match choice:
+#   If there are two standards expected in a mix and two features found,
+#   assume that the two found peaks are the standards and use rank-order RT matching
+#   If more or fewer peaks found, NA
+# Mix choice:
+#   Generally, which peaks are bigger in the mix they've been added to?
+#   Calculate average z-statistic between the mixes after controlling for H2O vs Matrix
+#   Return all feature numbers with a z-score above 10 (arbitrarily chosen)
+# Area choice:
+#   Which peak has the largest area?
+# RT choice:
+#   Which peak is closest in RT to the value in the standards list?
+
+# Then use function above to resolve discrepancies based on the priority hierarchy
+# Manual assignments for known annoyances at the bottom
 
 stan_assignments <- all_stans %>%
   mutate(mz=as.numeric(mz)) %>%
@@ -199,20 +245,17 @@ stan_assignments <- all_stans %>%
   select(compound_name, everything())
 
 
+# Check on internal standard assignments
 stan_assignments %>%
   filter(!is.na(.$isotope_validated))
 
+
+# Check on features that are dual-assigned - these should be resolved by manual assignment
 stan_assignments[(duplicated(stan_assignments$best_guess, fromLast=TRUE)|
                    duplicated(stan_assignments$best_guess))&
                    !is.na(stan_assignments$best_guess), ] %>%
   split(.$best_guess)
 
-stan_assignments %>%
-  mutate(compound_name=rownames(.)) %>%
-  `rownames<-`(NULL) %>%
-  left_join(all_stans) %>%
-  arrange(as.numeric(mz), as.numeric(rt)) %>%
-  select(compound_name, best_guess, 1:6)
 
 # Manual assignments
 leucine_data <- all_stans %>% filter(compound_name=="L-Leucine")
@@ -244,10 +287,3 @@ stan_assignments[stan_assignments$compound_name=="Allopurinol",] <-
   c("Allopurinol", allopurinol$feature, rep("Manual", ncol(stan_assignments)-2))
 stan_assignments[stan_assignments$compound_name=="Hypoxanthine",] <- 
   c("Hypoxanthine", hypoxanthine$feature, rep("Manual", ncol(stan_assignments)-2))
-
-
-GABA_data <- all_stans %>% filter(compound_name=="beta-Glutamic acid")
-GABA <- all_features %>%
-  filter(mzmed%between%pmppm(GABA_data$mz, 5)) %>%
-  arrange(desc(avgarea)) %>%
-  slice(1)

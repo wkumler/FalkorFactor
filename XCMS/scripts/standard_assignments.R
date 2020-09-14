@@ -1,9 +1,4 @@
 
-
-
-
-
-
 # Custom function that tries to resolve discrepancies between various metrics
 # Basically a bunch of if/else statements
 # Highest priority: isotope validated (isotope_choice)
@@ -86,7 +81,6 @@ stan_guesser <- function(isotope_choice, mix_choice, match_choice, area_choice, 
 # Manual assignments for known annoyances at the bottom
 
 stan_assignments <- all_stans %>%
-  mutate(mz=as.numeric(mz)) %>%
   split(.$compound_name) %>%
   pblapply(function(stan_data){
     # dput(stan_data)
@@ -287,3 +281,16 @@ stan_assignments[stan_assignments$compound_name=="Allopurinol",] <-
   c("Allopurinol", allopurinol$feature, rep("Manual", ncol(stan_assignments)-2))
 stan_assignments[stan_assignments$compound_name=="Hypoxanthine",] <- 
   c("Hypoxanthine", hypoxanthine$feature, rep("Manual", ncol(stan_assignments)-2))
+
+glutamate_data <- all_stans %>% filter(compound_name=="L-Glutamic acid")
+glutamate <- all_features %>%
+  filter(mzmed%between%pmppm(glutamate_data$mz, 5)) %>%
+  arrange(desc(avgarea)) %>%
+  slice(1)
+stan_assignments[stan_assignments$compound_name=="L-Glutamic acid",] <- 
+  c("L-Glutamic acid", allopurinol$feature, rep("Manual", ncol(stan_assignments)-2))
+stan_assignments[stan_assignments$compound_name=="beta-Glutamic acid",] <- 
+  c("beta-Glutamic acid", rep(NA, ncol(stan_assignments)-1))
+stan_assignments[stan_assignments$compound_name=="O-Acetyl-L-serine",] <- 
+  c("O-Acetyl-L-serine", rep(NA, ncol(stan_assignments)-1))
+

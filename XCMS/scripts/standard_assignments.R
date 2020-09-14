@@ -294,3 +294,10 @@ stan_assignments[stan_assignments$compound_name=="beta-Glutamic acid",] <-
 stan_assignments[stan_assignments$compound_name=="O-Acetyl-L-serine",] <- 
   c("O-Acetyl-L-serine", rep(NA, ncol(stan_assignments)-1))
 
+glycine_data <- all_stans %>% filter(compound_name=="Glycine")
+glycine <- all_features %>%
+  filter(mzmed%between%pmppm(glycine_data$mz, 5)) %>%
+  arrange(desc(rtmed)) %>%
+  slice(2)
+stan_assignments[stan_assignments$compound_name=="Glycine",] <- 
+  c("Glycine", glycine$feature, rep("Manual", ncol(stan_assignments)-2))

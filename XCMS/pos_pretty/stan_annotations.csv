@@ -18,7 +18,7 @@
 "17","Arsenobetaine, 13C2","FT0774","FT0774","FT0774",NA,"FT0774",NA
 "18","beta-Alanine","FT0087",NA,"FT0087","FT0087; FT0089","FT0087",NA
 "19","beta-Alaninebetaine","FT0351",NA,NA,"","FT0351","FT0351"
-"20","beta-Glutamic acid","FT0520",NA,NA,"FT0520","FT0520","FT0520"
+"20","beta-Glutamic acid",NA,NA,NA,NA,NA,NA
 "21","Betonicine","FT0611",NA,NA,"FT0611","FT0613","FT0611"
 "22","Butyrylcarnitine","FT1049",NA,"FT1049","FT1049","FT1049","FT1049"
 "23","Carnitine","FT0634",NA,NA,"FT0634","FT0634","FT0634"
@@ -48,7 +48,7 @@
 "47","Glutathione","FT1329",NA,"FT1329","FT1329","FT1329","FT1329"
 "48","Glutathione disulfide",NA,NA,NA,NA,NA,NA
 "49","Glycerophosphocholine","FT1167",NA,"FT1167","FT1167","FT1167","FT1167"
-"50","Glycine","FT0032; FT0030",NA,NA,"FT0030; FT0032","FT0030","FT0032"
+"50","Glycine","FT0029","Manual","Manual","Manual","Manual","Manual"
 "51","Glycine betaine","FT0230","FT0230","FT0230","FT0230; FT0231","FT0231",NA
 "52","Glycine betaine, 13C5, 15N","FT0295","FT0295","FT0295",NA,"FT0295","FT0295"
 "53","Gonyol","FT0762",NA,NA,"FT0762","FT0762","FT0762"
@@ -72,7 +72,7 @@
 "71","L-Cysteinesulfinic acid","FT0569",NA,"FT0569","FT0569","FT0569","FT0569"
 "72","L-Cysteinylglycine","FT0759",NA,"FT0759","FT0759","FT0759","FT0759"
 "73","L-Cystine",NA,NA,NA,NA,NA,NA
-"74","L-Glutamic acid","FT0520",NA,NA,"FT0520","FT0520","FT0520"
+"74","L-Glutamic acid","FT0400","Manual","Manual","Manual","Manual","Manual"
 "75","L-Glutamine","FT0507",NA,"FT0507","FT0507","FT0507","FT0507"
 "76","L-Histidine","FT0583","FT0583","FT0583","FT0583","FT0583","FT0583"
 "77","L-Homocysteine","FT0389",NA,"FT0389","FT0389","FT0389","FT0389"
@@ -104,7 +104,7 @@
 "103","N6-Methyladenine","FT0539",NA,NA,"FT0538; FT0539","FT0539","FT0539"
 "104","N6,N6,N6-Trimethyl-L-lysine","FT0837",NA,"FT0837","FT0837","FT0837","FT0837"
 "105","Nicotinic acid","FT0287",NA,"FT0287","FT0287","FT0287","FT0287"
-"106","O-Acetyl-L-serine","FT0520",NA,NA,"FT0520","FT0520","FT0520"
+"106","O-Acetyl-L-serine",NA,NA,NA,NA,NA,NA
 "107","O-Acetylcarnitine","FT0929",NA,NA,"FT0929","FT0929","FT0929"
 "108","O-Methylmalonyl-L-carnitine","FT1183",NA,"FT1183","FT1183","FT1183","FT1183"
 "109","O-Propionylcarnitine","FT0978",NA,"FT0978","FT0978","FT0978","FT0978"

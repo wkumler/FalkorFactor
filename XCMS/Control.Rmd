@@ -105,19 +105,18 @@ head(falkor_key)
 
 # Standards information
 raw_stans <- read.csv(paste0("https://raw.githubusercontent.com/",
-                             "IngallsLabUW/Ingalls_Standards/master/",
+                             "IngallsLabUW/Ingalls_Standards/",
+                             "b098927ea0089b6e7a31e1758e7c7eaad5408535/",
                              "Ingalls_Lab_Standards_NEW.csv"))
 falkor_stans <- raw_stans %>%
   filter(Column=="HILIC") %>%
   mutate(polarity=tolower(gsub(pattern = "HILIC", "", .$Fraction1))) %>%
+  mutate(mz=as.numeric(mz)) %>%
   select(compound_type=Compound.Type, compound_name=Compound.Name, 
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
          charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix)
-meso_stans <- falkor_stans %>%
-  filter(date_added<190000)
 write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
-write.csv(meso_stans, file = "XCMS/meso_stans.csv", row.names = FALSE)
-head(meso_stans)
+head(falkor_stans)
 ```
 
 ## Peakpicking

@@ -301,3 +301,11 @@ glycine <- all_features %>%
   slice(2)
 stan_assignments[stan_assignments$compound_name=="Glycine",] <- 
   c("Glycine", glycine$feature, rep("Manual", ncol(stan_assignments)-2))
+
+probet_data <- all_stans %>% filter(compound_name=="Proline betaine")
+probet <- all_features %>%
+  filter(mzmed%between%pmppm(probet_data$mz, 5)) %>%
+  arrange(rtmed) %>%
+  slice(1)
+stan_assignments[stan_assignments$compound_name=="Proline betaine",] <- 
+  c("Proline betaine", probet$feature, rep("Manual", ncol(stan_assignments)-2))

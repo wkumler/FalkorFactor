@@ -109,7 +109,7 @@
 "108","O-Methylmalonyl-L-carnitine","FT1183",NA,"FT1183","FT1183","FT1183","FT1183"
 "109","O-Propionylcarnitine","FT0978",NA,"FT0978","FT0978","FT0978","FT0978"
 "110","Ophthalmic acid","FT1273",NA,"FT1273","FT1273","FT1273","FT1273"
-"111","Proline betaine","FT0474",NA,NA,"FT0473; FT0475","FT0474","FT0473"
+"111","Proline betaine","FT0473","Manual","Manual","Manual","Manual","Manual"
 "112","Pyroglutamic acid from glutamate","FT0330",NA,"FT0330","","FT0330",NA
 "113","Pyroglutamic acid from glutamine","FT0328",NA,"FT0328","","FT0328",NA
 "114","Riboflavin-5-phosphate","FT1545",NA,"FT1545","FT1545","FT1545","FT1545"

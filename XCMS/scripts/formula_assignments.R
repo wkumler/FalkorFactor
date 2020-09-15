@@ -57,29 +57,16 @@ for(feature_num in final_features$feature){
 
 
 # Run SIRIUS ----
-sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.17//',
+sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.29//',
                      'sirius-console-64.exe" ',
                      ' -i "', normalizePath(sirius_project_dir), '//raw_files"',
                      ' -o "', normalizePath(sirius_project_dir), '//output_dir"',
                      ' formula',
                      ' --database PUBCHEM',
                      ' --profile orbitrap',
-                     ' --ions-enforced [M+H]+',
-                     ' -c 50',
-                     ' zodiac',
-                     ' fingerid',
-                     ' --database bio',
-                     ' canopus')
+                     ' --ions-enforced [M+H]+')
 message(sirius_cmd)
 system(sirius_cmd)
-
-# Rename "csv"s to actual tsvs to facilitate reading
-csv_names <- sirius_project_dir %>%
-  list.files(recursive = TRUE) %>%
-  grep(pattern = ".csv", value = TRUE) %>%
-  paste0(sirius_project_dir, "/", .)
-tsv_names <- gsub(pattern = "csv", "tsv", csv_names)
-sum(!file.rename(csv_names, tsv_names))
 
 # Read in SIRIUS data ----
 sirius_formulas <- sirius_project_dir %>%
@@ -115,14 +102,14 @@ iso_abundance_table <- data.frame(
   n_atoms=c(1,1,1,1,1,2)
 )
 iso_formulas <- final_features$feature %>% 
-  pblapply(isocheck, real_peaks=real_peaks) %>%
+  pblapply(isocheck, final_peaks=real_peaks) %>%
   c(list(data.frame(isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"))), .) %>%
   purrr::reduce(.f=left_join, by="isotope") %>%
   t() %>% as.data.frame() %>% mutate(feature=rownames(.)) %>%
   `colnames<-`(slice(., 1) %>% `[`(-length(.)) %>% c("feature")) %>% 
   slice(-1) %>% select(feature, everything())
 
-isocheck(feature_num = "FT865", real_peaks = real_peaks, printplot = TRUE)
+isocheck(feature_num = "FT0003", final_peaks = real_peaks, printplot = TRUE)
 
 
 

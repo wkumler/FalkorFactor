@@ -421,4 +421,5 @@ library(git2r)
 repo <- repository()
 add(repo, pretty_folder)
 commit(repo, "Daily build")
+detach(name = "package:git2r", unload = TRUE)
 ```

@@ -111,7 +111,7 @@ raw_stans <- read.csv(paste0("https://raw.githubusercontent.com/",
 falkor_stans <- raw_stans %>%
   filter(Column=="HILIC") %>%
   mutate(polarity=tolower(gsub(pattern = "HILIC", "", .$Fraction1))) %>%
-  mutate(mz=as.numeric(mz)) %>%
+  mutate(m.z=as.numeric(m.z)) %>%
   select(compound_type=Compound.Type, compound_name=Compound.Name, 
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
          charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix)
@@ -266,7 +266,6 @@ message(Sys.time()-start_time)
 ```{r targeted}
 all_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
   filter(polarity=="pos") %>%
-  mutate(mz=as.numeric(mz)) %>%
   add_row(compound_type="Custom", 
           compound_name="Pyroglutamic acid from glutamine",
           formula="C5H7NO3", rt=10, mz=129.042593+1.007276,
@@ -312,6 +311,49 @@ write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"
 ```
 
 ## Data analysis!
+
+```{r targeted_graphs}
+stan_annotations <- read.csv(paste0(pretty_folder, "stan_annotations.csv")) %>%
+  select(compound_name, best_guess)
+falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")
+final_peaks <- read.csv(file = paste0(pretty_folder, "final_peaks.csv")) %>%
+  left_join(falkor_metadata, by = "file_name")
+
+stan_annotations %>%
+  left_join(final_peaks, by=c(best_guess="feature")) %>%
+  filter(cruise=="Falkor") %>%
+  ggplot() +
+  geom_boxplot(aes(x=depth, y=BMISed_area, color=depth), varwidth = TRUE) +
+  scale_color_manual(values = c(`25m`=scales::hue_pal()(3)[1], 
+                                DCM=scales::hue_pal()(3)[3])) +
+  facet_wrap(~compound_name, scales = "free_x") +
+  coord_flip() +
+  ggsave(filename = paste0(pretty_folder, "targeted_boxplots_depth.pdf"),
+       device = "pdf", width = 25, height = 25, units = "in")
+
+stan_annotations %>%
+  left_join(final_peaks, by=c(best_guess="feature")) %>%
+  filter(cruise=="Falkor") %>%
+  ggplot() +
+  geom_boxplot(aes(x=spindir, y=BMISed_area, color=spindir), varwidth = TRUE) +
+  scale_color_manual(values = c(Anticyclone=rgb(204, 54, 17, maxColorValue = 255), 
+                                Cyclone=rgb(6, 81, 164, maxColorValue = 255))) +
+  facet_wrap(~compound_name, scales = "free_x") +
+  coord_flip() +
+  ggsave(filename = paste0(pretty_folder, "targeted_boxplots_spindir.pdf"),
+       device = "pdf", width = 25, height = 25, units = "in")
+
+stan_annotations %>%
+  left_join(final_peaks, by=c(best_guess="feature")) %>%
+  filter(cruise=="Falkor") %>%
+  ggplot() +
+  geom_boxplot(aes(x=time, y=BMISed_area, color=time), varwidth = TRUE) +
+  scale_color_manual(values = c(`4am`="#fc8b64", `4pm`="#222a5c")) +
+  facet_wrap(~compound_name, scales = "free_x") +
+  coord_flip() +
+  ggsave(filename = paste0(pretty_folder, "targeted_boxplots_time.pdf"),
+       device = "pdf", width = 25, height = 25, units = "in")
+```
 
 ```{r analysis}
 falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")

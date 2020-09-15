@@ -419,9 +419,6 @@ depth_diffs$feature[1] %>%
 ```{r}
 library(git2r)
 repo <- repository()
-files_to_commit <- c("final_peaks.csv", "addiso_features.csv", 
-                     "complete_features.csv", "internal_stan_values.pdf",
-                     "stan_v_stan.pdf", "stan_annotations.csv")
-add(repo, paste0(pretty_folder, files_to_commit))
+add(repo, pretty_folder)
 commit(repo, "Daily build")
 ```

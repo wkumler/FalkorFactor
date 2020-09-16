@@ -177,7 +177,8 @@ raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 not_addisos <- list("Glutamine"=c(mz=147.076968, rt=620),
                     "Citrulline"=c(mz=176.103517, rt=645),
                     "Guanine"=c(mz=152.0567, rt=400),
-                    "Glutamic acid"=c(mz=148.061, rt=745))
+                    "Glutamic acid"=c(mz=148.061, rt=745),
+                    "4-Aminobutyric acid"=c(mz=104.071, rt=614))
 
 
 # When removing peaks that are likely adducts...

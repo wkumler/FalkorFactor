@@ -282,7 +282,7 @@ all_features <- all_peaks %>%
 
 source("XCMS/scripts/standard_assignments.R")
 
-write.csv(stan_assignments, paste0(pretty_folder, "stan_annotations.csv"))
+write.csv(stan_assignments, paste0(pretty_folder, "stan_annotations.csv"), row.names = FALSE)
 ```
 
 ```{r untargeted}
@@ -300,12 +300,41 @@ register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 
 source("XCMS/scripts/formula_assignments.R")
 
-write.csv(x = final_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
+write.csv(x = final_formulas, file = paste0(pretty_folder, "feature_formulas.csv"), row.names = FALSE)
 ```
 
 ## Unit tests!
 
 ```{r}
+feature_formulas <- "feature_formulas.csv" %>%
+  paste0(pretty_folder, .) %>%
+  read.csv() %>%
+  select(-X)
+stan_annotations <- "stan_annotations.csv" %>%
+  paste0(pretty_folder, .) %>%
+  read.csv() %>%
+  select(compound_name, best_guess)
+falkor_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
+  filter(polarity=="pos") %>%
+  add_row(compound_type="Custom", 
+          compound_name="Pyroglutamic acid from glutamine",
+          formula="C5H7NO3", rt=10, mz=129.042593+1.007276,
+          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
+          polarity="pos", date_added=NA, mix="Mix1") %>%
+  add_row(compound_type="Custom", 
+          compound_name="Pyroglutamic acid from glutamate",
+          formula="C5H7NO3", rt=11, mz=129.042593+1.007276,
+          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
+          polarity="pos", date_added=NA, mix="Mix1") %>%
+  select(compound_name, formula, rt, mz)
+
+formula_check <- stan_annotations %>%
+  filter(!is.na(best_guess)) %>%
+  left_join(feature_formulas, by=c(best_guess="feature")) %>%
+  left_join(falkor_stans, by="compound_name") %>%
+  select(compound_name, best_guess, formula_pred="formula.x", formula_known="formula.y")
+
+
 
 ```
 

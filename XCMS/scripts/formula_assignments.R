@@ -6,22 +6,21 @@
 
 
 # Grab MSMS data ----
-message("Reading in MSMS files...")
+message("Reading in MS1 info...")
 raw_MS_data <- pblapply(MSMS_files, grabSingleFileData) %>%
   mapply(FUN = cbind, basename(MSMS_files), SIMPLIFY = FALSE) %>%
   lapply(`names<-`, c("rt", "mz", "int", "file_name")) %>%
   do.call(what = rbind) %>% as.data.table()
+message("Reading in MS2 info...")
 raw_MSMS_data <- pblapply(MSMS_files, grabSingleFileMS2) %>%
   mapply(FUN = cbind, basename(MSMS_files), SIMPLIFY = FALSE) %>%
   lapply(`names<-`, c("rt", "premz", "fragmz", "int", "file")) %>%
   do.call(what = rbind) %>% as.data.table() %>%
   mutate(voltage=str_extract(.$file, pattern = "pos\\d+")) %>%
   mutate(voltage=gsub(pattern = "pos", "", .$voltage))
-
-
 has_msms <- final_features %>%
   split(.$feature) %>%
-  pbsapply(function(x){
+  sapply(function(x){
     raw_MSMS_data[premz%between%pmppm(x$mzmed, ppm = 5)] %>%
       filter(rt%between%(x$rtmed+c(-50, 50))) %>%
       nrow() %>%
@@ -38,7 +37,8 @@ dir.create(sirius_project_dir)
 dir.create(paste0(sirius_project_dir, "//raw_files"))
 dir.create(paste0(sirius_project_dir, "//output_dir"))
 
-for(feature_num in final_features$feature){
+message("Writing .mgf files...")
+pbsapply(final_features$feature, function(feature_num){
   output_file <- paste0(sirius_project_dir, "\\raw_files\\", feature_num, ".mgf")
   feature_msdata <- final_features[final_features$feature==feature_num, ]
   ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
@@ -52,11 +52,12 @@ for(feature_num in final_features$feature){
                          rt%between%(feature_msdata$rtmed+c(-10, 10))]
   mgf_maker(feature_msdata = feature_msdata, ms1 = ms1, 
             ms2 = ms2, output_file = output_file)
-}
+})
 
 
 
 # Run SIRIUS ----
+message("Running SIRIUS...")
 sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.29//',
                      'sirius-console-64.exe" ',
                      ' -i "', normalizePath(sirius_project_dir), '//raw_files"',
@@ -69,9 +70,10 @@ message(sirius_cmd)
 system(sirius_cmd)
 
 # Read in SIRIUS data ----
-sirius_formulas <- sirius_project_dir %>%
+sirius_filenames <- sirius_project_dir %>%
   paste0("/output_dir") %>%
-  dir(pattern = "formula_candidates", recursive = TRUE, full.names = TRUE) %>%
+  dir(pattern = "formula_candidates", recursive = TRUE, full.names = TRUE)
+sirius_formulas <- sirius_filenames %>%
   pbsapply(read.table, sep = "\t", row.names=NULL, header=TRUE, simplify = FALSE) %>%
   imap(.f = function(x, y){
     cbind(x, feature_num=str_extract(y, "FT\\d+"))

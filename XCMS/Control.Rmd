@@ -213,14 +213,6 @@ write.csv(real_features, file = paste0(pretty_folder, "complete_features.csv"), 
 head(real_features)
 ```
 
-## Unit test peaks picked
-
-```{r}
-real_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
-addiso_features <- read.csv(paste0(pretty_folder, "addiso_features.csv"))
-all_features <- bind_rows(real_features, addiso_features)
-```
-
 ## Finding B-MISs
 
 ```{r B-MIS}
@@ -309,6 +301,13 @@ source("XCMS/scripts/formula_assignments.R")
 
 write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
 ```
+
+## Unit tests!
+
+```{r}
+
+```
+
 
 ## Data analysis!
 

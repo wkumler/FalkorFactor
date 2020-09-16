@@ -300,7 +300,7 @@ register(BPPARAM = SnowParam(tasks = length(MSMS_files), progressbar = TRUE))
 
 source("XCMS/scripts/formula_assignments.R")
 
-write.csv(x = best_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
+write.csv(x = final_formulas, file = paste0(pretty_folder, "feature_formulas.csv"))
 ```
 
 ## Unit tests!

@@ -481,8 +481,12 @@ isocheck <- function(feature_num, final_peaks=final_peaks, printplot=FALSE){
       (0:10)[which.min(abs(pred_values/norm_factor-est_slope))]
     })
   count_ests <- data.frame(names(count_ests), unlist(count_ests)) %>%
-    `rownames<-`(NULL) %>% `colnames<-`(c("isotope", feature_num))
-  
+    `rownames<-`(NULL) %>% `colnames<-`(c("isotope", feature_num)) %>%
+    filter(ft_isodata %>% 
+             group_by(isotope) %>% 
+             summarize(count=n()) %>% 
+             pull(count) %>% 
+             `>=`(5))
   
   if(printplot){
     gp <- ggplot(ft_isodata, aes(x=M_area, y=value)) + 

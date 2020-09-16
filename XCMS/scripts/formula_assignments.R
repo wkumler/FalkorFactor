@@ -88,7 +88,7 @@ sirius_formulas <- sirius_filenames %>%
   }) %>%
   lapply(`[[`, "molecularFormula")
 names(sirius_formulas) <- str_extract(names(sirius_formulas), "FT\\d+")
-
+saveRDS(sirius_formulas, file = paste0(intermediate_folder, "sirius_formulas.rds"))
 
 
 # Run Rdisop ----
@@ -102,7 +102,7 @@ rdisop_formulas %>%
   }) %>%
   do.call(what=rbind) %>%
   as.data.frame()
-
+saveRDS(rdisop_formulas, file = paste0(intermediate_folder, "rdisop_formulas.rds"))
 
 
 # Check isotope matches ----
@@ -119,7 +119,7 @@ iso_formulas <- final_features$feature %>%
   `colnames<-`(slice(., 1) %>% `[`(-length(.)) %>% c("feature")) %>% 
   slice(-1) %>% select(feature, everything())
 
-isocheck(feature_num = "FT0003", final_peaks = real_peaks, printplot = TRUE)
+isocheck(feature_num = "FT1178", final_peaks = real_peaks, printplot = TRUE)
 
 
 

@@ -38,7 +38,11 @@ dir.create(paste0(sirius_project_dir, "//raw_files"))
 dir.create(paste0(sirius_project_dir, "//output_dir"))
 
 message("Writing .mgf files...")
+stan_annotations <- read.csv(paste0(pretty_folder, "stan_annotations.csv"))
+target_ft_nums <- stan_annotations$best_guess
+# pbsapply(target_ft_nums, function(feature_num){
 pbsapply(final_features$feature, function(feature_num){
+  dput(feature_num)
   output_file <- paste0(sirius_project_dir, "\\raw_files\\", feature_num, ".mgf")
   feature_msdata <- final_features[final_features$feature==feature_num, ]
   ms1 <- rbind(c(feature_msdata$mzmed, feature_msdata$avgarea),
@@ -65,7 +69,12 @@ sirius_cmd <- paste0('"C://Program Files//sirius-win64-4.4.29//',
                      ' formula',
                      ' --database PUBCHEM',
                      ' --profile orbitrap',
-                     ' --ions-enforced [M+H]+')
+                     ' --ions-enforced [M+H]+',
+                     ' -c 50',
+                     ' zodiac',
+                     ' fingerid',
+                     ' --database bio',
+                     ' canopus')
 message(sirius_cmd)
 system(sirius_cmd)
 

@@ -308,8 +308,7 @@ write.csv(x = final_formulas, file = paste0(pretty_folder, "feature_formulas.csv
 ```{r}
 feature_formulas <- "feature_formulas.csv" %>%
   paste0(pretty_folder, .) %>%
-  read.csv() %>%
-  select(-X)
+  read.csv()
 stan_annotations <- "stan_annotations.csv" %>%
   paste0(pretty_folder, .) %>%
   read.csv() %>%
@@ -326,14 +325,23 @@ falkor_stans <- read.csv("XCMS/falkor_stans.csv") %>%
           formula="C5H7NO3", rt=11, mz=129.042593+1.007276,
           ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
           polarity="pos", date_added=NA, mix="Mix1") %>%
-  select(compound_name, formula, rt, mz)
+  select(compound_name, formula, rt, mz, ionization_form)
 
 formula_check <- stan_annotations %>%
   filter(!is.na(best_guess)) %>%
   left_join(feature_formulas, by=c(best_guess="feature")) %>%
   left_join(falkor_stans, by="compound_name") %>%
-  select(compound_name, best_guess, formula_pred="formula.x", formula_known="formula.y")
+  select(compound_name, best_guess, ionization_form, formula_pred="formula.x", formula_known="formula.y", mz) %>%
+  mutate(formula_pred=ifelse(ionization_form!="[M]", formula_pred, 
+                             str_replace(formula_pred, pattern = "H\\d*", replacement = 
+                                           paste0("H", as.numeric(str_extract(formula_pred, "(?<=H)\\d*"))+1)))) %>%
+  rowwise() %>%
+  mutate(top_pick=formula_known==unlist(strsplit(formula_pred, split = "; "))[1]) %>%
+  as.data.frame()
 
+formula_check %>%
+  filter(!top_pick|is.na(top_pick)) %>%
+  select(compound_name, formula_pred, formula_known)
 
 
 ```

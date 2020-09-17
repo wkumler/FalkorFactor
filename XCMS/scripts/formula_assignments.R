@@ -106,20 +106,21 @@ saveRDS(rdisop_formulas, file = paste0(intermediate_folder, "rdisop_formulas.rds
 
 
 # Check isotope matches ----
-iso_abundance_table <- data.frame(
-  isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"),
-  abundance=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011),
-  n_atoms=c(1,1,1,1,1,2)
-)
-iso_formulas <- final_features$feature %>% 
-  pblapply(isocheck, final_peaks=real_peaks) %>%
-  c(list(data.frame(isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"))), .) %>%
-  purrr::reduce(.f=left_join, by="isotope") %>%
-  t() %>% as.data.frame() %>% mutate(feature=rownames(.)) %>%
-  `colnames<-`(slice(., 1) %>% `[`(-length(.)) %>% c("feature")) %>% 
-  slice(-1) %>% select(feature, everything())
-
-isocheck(feature_num = "FT1178", final_peaks = real_peaks, printplot = TRUE)
+# iso_abundance_table <- data.frame(
+#   isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"),
+#   abundance=c(0.011, 0.00368, 0.00205, 0.0075, 0.0421, 0.011),
+#   n_atoms=c(1,1,1,1,1,2)
+# )
+# iso_formulas <- final_features$feature %>% 
+#   pblapply(isocheck, final_peaks=real_peaks) %>%
+#   c(list(data.frame(isotope=c("C13", "N15", "O18", "X2C13", "S33", "S34"))), .) %>%
+#   purrr::reduce(.f=left_join, by="isotope") %>%
+#   t() %>% as.data.frame() %>% mutate(feature=rownames(.)) %>%
+#   `colnames<-`(slice(., 1) %>% `[`(-length(.)) %>% c("feature")) %>% 
+#   slice(-1) %>% select(feature, everything())
+# saveRDS(iso_formulas, file = paste0(intermediate_folder, "iso_formulas.rds"))
+# 
+# isocheck(feature_num = "FT1178", final_peaks = real_peaks, printplot = TRUE)
 
 
 
@@ -128,31 +129,39 @@ inter_formulas <- sapply(names(rdisop_formulas), function(feature_num){
   intersect(rdisop_formulas[[feature_num]], sirius_formulas[[feature_num]])
 }, simplify=FALSE)
 
-isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
-  isodata <- filter(iso_formulas, feature==feature_num)
-  if(!length(inter_formulas[[feature_num]])){
-    return(character(0))
-  }
-  formula_agreements <- inter_formulas[[feature_num]] %>% 
-    formula2elements() %>%
-    sapply(function(elem_table){
-      empty_elements <- c("C", "N", "O", "S")[!c("C", "N", "O", "S")%in%names(elem_table)]
-      empty_elements <- `names<-`(numeric(length(empty_elements)), empty_elements)
-      elem_table <- c(elem_table, empty_elements)
-      c(
-        C=elem_table[["C"]]-as.numeric(isodata[["C13"]]),
-        N=elem_table[["N"]]-as.numeric(isodata[["N15"]]),
-        O=elem_table[["O"]]-as.numeric(isodata[["O18"]]),
-        S=elem_table[["S"]]-as.numeric(isodata[["S34"]])
-      )
-  }, simplify = FALSE) %>%
-    sapply(sum, na.rm=TRUE) %>%
-    sapply(abs)
-  best_formula <- inter_formulas[[feature_num]][which(formula_agreements==min(formula_agreements))]
-  return(best_formula)
-}) %>% `names<-`(names(inter_formulas))
-  
-final_formulas <- data.frame(feature=names(isochecked_formulas), 
-           formula=sapply(isochecked_formulas, paste, collapse="; ")) %>%
+# isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
+#   isodata <- filter(iso_formulas, feature==feature_num)
+#   if(!length(inter_formulas[[feature_num]])){
+#     return(character(0))
+#   }
+#   formula_agreements <- inter_formulas[[feature_num]] %>% 
+#     formula2elements() %>%
+#     sapply(function(elem_table){
+#       empty_elements <- c("C", "N", "O", "S")[!c("C", "N", "O", "S")%in%names(elem_table)]
+#       empty_elements <- `names<-`(numeric(length(empty_elements)), empty_elements)
+#       elem_table <- c(elem_table, empty_elements)
+#       c(
+#         C=elem_table[["C"]]-as.numeric(isodata[["C13"]]),
+#         N=elem_table[["N"]]-as.numeric(isodata[["N15"]]),
+#         O=elem_table[["O"]]-as.numeric(isodata[["O18"]]),
+#         S=elem_table[["S"]]-as.numeric(isodata[["S34"]])
+#       )
+#   }, simplify = FALSE) %>%
+#     sapply(sum, na.rm=TRUE) %>%
+#     sapply(abs)
+#   best_formula <- inter_formulas[[feature_num]][which(formula_agreements==min(formula_agreements))]
+#   return(best_formula)
+# }) %>% `names<-`(names(inter_formulas))
+# 
+# final_formulas <- data.frame(feature=names(isochecked_formulas), 
+#            formula=sapply(isochecked_formulas, paste, collapse="; ")) %>%
+#   left_join(final_features, by="feature") %>%
+#   select(feature, mzmed, rtmed, avgarea, formula)
+
+final_formulas <- inter_formulas %>%
+  sapply(paste, collapse="; ") %>%
+  data.frame(names(.), .) %>%
+  `names<-`(c("feature", "formula")) %>%
+  `rownames<-`(NULL) %>%
   left_join(final_features, by="feature") %>%
   select(feature, mzmed, rtmed, avgarea, formula)

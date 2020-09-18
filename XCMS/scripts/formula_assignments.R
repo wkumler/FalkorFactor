@@ -153,25 +153,6 @@ isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
   best_formula <- inter_formulas[[feature_num]][
     which(formula_agreements==min(formula_agreements))
   ]
-  
-  # Be suspicious of any formula that includes sulfur, but no sulfur isotope found
-  # Implement by rearranging to make non-sulfur first choice
-  # See guanine for example
-  if(length(best_formula)>1){
-    if(is.na(isodata[["S34"]])){
-      best_formula <- c(
-        best_formula[!grepl(pattern = "S", best_formula)],
-        best_formula[grepl(pattern = "S", best_formula)]
-      )
-    } else {
-      best_formula <- c(
-        best_formula[grepl(pattern = "S", best_formula)],
-        best_formula[!grepl(pattern = "S", best_formula)]
-      )
-    }
-  }
-  
-  
   return(best_formula)
 }) %>% `names<-`(names(inter_formulas))
 

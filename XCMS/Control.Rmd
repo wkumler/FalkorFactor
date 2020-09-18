@@ -306,6 +306,8 @@ write.csv(x = final_formulas, file = paste0(pretty_folder, "feature_formulas.csv
 ## Unit tests!
 
 ```{r}
+final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
+real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
 feature_formulas <- "feature_formulas.csv" %>%
   paste0(pretty_folder, .) %>%
   read.csv()
@@ -331,7 +333,7 @@ formula_check <- stan_annotations %>%
   filter(!is.na(best_guess)) %>%
   left_join(feature_formulas, by=c(best_guess="feature")) %>%
   left_join(falkor_stans, by="compound_name") %>%
-  select(compound_name, best_guess, ionization_form, formula_pred="formula.x", formula_known="formula.y", mz) %>%
+  select(feature="best_guess", compound_name, best_guess, ionization_form, formula_pred="formula.x", formula_known="formula.y", mz) %>%
   mutate(formula_pred=ifelse(ionization_form!="[M]", formula_pred, 
                              str_replace(formula_pred, pattern = "H\\d*", replacement = 
                                            paste0("H", as.numeric(str_extract(formula_pred, "(?<=H)\\d*"))+1)))) %>%
@@ -341,7 +343,7 @@ formula_check <- stan_annotations %>%
 
 formula_check %>%
   filter(!top_pick|is.na(top_pick)) %>%
-  select(compound_name, formula_pred, formula_known)
+  select(feature, compound_name, formula_pred, formula_known)
 
 
 ```

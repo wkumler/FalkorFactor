@@ -149,7 +149,8 @@ isochecked_formulas <- lapply(names(inter_formulas), function(feature_num){
       )
   }, simplify = FALSE) %>%
     sapply(sum, na.rm=TRUE) %>%
-    sapply(abs)
+    sapply(abs) %>%
+    head(3)
   best_formula <- inter_formulas[[feature_num]][
     which(formula_agreements==min(formula_agreements))
   ]

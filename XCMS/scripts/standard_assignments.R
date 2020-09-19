@@ -288,7 +288,7 @@ glutamate <- all_features %>%
   arrange(desc(avgarea)) %>%
   slice(1)
 stan_assignments[stan_assignments$compound_name=="L-Glutamic acid",] <- 
-  c("L-Glutamic acid", allopurinol$feature, rep("Manual", ncol(stan_assignments)-2))
+  c("L-Glutamic acid", glutamate$feature, rep("Manual", ncol(stan_assignments)-2))
 stan_assignments[stan_assignments$compound_name=="beta-Glutamic acid",] <- 
   c("beta-Glutamic acid", rep(NA, ncol(stan_assignments)-1))
 stan_assignments[stan_assignments$compound_name=="O-Acetyl-L-serine",] <- 

@@ -381,3 +381,13 @@ stan_annotations %>%
   facet_wrap(~compound_name, scales = "free") +
   ggsave(filename = "XCMS/target_comparison_into.pdf", device = "pdf", width=30, height=20, units = "in")
 ```
+
+## Commit daily build
+
+```{r}
+library(git2r)
+repo <- repository()
+add(repo, pretty_folder)
+commit(repo, "Daily build")
+detach(name = "package:git2r", unload = TRUE)
+```

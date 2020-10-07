@@ -112,9 +112,23 @@ falkor_stans <- raw_stans %>%
   filter(Column=="HILIC") %>%
   mutate(polarity=tolower(gsub(pattern = "HILIC", "", .$Fraction1))) %>%
   mutate(m.z=as.numeric(m.z)) %>%
-  select(compound_type=Compound.Type, compound_name=Compound.Name, 
+  filter(Date.added<180205) %>%
+  select(compound_type=Compound.Type, compound_name=Compound.Name, compound_name_old=Compound.Name_old,
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
          charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix)
+         charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix) %>%
+  add_row(compound_type="Custom", 
+          compound_name="Pyroglutamic acid from glutamine",
+          compound_name_old="Pyroglutamic acid from glutamine",
+          formula="C5H7NO3", rt=10, mz=129.042593+1.007276,
+          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
+          polarity="pos", date_added=NA, mix="Mix1") %>%
+  add_row(compound_type="Custom", 
+          compound_name="Pyroglutamic acid from glutamate",
+          compound_name_old="Pyroglutamic acid from glutamine",
+          formula="C5H7NO3", rt=11, mz=129.042593+1.007276,
+          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
+          polarity="pos", date_added=NA, mix="Mix1")
 write.csv(falkor_stans, file = "XCMS/falkor_stans.csv", row.names = FALSE)
 head(falkor_stans)
 ```
@@ -170,7 +184,7 @@ This script does two things. First, it identifies peaks that are likely isotopes
 
 However, simply finding data at the expected mass isn't specific enough because we'll often stumble upon noise or a different peak in the general area. Thus, we check for peak similarity before assuming that there's real signal there. The general theory is that isotopes and adducts will be similar to the base peak in two ways. First, the individual x/y (rt/intensity) data points should match up almost exactly, as adducts and isotopes elute at the same time as the base peak. We can check this with a Pearson correlation - simply, how nicely do the two peaks correlate with each other? This method is quite sensitive to even small differences in retention time. Second, we can compare peak ratios across files. Here, we run a similar correlation but check x/y as base peak/isotope peak. This works because a compound will always create similarly stable adducts (some will love M+H, others M+Na) and will always have a fixed isotope abundance. Across multiple files, then, the correlation between these should be very strong (and is, in fact, usually stronger than the first method).
 
-```{r deisoadduct}
+```{r deisoadduct, error=TRUE}
 xdata_filled <- readRDS(file = paste0(intermediate_folder, "xdata_filled.rds"))
 raw_peaks <- read.csv(file = paste0(intermediate_folder, "raw_peaks.csv"))
 
@@ -179,6 +193,10 @@ not_addisos <- list("Glutamine"=c(mz=147.076968, rt=620),
                     "Guanine"=c(mz=152.0567, rt=400),
                     "Glutamic acid"=c(mz=148.061, rt=745),
                     "4-Aminobutyric acid"=c(mz=104.071, rt=614))
+# How many seconds away from the given RT can the peak be before it's removable?
+# Set high to collect entire EIC
+peak_rt_flex <- 500
+
 
 
 # When removing peaks that are likely adducts...
@@ -248,27 +266,11 @@ BMISed_feature_peaks %>%
 message(Sys.time()-start_time)
 ```
 
-## Combining positive and negative modes
-
-```{r comb, eval=FALSE}
-
-```
-
 ## Assign formulae and structures
 
 ```{r targeted}
-all_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
-  filter(polarity=="pos") %>%
-  add_row(compound_type="Custom", 
-          compound_name="Pyroglutamic acid from glutamine",
-          formula="C5H7NO3", rt=10, mz=129.042593+1.007276,
-          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
-          polarity="pos", date_added=NA, mix="Mix1") %>%
-  add_row(compound_type="Custom", 
-          compound_name="Pyroglutamic acid from glutamate",
-          formula="C5H7NO3", rt=11, mz=129.042593+1.007276,
-          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
-          polarity="pos", date_added=NA, mix="Mix1")
+all_stans <- read.csv("XCMS/meso_stans.csv") %>% 
+  filter(polarity=="pos")
 
 addiso_peaks <- read.csv(paste0(intermediate_folder, "addiso_peaks.csv"))
 real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
@@ -374,91 +376,8 @@ stan_annotations %>%
   left_join(final_peaks, by=c(best_guess="feature")) %>%
   filter(cruise=="Falkor") %>%
   ggplot() +
-  geom_boxplot(aes(x=spindir, y=BMISed_area, color=spindir), varwidth = TRUE) +
-  scale_color_manual(values = c(Anticyclone=rgb(204, 54, 17, maxColorValue = 255), 
-                                Cyclone=rgb(6, 81, 164, maxColorValue = 255))) +
-  facet_wrap(~compound_name, scales = "free_x") +
-  coord_flip() +
-  ggsave(filename = paste0(pretty_folder, "targeted_boxplots_spindir.pdf"),
-       device = "pdf", width = 25, height = 25, units = "in")
-
-stan_annotations %>%
-  left_join(final_peaks, by=c(best_guess="feature")) %>%
-  filter(cruise=="Falkor") %>%
-  ggplot() +
-  geom_boxplot(aes(x=time, y=BMISed_area, color=time), varwidth = TRUE) +
-  scale_color_manual(values = c(`4am`="#fc8b64", `4pm`="#222a5c")) +
-  facet_wrap(~compound_name, scales = "free_x") +
-  coord_flip() +
-  ggsave(filename = paste0(pretty_folder, "targeted_boxplots_time.pdf"),
-       device = "pdf", width = 25, height = 25, units = "in")
-```
-
-```{r analysis}
-falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")
-found_stans <- read.csv(file = paste0(intermediate_folder, "found_stans.csv"))
-final_peaks <- read.csv(file = paste0(pretty_folder, "final_peaks.csv")) %>%
-  left_join(falkor_metadata)
-
-final_peaks <- final_peaks %>% 
-  filter(!feature%in%found_stans$feature)
-
-diffreport <- function(peaks, pattern_a, pattern_b){
-  split(peaks, peaks$feature) %>%
-    lapply(function(x){
-      DCM_areas <- x$BMISed_area[grep(pattern = pattern_a, x$file_name)]
-      m25_areas <- x$BMISed_area[grep(pattern = pattern_b, x$file_name)]
-      if(all(DCM_areas==0)&all(m25_areas==0))return(c(1, 1))
-      if(length(DCM_areas)<3|length(m25_areas)<3)return(c(1, 1))
-      c(pval=t.test(DCM_areas, m25_areas)$p.value, 
-        diff=mean(DCM_areas, na.rm=TRUE)/mean(m25_areas, na.rm=TRUE))
-    }) %>% do.call(what = rbind) %>% as.data.frame() %>%
-    mutate(feature=rownames(.)) %>%
-    mutate(p_adj=p.adjust(pval, method = "BH")) %>%
-    filter(p_adj<0.05) %>%
-    arrange(p_adj) %>%
-    mutate(which_enriched=c(pattern_a, pattern_b)[as.numeric(diff>1)+1])
-}
-
-# Depth data!
-depth_diffs <- diffreport(final_peaks, pattern_a = "DCM", pattern_b = "25m") %>%
-  left_join(final_peaks %>% group_by(feature) %>%
-              summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
-
-# Diel data!
-diffreport(final_peaks, pattern_a = "62|77", pattern_b = "64|80")
-
-# Direction data!
-diffreport(final_peaks, pattern_a = "62|64|L1", pattern_b = "77|80|L2") %>%
-  left_join(final_peaks %>% group_by(feature) %>%
-              summarize(mzmed=median(mz), rtmed=median(rt)), by="feature")
-
-depth_diffs$feature[1] %>%
-  lapply(function(feature_num){
-    gp_df <- final_peaks %>%
-      filter(feature==feature_num) %>%
-      #filter(depth%in%c("25m", "DCM")) %>%
-      #filter(spindir%in%c("Cyclone", "Anticyclone")) %>%
-      select(`Sample type`=depth, everything())
-    gp <- gp_df %>%
-      ggplot() + 
-      geom_boxplot(
-        aes(x=`Sample type`, y=BMISed_area, color=`Sample type`), 
-        varwidth = TRUE) +
-      theme_bw() + theme(legend.position = "none") + 
-      ylab("BMIS-normalized peak area") +
-      annotate(geom = "label", x=Inf, y=Inf, label=unique(gp_df$feature), hjust=1, vjust=1) +
-      annotate(geom = "label", x=-Inf, y=Inf, label=median(gp_df$mz), hjust=0, vjust=1)
-    print(gp)
-  })
-```
-
-## Commit daily build
-
-```{r}
-library(git2r)
-repo <- repository()
-add(repo, pretty_folder)
-commit(repo, "Daily build")
-detach(name = "package:git2r", unload = TRUE)
+  geom_point(aes(x=true_area, y=into)) +
+  geom_abline(slope = 1, intercept = 0) +
+  facet_wrap(~compound_name, scales = "free") +
+  ggsave(filename = "XCMS/target_comparison_into.pdf", device = "pdf", width=30, height=20, units = "in")
 ```

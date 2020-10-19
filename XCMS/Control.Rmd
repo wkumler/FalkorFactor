@@ -368,6 +368,57 @@ stan_annotations %>%
   ggsave(filename = "XCMS/target_comparison_into.pdf", device = "pdf", width=30, height=20, units = "in")
 ```
 
+## Multivariate data analysis
+
+```{r}
+falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")
+final_peaks <- read.csv(file = paste0(pretty_folder, "final_peaks.csv")) %>%
+  left_join(falkor_metadata, by = "file_name")
+wide_peaks <- final_peaks %>%
+  filter(cruise=="Falkor") %>%
+  select(feature, M_area, file_name) %>% 
+  slice(-which(duplicated(interaction(.$feature, .$file_name)))) %>%
+  pivot_wider(names_from = feature, values_from=M_area) %>%
+  as.data.frame() %>%
+  select(which(sapply(X = ., FUN = function(col)!any(is.na(col))))) %>%
+  mutate(file_name=gsub(pattern = ".*180310|\\.mzML", replacement = "", .$file_name))
+
+
+dist_mat <- wide_peaks %>%
+  as.data.frame() %>%
+  select(-1) %>%
+  as.matrix() %>%
+  apply(MARGIN = 2, FUN = scale) %>%
+  `rownames<-`(wide_peaks$file_name)
+dist_str <- dist(dist_mat)
+hc <- hclust(dist_str, method = "average")
+hc$height[which.max(hc$height)] <- 60 #Set plotted upper limit
+plot(hc, hang=-1, main="", ylab="")
+
+falkor_samps <- falkor_metadata[falkor_metadata$cruise=="Falkor",][hc$order,]
+trip_cats <- interaction(falkor_samps$depth, falkor_samps$spindir, falkor_samps$time)
+points(1:nrow(dist_mat), y=numeric(nrow(dist_mat)), 
+       col=hcl.colors(8)[trip_cats], pch=15, cex=2)
+depth_cats <- factor(falkor_samps$depth, levels = c("25m", "DCM"))
+points(1:nrow(dist_mat), y=numeric(nrow(dist_mat))+max(hc$height)/8, 
+       col=c("blue", "green")[depth_cats], pch=15, cex=2)
+spin_cats <- factor(falkor_samps$spindir, levels = c("Cyclone", "Anticyclone"))
+points(1:nrow(dist_mat), y=numeric(nrow(dist_mat))+max(hc$height)/16, 
+       col=c("blue", "red")[spin_cats], pch=15, cex=2)
+legend("topleft", legend = c("25m", "DCM"), fill = c("blue", "green"), ncol = 2)
+legend("topright", legend = c("Cyclone", "Anticyclone"), fill = c("blue", "red"), ncol = 2)
+
+dist_mat %>%
+  as.data.frame() %>%
+  mutate(file_id=factor(rownames(dist_mat), levels=rownames(dist_mat)[hc$order])) %>%
+  pivot_longer(cols = !c(file_id)) %>%
+  ggplot() +
+  geom_tile(aes(x=file_id, y=name, fill=value)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  scale_fill_viridis_c()
+
+```
+
 ## Commit daily build
 
 ```{r}

@@ -25,7 +25,9 @@ source("XCMS/scripts/functions.R")
 
 ms_files <- "mzMLs/" %>%
   paste0(polarity) %>%
-  list.files(pattern = ".mzML", full.names = TRUE) 
+  list.files(pattern = ".mzML", full.names = TRUE)  %>%
+  grep(pattern = "190715|Blk", value = TRUE) %>%
+  `[`(!grepl(pattern = "Fullpos|Fullneg", x=.))
 
 register(BPPARAM = SnowParam(tasks = length(ms_files), progressbar = TRUE))
 ```
@@ -75,9 +77,6 @@ head(metadframe)
 sample_key <- read.csv(paste0("Z:\\1_QEdata\\LTC\\DATA\\HILIC\\190718_Depth",
                               "Profiles_FK180310\\Sample.Key.HILIC.csv"),
                        skip = 1)
-sample_key_meso <- read.csv(paste0("Z:\\1_QEdata\\LTC\\DATA\\HILIC\\HILIC_2018\\",
-                                   "180205_Wei_MESO-SCOPE_HRM_DepthProfile\\",
-                                   "negative\\Sample.Key.csv"))
 falkor_key <- sample_key %>%
   filter(grepl(pattern = "FK|Std", sample_key$Sample.Name)) %>%
   select(Sample.Name, Inj.vol) %>%
@@ -87,18 +86,6 @@ falkor_key <- sample_key %>%
   mutate(fileid=paste0(Sample.Name, ".mzML")) %>%
   select(-Sample.Name, inj_vol=Inj.vol, file_name=fileid) %>%
   arrange(file_name)
-meso_key <- sample_key_meso %>%
-  filter(grepl(pattern = "Smp|Std|TruePoo", sample_key_meso$Sample.Name)) %>%
-  filter(Fraction=="HILIC") %>%
-  select(Sample.Name, Inj.vol=Bio.Normalization) %>%
-  add_row(Sample.Name="180205_Std_4uMStdsInH2O_1.mzML", Inj.vol=1) %>%
-  add_row(Sample.Name="180205_Std_4uMStdsInH2O_2.mzML", Inj.vol=1) %>%
-  add_row(Sample.Name="180205_Std_4uMStdsInMatrix_1.mzML", Inj.vol=1) %>%
-  add_row(Sample.Name="180205_Std_4uMStdsInMatrix_2.mzML", Inj.vol=1) %>%
-  mutate(fileid=paste0(Sample.Name, ".mzML")) %>%
-  select(-Sample.Name, inj_vol=Inj.vol, file_name=fileid) %>%
-  arrange(file_name)
-falkor_key <- rbind(falkor_key, meso_key)
 write.csv(falkor_key, file = "XCMS/falkor_sample_key.csv", row.names = FALSE)
 head(falkor_key)
 
@@ -115,7 +102,6 @@ falkor_stans <- raw_stans %>%
   filter(Date.added<180205) %>%
   select(compound_type=Compound.Type, compound_name=Compound.Name, compound_name_old=Compound.Name_old,
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
-         charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix)
          charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix) %>%
   add_row(compound_type="Custom", 
           compound_name="Pyroglutamic acid from glutamine",
@@ -269,7 +255,7 @@ message(Sys.time()-start_time)
 ## Assign formulae and structures
 
 ```{r targeted}
-all_stans <- read.csv("XCMS/meso_stans.csv") %>% 
+all_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
   filter(polarity=="pos")
 
 addiso_peaks <- read.csv(paste0(intermediate_folder, "addiso_peaks.csv"))
@@ -351,7 +337,7 @@ formula_check %>%
 ```
 
 
-## Data analysis!
+## Univariate data analysis!
 
 ```{r targeted_graphs}
 stan_annotations <- read.csv(paste0(pretty_folder, "stan_annotations.csv")) %>%

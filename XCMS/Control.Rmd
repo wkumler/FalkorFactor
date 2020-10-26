@@ -99,7 +99,6 @@ falkor_stans <- raw_stans %>%
   filter(Column=="HILIC") %>%
   mutate(polarity=tolower(gsub(pattern = "HILIC", "", .$Fraction1))) %>%
   mutate(m.z=as.numeric(m.z)) %>%
-  filter(Date.added<180205) %>%
   select(compound_type=Compound.Type, compound_name=Compound.Name, compound_name_old=Compound.Name_old,
          formula=Emperical.Formula, rt=RT..min., mz=m.z, ionization_form,
          charge=z, kegg_id=C0, polarity, date_added=Date.added, mix=HILICMix) %>%
@@ -273,7 +272,7 @@ source("XCMS/scripts/standard_assignments.R")
 write.csv(stan_assignments, paste0(pretty_folder, "stan_annotations.csv"), row.names = FALSE)
 ```
 
-```{r untargeted}
+```{r untargeted, eval=FALSE}
 final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
 real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
 
@@ -291,50 +290,6 @@ source("XCMS/scripts/formula_assignments.R")
 write.csv(x = final_formulas, file = paste0(pretty_folder, "feature_formulas.csv"), row.names = FALSE)
 ```
 
-## Unit tests!
-
-```{r}
-final_features <- read.csv(paste0(pretty_folder, "complete_features.csv"))
-real_peaks <- read.csv(paste0(intermediate_folder, "real_peaks.csv"))
-feature_formulas <- "feature_formulas.csv" %>%
-  paste0(pretty_folder, .) %>%
-  read.csv()
-stan_annotations <- "stan_annotations.csv" %>%
-  paste0(pretty_folder, .) %>%
-  read.csv() %>%
-  select(compound_name, best_guess)
-falkor_stans <- read.csv("XCMS/falkor_stans.csv") %>% 
-  filter(polarity=="pos") %>%
-  add_row(compound_type="Custom", 
-          compound_name="Pyroglutamic acid from glutamine",
-          formula="C5H7NO3", rt=10, mz=129.042593+1.007276,
-          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
-          polarity="pos", date_added=NA, mix="Mix1") %>%
-  add_row(compound_type="Custom", 
-          compound_name="Pyroglutamic acid from glutamate",
-          formula="C5H7NO3", rt=11, mz=129.042593+1.007276,
-          ionization_form="[M+H-NH3]", charge=1, kegg_id=NA,
-          polarity="pos", date_added=NA, mix="Mix1") %>%
-  select(compound_name, formula, rt, mz, ionization_form)
-
-formula_check <- stan_annotations %>%
-  filter(!is.na(best_guess)) %>%
-  left_join(feature_formulas, by=c(best_guess="feature")) %>%
-  left_join(falkor_stans, by="compound_name") %>%
-  select(feature="best_guess", compound_name, best_guess, ionization_form, formula_pred="formula.x", formula_known="formula.y", mz) %>%
-  mutate(formula_pred=ifelse(ionization_form!="[M]", formula_pred, 
-                             str_replace(formula_pred, pattern = "H\\d*", replacement = 
-                                           paste0("H", as.numeric(str_extract(formula_pred, "(?<=H)\\d*"))+1)))) %>%
-  rowwise() %>%
-  mutate(top_pick=formula_known==unlist(strsplit(formula_pred, split = "; "))[1]) %>%
-  as.data.frame()
-
-formula_check %>%
-  filter(!top_pick|is.na(top_pick)) %>%
-  select(feature, compound_name, formula_pred, formula_known)
-
-
-```
 
 
 ## Univariate data analysis!
@@ -358,29 +313,43 @@ stan_annotations %>%
   ggsave(filename = paste0(pretty_folder, "targeted_boxplots_depth.pdf"),
        device = "pdf", width = 25, height = 25, units = "in")
 
-stan_annotations %>%
-  left_join(final_peaks, by=c(best_guess="feature")) %>%
-  filter(cruise=="Falkor") %>%
-  ggplot() +
-  geom_point(aes(x=true_area, y=into)) +
-  geom_abline(slope = 1, intercept = 0) +
-  facet_wrap(~compound_name, scales = "free") +
-  ggsave(filename = "XCMS/target_comparison_into.pdf", device = "pdf", width=30, height=20, units = "in")
+# stan_annotations %>%
+#   left_join(final_peaks, by=c(best_guess="feature")) %>%
+#   filter(cruise=="Falkor") %>%
+#   ggplot() +
+#   geom_point(aes(x=true_area, y=into)) +
+#   geom_abline(slope = 1, intercept = 0) +
+#   facet_wrap(~compound_name, scales = "free") +
+#   ggsave(filename = "XCMS/target_comparison_into.pdf", device = "pdf", width=30, height=20, units = "in")
 ```
 
 ## Multivariate data analysis
 
 ```{r}
 falkor_metadata <- read.csv(file = "XCMS/falkor_metadata.csv")
+stan_annotations <- read.csv(file = paste0(pretty_folder, "stan_annotations.csv"))
 final_peaks <- read.csv(file = paste0(pretty_folder, "final_peaks.csv")) %>%
+  inner_join(stan_annotations, by=c(feature="best_guess")) %>%
   left_join(falkor_metadata, by = "file_name")
+
+excellent_peaks <- c("2-O-alpha-D-Glucosylglycerol", "5-Hydroxyectoine", "Adenine", "Adenosine", "Carnitine", "Choline", "Creatine", "Cytidine", "Cytosine", "Dimethylsulfoniopropanoate", "Glycerophosphocholine", "Glycine", "Glycine betaine", "Guanosine", "Homarine", "L-Arginine", "L-Aspartic acid", "L-Histidine", "L-Leucine", "L-Proline", "N6-Acetyl-L-lysine", "O-Acetylcarnitine", "O-Propionylcarnitine", "Proline betaine", "Trigonelline", "Trimethylamine N-oxide")
+final_peaks <- final_peaks %>%
+  filter(compound_name%in%excellent_peaks)
+
+# wide_peaks <- final_peaks %>%
+#   filter(cruise=="Falkor") %>%
+#   select(feature, M_area, file_name) %>% 
+#   slice(-which(duplicated(interaction(.$feature, .$file_name)))) %>%
+#   pivot_wider(names_from = feature, values_from=M_area) %>%
+#   as.data.frame() %>%
+#   select(which(sapply(X = ., FUN = function(col)!any(is.na(col))))) %>%
+#   mutate(file_name=gsub(pattern = ".*180310|\\.mzML", replacement = "", .$file_name))
+
 wide_peaks <- final_peaks %>%
   filter(cruise=="Falkor") %>%
-  select(feature, M_area, file_name) %>% 
-  slice(-which(duplicated(interaction(.$feature, .$file_name)))) %>%
-  pivot_wider(names_from = feature, values_from=M_area) %>%
+  select(compound_name, M_area, file_name) %>%
+  pivot_wider(names_from = compound_name, values_from=M_area) %>%
   as.data.frame() %>%
-  select(which(sapply(X = ., FUN = function(col)!any(is.na(col))))) %>%
   mutate(file_name=gsub(pattern = ".*180310|\\.mzML", replacement = "", .$file_name))
 
 
@@ -388,12 +357,12 @@ dist_mat <- wide_peaks %>%
   as.data.frame() %>%
   select(-1) %>%
   as.matrix() %>%
-  apply(MARGIN = 2, FUN = scale) %>%
+  scale() %>%
   `rownames<-`(wide_peaks$file_name)
 dist_str <- dist(dist_mat)
 hc <- hclust(dist_str, method = "average")
-hc$height[which.max(hc$height)] <- 60 #Set plotted upper limit
 plot(hc, hang=-1, main="", ylab="")
+# cor(dist_str, cophenetic(hc))
 
 falkor_samps <- falkor_metadata[falkor_metadata$cruise=="Falkor",][hc$order,]
 trip_cats <- interaction(falkor_samps$depth, falkor_samps$spindir, falkor_samps$time)
